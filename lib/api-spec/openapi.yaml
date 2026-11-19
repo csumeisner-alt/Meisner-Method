@@ -158,6 +158,74 @@ paths:
           description: A scheduled event has a conflicting saved configuration
         "500":
           description: Lightning Round events could not be prepared
+  /event-arena/lightning-round/{eventId}/leave:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: leaveEventArenaLightningRound
+      tags: [eventArena]
+      summary: Remove the requesting installation from a queued Lightning Round
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: true
+          schema: { type: string, minLength: 12, maxLength: 128 }
+      responses:
+        "200":
+          description: The queued entry was removed or was already absent
+        "400": { description: The event or installation ID is invalid }
+        "409": { description: Registration for the event has closed }
+        "500": { description: The entry could not be removed }
+  /event-arena/lightning-round/{eventId}/state:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Event-Arena-Installation-Id
+        required: true
+        schema: { type: string, minLength: 12, maxLength: 128 }
+    get:
+      operationId: getEventArenaLightningRoundState
+      tags: [eventArena]
+      summary: Load the requesting installation's Lightning Round account snapshot
+      responses:
+        "200":
+          description: Participation and saved paper account state
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: The event or installation ID is invalid }
+        "404": { description: Lightning Round participation was not found }
+        "500": { description: The account snapshot could not be loaded }
+    put:
+      operationId: saveEventArenaLightningRoundState
+      tags: [eventArena]
+      summary: Save the requesting installation's Lightning Round account snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [account, alias, positions, transactions, orders, lots] }
+      responses:
+        "200":
+          description: The account snapshot was saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, eventId, accountId]
+                properties:
+                  ok: { type: boolean }
+                  eventId: { type: string }
+                  accountId: { type: string }
+        "400": { description: The event, installation ID, or snapshot is invalid }
+        "409": { description: Account preparation for the event has closed }
+        "500": { description: The account snapshot could not be saved }
   /event-arena/{eventId}/leaderboard:
     parameters:
       - in: path
@@ -318,6 +386,45 @@ paths:
                 $ref: "#/components/schemas/EventArenaCashNotificationsResponse"
         "400":
           description: The event or installation ID is invalid
+  /event-arena/{eventId}/transfers/read:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string, format: date }
+      - in: header
+        name: X-Event-Arena-Installation-Id
+        required: true
+        schema: { type: string, minLength: 12, maxLength: 128 }
+    post:
+      operationId: markEventArenaTransfersRead
+      tags: [eventArena]
+      summary: Mark received Event Arena cash transfers as read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transferIds]
+              properties:
+                transferIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: The transfers were marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [markedRead]
+                properties:
+                  markedRead: { type: integer }
+        "400": { description: The event, installation ID, or transfer list is invalid }
+        "500": { description: The receipt could not be saved }
   /event-arena/device-pairing:
     post:
       operationId: createEventArenaDevicePairing
@@ -541,6 +648,206 @@ paths:
         "400": { description: Invalid phone notification registration }
         "404": { description: Transfer code was not found }
         "409": { description: Transfer code was not redeemed by this phone }
+  /notifications/device:
+    post:
+      operationId: registerNotificationDevice
+      summary: Register this installation's push notification address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, expoPushToken, platform]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                expoPushToken: { type: string, minLength: 20, maxLength: 256 }
+                platform: { type: string, enum: [ios, android] }
+      responses:
+        "200": { description: The notification address was registered }
+        "400": { description: The installation ID or push token is invalid }
+        "500": { description: The notification address could not be registered }
+  /notifications/alerts:
+    get:
+      operationId: getNotificationAlerts
+      summary: List price alerts for an anonymous installation
+      parameters:
+        - in: query
+          name: installationId
+          required: true
+          schema: { type: string, minLength: 12, maxLength: 128 }
+      responses:
+        "200":
+          description: Price alerts ordered from newest to oldest
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PriceAlert" }
+        "400": { description: The installation ID is invalid }
+        "500": { description: Alerts could not be loaded }
+    post:
+      operationId: createNotificationAlert
+      summary: Create a price alert for an anonymous installation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, symbol, direction, targetPrice, pushToken]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                symbol: { type: string, minLength: 1, maxLength: 12 }
+                direction: { type: string, enum: [above, below] }
+                targetPrice: { type: number, exclusiveMinimum: 0 }
+                pushToken: { type: string, minLength: 20, maxLength: 256 }
+      responses:
+        "200":
+          description: The saved price alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceAlert" }
+        "400": { description: The alert or installation data is invalid }
+        "500": { description: The alert could not be created }
+  /notifications/alerts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    put:
+      operationId: updateNotificationAlert
+      summary: Change a price alert's target and push address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, direction, targetPrice, pushToken]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                direction: { type: string, enum: [above, below] }
+                targetPrice: { type: number, exclusiveMinimum: 0 }
+                pushToken: { type: string, minLength: 20, maxLength: 256 }
+      responses:
+        "200":
+          description: The updated price alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceAlert" }
+        "400": { description: The alert or installation data is invalid }
+        "404": { description: The alert was not found for this installation }
+        "500": { description: The alert could not be updated }
+    patch:
+      operationId: setNotificationAlertPaused
+      summary: Pause or resume a price alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, paused]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                paused: { type: boolean }
+      responses:
+        "200":
+          description: The updated price alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceAlert" }
+        "400": { description: The installation ID or paused value is invalid }
+        "404": { description: The alert was not found for this installation }
+        "500": { description: The alert could not be updated }
+    delete:
+      operationId: deleteNotificationAlert
+      summary: Delete a price alert
+      parameters:
+        - in: query
+          name: installationId
+          required: true
+          schema: { type: string, minLength: 12, maxLength: 128 }
+      responses:
+        "200": { description: The alert was deleted }
+        "400": { description: The installation ID is invalid }
+        "404": { description: The alert was not found for this installation }
+        "500": { description: The alert could not be deleted }
+  /user/recent:
+    get:
+      operationId: getRecentSearches
+      summary: Get the signed-in user's recent ticker searches
+      responses:
+        "200":
+          description: Recent ticker symbols
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+        "401": { description: Sign-in is required }
+        "500": { description: Recent searches could not be loaded }
+    put:
+      operationId: saveRecentSearches
+      summary: Replace the signed-in user's recent ticker searches
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tickers]
+              properties:
+                tickers:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200": { description: Recent searches were saved }
+        "400": { description: The ticker list is invalid }
+        "401": { description: Sign-in is required }
+        "500": { description: Recent searches could not be saved }
+  /user/trades:
+    get:
+      operationId: getUserTrades
+      summary: List the signed-in user's portfolio trades
+      responses:
+        "200":
+          description: Trades ordered by date
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserTrade" }
+        "401": { description: Sign-in is required }
+        "500": { description: Trades could not be loaded }
+    post:
+      operationId: saveUserTrade
+      summary: Create or update a signed-in user's portfolio trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserTrade" }
+      responses:
+        "200": { description: The trade was saved }
+        "400": { description: A required trade field is missing }
+        "401": { description: Sign-in is required }
+        "500": { description: The trade could not be saved }
+  /user/trades/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: deleteUserTrade
+      summary: Delete a signed-in user's portfolio trade
+      responses:
+        "200": { description: The trade was deleted }
+        "401": { description: Sign-in is required }
+        "500": { description: The trade could not be deleted }
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments
@@ -1282,6 +1589,27 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    PriceAlert:
+      type: object
+      required: [id, symbol, direction, targetPrice, createdAt, firedAt, paused]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        direction: { type: string, enum: [above, below] }
+        targetPrice: { type: number, exclusiveMinimum: 0 }
+        createdAt: { type: string, format: date-time }
+        firedAt: { type: string, format: date-time, nullable: true }
+        paused: { type: boolean }
+    UserTrade:
+      type: object
+      required: [id, symbol, type, shares, pricePerShare, date]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        type: { type: string, enum: [buy, sell, dividend] }
+        shares: { type: number, exclusiveMinimum: 0 }
+        pricePerShare: { type: number, minimum: 0 }
+        date: { type: string, format: date-time }
     StockChartResponse:
       type: object
       required: [symbol, period, interval, seriesType, candles, adjustedReturnSeries]

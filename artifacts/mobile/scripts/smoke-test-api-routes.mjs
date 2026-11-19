@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -44,6 +44,76 @@ function normalizeBaseUrl(value) {
 
 export function getPublishedApiBaseUrl(env = process.env) {
   return normalizeBaseUrl(env.API_ROUTE_PREFLIGHT_BASE_URL?.trim());
+}
+
+export function getOpenApiPaths(openApiSource) {
+  return [...openApiSource.matchAll(/^  (\/[^:\s]+):\s*$/gm)].map((match) => match[1]);
+}
+
+function pathsMatch(mobilePath, openApiPath) {
+  const mobileSegments = mobilePath.split("/").filter(Boolean);
+  const openApiSegments = openApiPath.split("/").filter(Boolean);
+  return mobileSegments.length === openApiSegments.length
+    && openApiSegments.every((segment, index) =>
+      /^\{[^}]+\}$/.test(segment) || segment === mobileSegments[index],
+    );
+}
+
+export function getMissingMobileApiPaths(mobilePaths, openApiSource) {
+  const documentedPaths = getOpenApiPaths(openApiSource);
+  return [...new Set(mobilePaths)]
+    .filter((mobilePath) => !documentedPaths.some((path) => pathsMatch(mobilePath, path)))
+    .sort();
+}
+
+async function listMobileSourceFiles(directory) {
+  const ignoredDirectories = new Set([".expo", "mocks", "node_modules", "scripts", "__tests__"]);
+  const sourceExtensions = new Set([".js", ".jsx", ".ts", ".tsx"]);
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (!ignoredDirectories.has(entry.name)) {
+        files.push(...await listMobileSourceFiles(path));
+      }
+    } else if (
+      entry.isFile()
+      && sourceExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))
+      && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)
+    ) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+export async function getMobileApiPaths(
+  mobileRoot = resolve(SCRIPT_DIR, ".."),
+) {
+  const paths = new Set();
+  const sourceFiles = await listMobileSourceFiles(mobileRoot);
+  const stringLiteralPattern =
+    /(?:'((?:\\.|[^'\\\r\n])*)'|"((?:\\.|[^"\\\r\n])*)"|`([^`\r\n]*)`)/g;
+
+  for (const sourceFile of sourceFiles) {
+    const source = await readFile(sourceFile, "utf8");
+    for (const match of source.matchAll(stringLiteralPattern)) {
+      const literal = match[1] ?? match[2] ?? match[3] ?? "";
+      if (!literal.includes("/api/")) continue;
+
+      const start = literal.indexOf("/api/");
+      const route = literal
+        .slice(start + 4)
+        .replace(/\$\{[^{}]*\}/g, "{param}")
+        .split(/[?#]/, 1)[0]
+        .replace(/\/+$/, "");
+      if (route.startsWith("/")) paths.add(route);
+    }
+  }
+
+  return [...paths].sort();
 }
 
 export function getOpenApiGetPaths(openApiSource) {

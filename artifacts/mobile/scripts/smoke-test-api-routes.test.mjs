@@ -5,6 +5,8 @@ import {
   buildProbeUrl,
   formatRouteResult,
   getExpectedMobileGetPaths,
+  getMissingMobileApiPaths,
+  getMobileApiPaths,
   getOpenApiGetPaths,
   getPublishedApiBaseUrl,
   runApiRoutePreflight,
@@ -14,6 +16,35 @@ const openApiSource = await readFile(
   new URL("../../../lib/api-spec/openapi.yaml", import.meta.url),
   "utf8",
 );
+
+test("documents every API path used by mobile source", async () => {
+  const mobilePaths = await getMobileApiPaths();
+  const missingPaths = getMissingMobileApiPaths(mobilePaths, openApiSource);
+
+  assert.deepEqual(
+    missingPaths,
+    [],
+    `Mobile API paths missing from OpenAPI: ${missingPaths.join(", ")}`,
+  );
+});
+
+test("reports undocumented mobile paths by name and matches path parameters", () => {
+  const fixtureSpec = [
+    "paths:",
+    "  /stocks/quote/{symbol}:",
+    "    get:",
+    "  /user/recent:",
+    "    get:",
+  ].join("\n");
+
+  assert.deepEqual(
+    getMissingMobileApiPaths(
+      ["/stocks/quote/AAPL", "/notifications/alerts/{param}", "/user/recent"],
+      fixtureSpec,
+    ),
+    ["/notifications/alerts/{param}"],
+  );
+});
 
 test("builds expected mobile GET routes entirely from OpenAPI", () => {
   const paths = getOpenApiGetPaths(openApiSource);
