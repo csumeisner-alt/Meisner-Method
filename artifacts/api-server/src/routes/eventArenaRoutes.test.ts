@@ -2310,6 +2310,35 @@ test("Event Arena reminder preferences can be enabled and disabled per installat
   ]);
 });
 
+test("Event Arena reminder preference reads distinguish unset from saved-off", async () => {
+  let configured = false;
+  let savedEnabled = false;
+  await withApi(async (sql, values) => {
+    assert.match(sql, /SELECT enabled/);
+    assert.match(sql, /FROM event_arena_reminder_preferences/);
+    assert.deepEqual(values, [installationId]);
+    return { rows: configured ? [{ enabled: savedEnabled }] : [] };
+  }, async (baseUrl) => {
+    const headers = { "X-Event-Arena-Installation-Id": installationId };
+    const unset = await fetch(`${baseUrl}/event-arena/reminder-preference`, { headers });
+    assert.equal(unset.status, 200);
+    assert.deepEqual(await unset.json(), { enabled: false, configured: false });
+
+    configured = true;
+    const savedOff = await fetch(`${baseUrl}/event-arena/reminder-preference`, { headers });
+    assert.equal(savedOff.status, 200);
+    assert.deepEqual(await savedOff.json(), { enabled: false, configured: true });
+
+    savedEnabled = true;
+    const savedOn = await fetch(`${baseUrl}/event-arena/reminder-preference`, { headers });
+    assert.equal(savedOn.status, 200);
+    assert.deepEqual(await savedOn.json(), { enabled: true, configured: true });
+
+    const invalid = await fetch(`${baseUrl}/event-arena/reminder-preference`);
+    assert.equal(invalid.status, 400);
+  });
+});
+
 test("withdrawing from an upcoming Lightning Round removes its queued participant record", async () => {
   let removed = false;
   await withApi(async (sql, values) => {

@@ -639,5 +639,115 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
         self.assertIsNone(limited["bestRegime"])
 
 
+class HeatMapDetailSectionTests(unittest.TestCase):
+    def test_etf_context_contains_only_fields_needed_by_independent_sections(self):
+        context = fetch_info_brief.build_heat_map_etf_context({
+            "quoteType": "ETF",
+            "category": "Large Blend",
+            "fundFamily": "Example Funds",
+            "totalAssets": 1_000_000_000,
+            "currentPrice": 100,
+            "companyOfficers": [{"name": "unneeded"}],
+        })
+
+        self.assertEqual(context["quoteType"], "ETF")
+        self.assertEqual(context["category"], "Large Blend")
+        self.assertEqual(context["fundFamily"], "Example Funds")
+        self.assertNotIn("currentPrice", context)
+        self.assertNotIn("companyOfficers", context)
+
+    def test_summary_profile_does_not_claim_fund_data_was_retrieved(self):
+        profile = fetch_info_brief.build_heat_map_etf_summary_profile({
+            "quoteType": "ETF",
+            "category": "Large Blend",
+            "fundFamily": "Example Funds",
+            "annualReportExpenseRatio": 0.0004,
+            "totalAssets": 1_000_000_000,
+        })
+
+        self.assertAlmostEqual(profile["expenseRatio"], 0.0004)
+        self.assertEqual(profile["totalAssets"], 1_000_000_000)
+        self.assertEqual(profile["sectorWeights"], [])
+        self.assertIsNone(profile["sectorWeightsRetrievedAt"])
+        self.assertEqual(profile["topHoldings"], [])
+        self.assertEqual(profile["topHoldingsReportedCount"], 0)
+        self.assertIsNone(profile["topHoldingsRetrievedAt"])
+        self.assertIsNone(profile["marketRegime"])
+
+    def test_fund_data_section_returns_provider_reported_data_independently(self):
+        with patch.object(
+            fetch_info_brief,
+            "get_fund_data_details",
+            return_value=(
+                {"technology": 0.4, "healthcare": 0.2},
+                [{"symbol": "ABC", "name": "Alpha Corp", "weight": 0.12}],
+                None,
+                None,
+            ),
+        ):
+            result = fetch_info_brief.build_heat_map_etf_fund_data(
+                {
+                    "quoteType": "ETF",
+                    "category": "Large Blend",
+                    "fundFamily": "Example Funds",
+                },
+                object(),
+            )
+
+        self.assertEqual(result["status"], "available")
+        self.assertEqual(result["largestSector"], "Technology")
+        self.assertEqual(result["topHoldings"][0]["symbol"], "ABC")
+        self.assertIsNone(result.get("marketRegime"))
+
+    def test_fund_data_section_distinguishes_unreported_data(self):
+        with patch.object(
+            fetch_info_brief,
+            "get_fund_data_details",
+            return_value=(None, [], None, None),
+        ):
+            result = fetch_info_brief.build_heat_map_etf_fund_data(
+                {"quoteType": "ETF"},
+                object(),
+            )
+
+        self.assertEqual(result["status"], "not_reported")
+        self.assertEqual(result["sectorWeights"], [])
+        self.assertEqual(result["topHoldings"], [])
+
+    def test_history_fit_is_a_separate_provider_request(self):
+        expected = {
+            "bestRegime": "bull",
+            "lookbackYears": 10,
+            "firstYear": 2016,
+            "lastYear": 2025,
+            "benchmarkSymbol": "SPY",
+            "bullThreshold": 0.1,
+            "bearThreshold": -0.1,
+            "periods": {},
+        }
+        with patch.object(
+            fetch_info_brief,
+            "get_market_regime_performance",
+            return_value=expected,
+        ) as history_request:
+            result = fetch_info_brief.build_heat_map_etf_history_fit(
+                {"quoteType": "ETF"},
+                object(),
+                "DIA",
+            )
+
+        history_request.assert_called_once()
+        self.assertEqual(result, {"status": "available", "marketRegime": expected})
+
+    def test_strict_section_fetch_does_not_silently_swallow_provider_errors(self):
+        class BrokenTicker:
+            @property
+            def funds_data(self):
+                raise RuntimeError("provider unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
+            fetch_info_brief.get_fund_data_details(BrokenTicker(), strict=True)
+
+
 if __name__ == "__main__":
     unittest.main()

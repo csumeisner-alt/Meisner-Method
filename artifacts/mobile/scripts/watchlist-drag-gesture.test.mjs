@@ -11,7 +11,7 @@ const homeSource = readFileSync(
   "utf8",
 );
 
-test("watchlist reorder waits on the card while ordinary swipes scroll", () => {
+test("watchlist reorder waits for a hold on native and web before taking row movement", () => {
   assert.equal(
     (watchlistSource.match(/<GestureDetector/g) ?? []).length,
     1,
@@ -27,18 +27,14 @@ test("watchlist reorder waits on the card while ordinary swipes scroll", () => {
   );
   assert.match(
     watchlistSource,
-    /Gesture\.LongPress\(\)\s*\.minDuration\(Platform\.OS === 'web' \? 320 : 420\)\s*\.maxDistance\(Platform\.OS === 'web' \? 24 : 12\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onStart\(\(\) => \{/,
+    /if \(Platform\.OS !== 'web'\) \{\s*return pan\s*\.activateAfterLongPress\(420\)\s*\.onStart\(startDrag\);\s*\}/,
   );
   assert.match(
     watchlistSource,
-    /Gesture\.Pan\(\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onUpdate\(\(event\) => \{/,
+    /Gesture\.LongPress\(\)\s*\.minDuration\(320\)\s*\.maxDistance\(24\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onStart\(startDrag\)/,
   );
+  assert.match(watchlistSource, /const pan = Gesture\.Pan\(\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onUpdate\(\(event\) => \{/);
   assert.match(watchlistSource, /Gesture\.Simultaneous\(longPress, pan\)/);
-  assert.doesNotMatch(
-    watchlistSource,
-    /\.activateAfterLongPress\(/,
-    "The web pan must not cancel the hold on small pointer movement.",
-  );
   assert.match(watchlistSource, /dragGesture=\{rowDragGestures\[index\]\}/);
   assert.match(homeSource, /const scrollGesture = useMemo\(\(\) => Gesture\.Native\(\), \[\]\);/);
   assert.match(

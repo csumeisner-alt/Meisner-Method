@@ -6,7 +6,6 @@ import {
   Platform,
   ScrollView,
   Share,
-  Switch,
   Text,
   TouchableOpacity,
   useWindowDimensions,
@@ -27,7 +26,6 @@ import {
   getPaperChallengePersonalBestProgress,
   getPaperChallengeArchiveChartWidth,
   getLightningRoundSeasonSummary,
-  getPaperChallengeReminders,
   getPaperChallengeWindow,
   getPaperChallengeConfiguration,
   isPaperChallengeConfiguration,
@@ -45,16 +43,13 @@ import {
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { isTradingFingerprintEventType } from '@/lib/eventArenaTradingFingerprintObservation';
-import { getInstallationId } from '@/lib/installation';
-import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
+import { EventArenaReminderControls } from '@/components/EventArenaReminderControls';
 import {
   createEventArenaDeviceSyncSender,
   EVENT_ARENA_DEVICE_TOKEN_KEY,
   syncStoredEventArenaDeviceSnapshot,
 } from '@/lib/eventArenaDeviceSync';
 
-const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
-const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -81,67 +76,12 @@ const dateRange = (start: number, end: number) => {
 };
 const eventAccountId = (eventId: string) => `paper-event:${eventId}`;
 
-async function readScheduledIds() {
-  const saved = await AsyncStorage.getItem(NOTIFICATION_ID_KEY);
-  if (!saved) return [];
-  try {
-    const parsed = JSON.parse(saved) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [saved];
-  } catch {
-    return [saved];
-  }
-}
-
-async function syncEventReminderPreference(enabled: boolean) {
-  const installationId = await getInstallationId();
-  const response = await fetch(`${BASE_URL}/api/event-arena/reminder-preference`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Event-Arena-Installation-Id': installationId,
-    },
-    body: JSON.stringify({ enabled }),
-  });
-  if (!response.ok) throw new Error('Event Arena reminder settings could not be saved.');
-}
-
-async function scheduleUpcomingEventReminders() {
-  const Notifications = await import('expo-notifications');
-  const oldIds = await readScheduledIds();
-  await Promise.all(oldIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('paper-event-reminders', {
-      name: 'Paper event reminders',
-      description: 'Reminders when a new paper event starts.',
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
-  const ids: string[] = [];
-  for (const reminder of getPaperChallengeReminders()) {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: reminder.body,
-        data: { type: reminder.kind, eventId: reminder.eventId },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(reminder.scheduledAtMs),
-        ...(Platform.OS === 'android' ? { channelId: 'paper-event-reminders' } : {}),
-      },
-    });
-    ids.push(id);
-  }
-  await AsyncStorage.setItem(NOTIFICATION_ID_KEY, JSON.stringify(ids));
-}
-
 export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [eventsOpen, setEventsOpen] = useState(false);
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [storeLoadState, setStoreLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [imageShareEvent, setImageShareEvent] = useState<PaperChallengeSummary | null>(null);
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
@@ -202,28 +142,8 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     if (!visible) return;
     let cancelled = false;
     void readStore(() => !cancelled);
-    void AsyncStorage.getItem(NOTIFICATIONS_KEY)
-      .then(async (notificationValue) => {
-        const enabled = notificationValue === 'true';
-        if (!cancelled) setNotificationsEnabled(enabled);
-        if (Platform.OS !== 'web') await syncEventReminderPreference(enabled);
-      })
-      .catch(() => {});
     return () => { cancelled = true; };
   }, [visible, eventsOpen, readStore]);
-
-  useEffect(() => {
-    if (!visible || !notificationsEnabled || Platform.OS === 'web') return;
-    let cancelled = false;
-    void (async () => {
-      const Notifications = await import('expo-notifications');
-      const permission = await Notifications.getPermissionsAsync();
-      if (permission.granted && !cancelled) await scheduleUpcomingEventReminders();
-    })().catch(() => {
-      if (!cancelled) Alert.alert('Could not refresh event reminders', 'You can try again from Event Arena settings.');
-    });
-    return () => { cancelled = true; };
-  }, [visible, notificationsEnabled]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -441,42 +361,6 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     if (!eventsOpen || !hasCurrentEnrollment || currentWindow.phase !== 'active') return;
     void refreshEventPosition();
   }, [currentWindow.phase, eventsOpen, hasCurrentEnrollment, refreshEventPosition]);
-
-  const setEventNotifications = async (enabled: boolean) => {
-    if (Platform.OS === 'web') {
-      Alert.alert('Mobile notifications only', 'Enable event notifications from the mobile app.');
-      return;
-    }
-    try {
-      const Notifications = await import('expo-notifications');
-      if (!enabled) {
-        await syncEventReminderPreference(false);
-        const savedIds = await readScheduledIds();
-        await Promise.all(savedIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
-        await AsyncStorage.multiRemove([NOTIFICATIONS_KEY, NOTIFICATION_ID_KEY]);
-        setNotificationsEnabled(false);
-        return;
-      }
-      let permission = await Notifications.getPermissionsAsync();
-      if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
-        return;
-      }
-      const pushReady = await registerEventArenaPushDevice(Platform.OS === 'ios' ? 'ios' : 'android');
-      if (!pushReady) {
-        Alert.alert(
-          'Push reminders unavailable',
-          'This build cannot register remote reminders. Your on-device Event Arena reminders will still work.',
-        );
-      }
-      await syncEventReminderPreference(true);
-      await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
-      setNotificationsEnabled(true);
-    } catch {
-      Alert.alert('Could not update notifications', 'Please try again from Event Arena settings.');
-    }
-  };
 
   const renderArchive = () => {
     if (selectedArchiveEvent) {
@@ -1040,18 +924,8 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               </View>
             )}
 
-            <View style={{ marginTop: 18, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>Event notifications</Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>Includes eligible Lightning Round starts</Text>
-              </View>
-              <Switch
-                testID="paper-event-notifications-toggle"
-                value={notificationsEnabled}
-                onValueChange={(value) => { void setEventNotifications(value); }}
-                trackColor={{ false: colors.muted, true: colors.primary }}
-                thumbColor={colors.card}
-              />
+            <View style={{ marginTop: 18 }}>
+              <EventArenaReminderControls compact />
             </View>
 
             <View style={{ marginTop: 18, marginBottom: 8 }}>

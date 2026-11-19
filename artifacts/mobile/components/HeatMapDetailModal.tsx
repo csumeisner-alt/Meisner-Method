@@ -13,11 +13,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import {
   getGetCryptoSupplyHistoryQueryKey,
+  getGetHeatMapDetailEtfFundDataQueryKey,
+  getGetHeatMapDetailEtfHistoryFitQueryKey,
+  getGetHeatMapDetailSummaryQueryKey,
+  getHeatMapDetailEtfFundData,
+  getHeatMapDetailEtfHistoryFit,
+  getHeatMapDetailSummary,
   useGetCryptoSupplyHistory,
+  useGetHeatMapDetailEtfFundData,
+  useGetHeatMapDetailEtfHistoryFit,
+  useGetHeatMapDetailSummary,
   type HeatMapQuote,
 } from '@workspace/api-client-react';
 import { CommodityPriceDrivers } from '@/components/CommodityPriceDrivers';
-import { useApi } from '@/hooks/useApi';
 import { useColors } from '@/hooks/useColors';
 import {
   formatHeatMapRegimeReturn,
@@ -42,9 +50,50 @@ import {
 import { formatHeatMapQuoteAge, shouldShowHeatMapQuotePrice } from '@/lib/heatMapQuoteDisplay';
 import { formatHeatMapCryptoPrice } from '@/lib/heatMapCryptoPrice';
 
-const DETAIL_CACHE_TTL_MS = 5 * 60_000;
-const DETAIL_STATS_REQUEST_TIMEOUT_MS = 10_000;
-const detailCache = new Map<string, { stats: HeatMapDetailStats; expiresAt: number }>();
+function requestWithTimeout<T>(
+  querySignal: AbortSignal,
+  timeoutMs: number,
+  request: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const controller = new AbortController();
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      querySignal.removeEventListener('abort', abortFromQuery);
+    };
+    const finishSuccess = (value: T) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const finishFailure = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const abortFromQuery = () => {
+      controller.abort();
+      finishFailure(new Error('Request cancelled.'));
+    };
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      finishFailure(new Error('Market detail request timed out.'));
+    }, timeoutMs);
+    if (querySignal.aborted) {
+      abortFromQuery();
+      return;
+    }
+    querySignal.addEventListener('abort', abortFromQuery, { once: true });
+    request(controller.signal).then(
+      finishSuccess,
+      (error: unknown) => finishFailure(error instanceof Error ? error : new Error('Market detail request failed.')),
+    );
+  });
+}
 
 function formatPrice(value: number, quoteCurrency: string = 'USD') {
   const absolute = Math.abs(value);
@@ -134,11 +183,25 @@ function formatRegimeThreshold(value: number) {
 
 function EtfAdditionalDetails({
   profile,
-  loading,
+  fundStatus,
+  fundLoading,
+  fundError,
+  onRetryFundData,
+  historyStatus,
+  historyLoading,
+  historyError,
+  onRetryHistory,
   colors,
 }: {
   profile: HeatMapEtfProfile | null;
-  loading: boolean;
+  fundStatus: 'available' | 'not_reported' | 'unsupported' | null;
+  fundLoading: boolean;
+  fundError: boolean;
+  onRetryFundData: () => void;
+  historyStatus: 'available' | 'not_reported' | 'unsupported' | null;
+  historyLoading: boolean;
+  historyError: boolean;
+  onRetryHistory: () => void;
   colors: ReturnType<typeof useColors>;
 }) {
   const regime = profile?.marketRegime ?? null;
@@ -152,7 +215,13 @@ function EtfAdditionalDetails({
       ? 'No clear standout'
       : regime
         ? 'Not enough full-year history'
-        : 'History comparison unavailable';
+          : historyLoading
+            ? 'Loading history'
+            : historyError
+              ? 'History temporarily unavailable'
+              : historyStatus === 'unsupported'
+                ? 'Not supported for this fund'
+                : 'History comparison unavailable';
   const methodology = regime
     ? `${regime.firstYear}–${regime.lastYear} complete calendar years. ${regime.benchmarkSymbol} (an S&P 500 proxy) annual total returns define the groups: bull ≥ ${formatRegimeThreshold(regime.bullThreshold)}, bear ≤ ${formatRegimeThreshold(regime.bearThreshold)}, mixed otherwise. ETF returns use dividend-adjusted monthly closes. Historical only—not a forecast.`
     : 'Uses complete calendar years of dividend-adjusted ETF returns grouped by annual SPY returns, an S&P 500 proxy. This historical comparison is not a forecast.';
@@ -191,8 +260,26 @@ function EtfAdditionalDetails({
             </View>
           )) : (
             <Text style={[styles.etfEmptyText, { color: colors.mutedForeground }]}>
-              {loading && !profile ? 'Loading holdings…' : profile ? 'Holdings breakdown not reported.' : 'Holdings data unavailable.'}
+              {fundLoading
+                ? 'Loading reported holdings…'
+                : fundError
+                  ? 'Holdings data is temporarily unavailable.'
+                  : fundStatus === 'unsupported'
+                    ? 'Holdings data is not supported for this instrument.'
+                    : fundStatus === 'not_reported' || fundStatus === 'available'
+                      ? 'Holdings breakdown not reported.'
+                      : 'Holdings data unavailable.'}
             </Text>
+          )}
+          {fundError && (
+            <Pressable
+              testID="heat-map-etf-fund-data-retry"
+              accessibilityRole="button"
+              onPress={onRetryFundData}
+              style={[styles.retryButton, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.retryText, { color: colors.primary }]}>Retry holdings</Text>
+            </Pressable>
           )}
         </View>
       </View>
@@ -237,6 +324,29 @@ function EtfAdditionalDetails({
             );
           })}
         </View>
+        {(historyLoading || historyError || historyStatus === 'not_reported' || historyStatus === 'unsupported') && (
+          <View style={styles.historyStatusRow}>
+            <Text style={[styles.etfEmptyText, { color: colors.mutedForeground }]}>
+              {historyLoading
+                ? 'Loading market-history fit…'
+                : historyError
+                  ? 'Market-history fit is temporarily unavailable.'
+                  : historyStatus === 'unsupported'
+                    ? 'Market-history fit is not supported for this instrument.'
+                    : 'There is not enough reported history to calculate this comparison.'}
+            </Text>
+            {historyError && (
+              <Pressable
+                testID="heat-map-etf-history-retry"
+                accessibilityRole="button"
+                onPress={onRetryHistory}
+                style={[styles.retryButton, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.retryText, { color: colors.primary }]}>Retry history</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
         <Text style={[styles.methodology, { color: colors.mutedForeground }]}>{methodology}</Text>
       </View>
     </View>
@@ -304,19 +414,86 @@ export function HeatMapDetailModal({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { apiFetch } = useApi();
-  const [statsEntry, setStatsEntry] = useState<{ symbol: string; stats: HeatMapDetailStats } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const forceRefreshRef = useRef(false);
   const [quoteRefreshLoading, setQuoteRefreshLoading] = useState(false);
   const [quoteRefreshError, setQuoteRefreshError] = useState(false);
   const quoteRefreshAttemptRef = useRef(0);
   const quoteRefreshInFlightRef = useRef(false);
   const symbol = quote?.symbol ?? unavailableCommodity?.symbol ?? null;
   const name = quote?.name ?? unavailableCommodity?.name ?? symbol;
+  const isEtf = quote?.assetType === 'etf';
   const isCommodity = quote?.assetType === 'commodity' || unavailableCommodity !== null && unavailableCommodity !== undefined;
+  const summaryQuery = useGetHeatMapDetailSummary(symbol ?? '', {
+    query: {
+      queryKey: getGetHeatMapDetailSummaryQueryKey(symbol ?? ''),
+      queryFn: ({ signal }) => requestWithTimeout(
+        signal,
+        10_000,
+        (requestSignal) => getHeatMapDetailSummary(symbol ?? '', { signal: requestSignal }),
+      ),
+      enabled: visible && symbol !== null,
+      staleTime: 30_000,
+      gcTime: 10 * 60_000,
+      retry: 1,
+      retryDelay: 1_000,
+      refetchOnWindowFocus: false,
+    },
+  });
+  const fundDataQuery = useGetHeatMapDetailEtfFundData(symbol ?? '', {
+    query: {
+      queryKey: getGetHeatMapDetailEtfFundDataQueryKey(symbol ?? ''),
+      queryFn: ({ signal }) => requestWithTimeout(
+        signal,
+        15_000,
+        (requestSignal) => getHeatMapDetailEtfFundData(symbol ?? '', { signal: requestSignal }),
+      ),
+      enabled: visible && isEtf && symbol !== null,
+      staleTime: 15 * 60_000,
+      gcTime: 60 * 60_000,
+      retry: 1,
+      retryDelay: 1_000,
+      refetchOnWindowFocus: false,
+    },
+  });
+  const historyFitQuery = useGetHeatMapDetailEtfHistoryFit(symbol ?? '', {
+    query: {
+      queryKey: getGetHeatMapDetailEtfHistoryFitQueryKey(symbol ?? ''),
+      queryFn: ({ signal }) => requestWithTimeout(
+        signal,
+        20_000,
+        (requestSignal) => getHeatMapDetailEtfHistoryFit(symbol ?? '', { signal: requestSignal }),
+      ),
+      enabled: visible && isEtf && symbol !== null,
+      staleTime: 6 * 60 * 60_000,
+      gcTime: 24 * 60 * 60_000,
+      retry: 1,
+      retryDelay: 1_000,
+      refetchOnWindowFocus: false,
+    },
+  });
+  const summaryStats = summaryQuery.data ? parseHeatMapDetailStats(summaryQuery.data) : null;
+  const baseEtfProfile = summaryStats?.etfProfile ?? null;
+  const fundData = fundDataQuery.data;
+  const marketHistoryFit = historyFitQuery.data;
+  const combinedEtfProfile = baseEtfProfile
+    ? {
+        ...baseEtfProfile,
+        sectorWeights: fundData?.sectorWeights ?? baseEtfProfile.sectorWeights,
+        sectorWeightsRetrievedAt: fundData?.sectorWeightsRetrievedAt ?? baseEtfProfile.sectorWeightsRetrievedAt,
+        largestSector: fundData?.largestSector ?? baseEtfProfile.largestSector,
+        largestSectorWeight: fundData?.largestSectorWeight ?? baseEtfProfile.largestSectorWeight,
+        topHoldings: fundData?.topHoldings ?? baseEtfProfile.topHoldings,
+        topHoldingsReportedCount: fundData?.topHoldingsReportedCount ?? baseEtfProfile.topHoldingsReportedCount,
+        topHoldingsRetrievedAt: fundData?.topHoldingsRetrievedAt ?? baseEtfProfile.topHoldingsRetrievedAt,
+        marketRegime: marketHistoryFit?.marketRegime ?? baseEtfProfile.marketRegime,
+      }
+    : null;
+  const stats: HeatMapDetailStats | null = summaryStats
+    ? { ...summaryStats, etfProfile: combinedEtfProfile }
+    : null;
+  const loading = summaryQuery.isFetching;
+  const loadError = summaryQuery.isError || (summaryQuery.data !== undefined && summaryStats === null);
+  const fundStatus = fundData?.status ?? null;
+  const historyStatus = marketHistoryFit?.status ?? null;
   const showCurrentQuote = quote !== null
     && shouldShowHeatMapQuotePrice(quote.assetType, quoteUnavailable);
 
@@ -355,79 +532,14 @@ export function HeatMapDetailModal({
   };
 
   const refreshDetailStats = () => {
-    if (loading) return;
-    forceRefreshRef.current = true;
-    setRetryCount((current) => current + 1);
+    void summaryQuery.refetch();
   };
-
-  useEffect(() => {
-    if (!visible || !symbol) return;
-    let isCurrent = true;
-    const forceRefresh = forceRefreshRef.current;
-    forceRefreshRef.current = false;
-    const cacheKey = symbol.toUpperCase();
-    const cached = detailCache.get(cacheKey);
-    const hasFreshCache = cached !== undefined && cached.expiresAt > Date.now();
-
-    setStatsEntry((current) => current?.symbol === cacheKey
-      ? current
-      : cached ? { symbol: cacheKey, stats: cached.stats } : null);
-    setLoadError(false);
-    if (hasFreshCache && !forceRefresh) {
-      setLoading(false);
-      return () => { isCurrent = false; };
-    }
-
-    setLoading(true);
-    const controller = new AbortController();
-    let didTimeout = false;
-    const timeoutId = setTimeout(() => {
-      if (!isCurrent) return;
-      didTimeout = true;
-      controller.abort();
-      setLoadError(true);
-      setLoading(false);
-    }, DETAIL_STATS_REQUEST_TIMEOUT_MS);
-
-    void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(symbol)}`, {
-      signal: controller.signal,
-    })
-      .then((payload) => {
-        if (!isCurrent || didTimeout) return;
-        const parsed = parseHeatMapDetailStats(payload);
-        if (!parsed) throw new Error('Unexpected market detail response');
-        detailCache.set(cacheKey, { stats: parsed, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
-        if (detailCache.size > 32) {
-          const oldestKey = detailCache.keys().next().value;
-          if (oldestKey !== undefined) detailCache.delete(oldestKey);
-        }
-        setStatsEntry({ symbol: cacheKey, stats: parsed });
-        setLoadError(false);
-      })
-      .catch(() => {
-        if (isCurrent && (didTimeout || !controller.signal.aborted)) setLoadError(true);
-      })
-      .finally(() => {
-        clearTimeout(timeoutId);
-        if (isCurrent) setLoading(false);
-      });
-
-    return () => {
-      isCurrent = false;
-      clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [apiFetch, retryCount, symbol, visible]);
 
   if (!quote && !unavailableCommodity) return null;
 
-  const stats = symbol !== null && statsEntry !== null && statsEntry.symbol === symbol.toUpperCase()
-    ? statsEntry.stats
-    : null;
   const marketCap = stats?.marketCap ?? quote?.marketCapUsd ?? null;
   const change = quote?.priceChangePercent ?? 0;
   const changeColor = quote === null ? colors.mutedForeground : change >= 0 ? colors.buyColor : colors.sellColor;
-  const isEtf = quote?.assetType === 'etf';
   const isCrypto = quote?.assetType === 'cryptocurrency';
   const commodityContract = isCommodity && symbol ? getCommodityContractSpec(symbol) : null;
   const commodityNotional = commodityContract && quote
@@ -792,7 +904,14 @@ export function HeatMapDetailModal({
             {isEtf && (
               <EtfAdditionalDetails
                 profile={stats?.etfProfile ?? null}
-                loading={loading}
+                fundStatus={fundStatus}
+                fundLoading={fundDataQuery.isFetching}
+                fundError={fundDataQuery.isError}
+                onRetryFundData={() => { void fundDataQuery.refetch(); }}
+                historyStatus={historyStatus}
+                historyLoading={historyFitQuery.isFetching}
+                historyError={historyFitQuery.isError}
+                onRetryHistory={() => { void historyFitQuery.refetch(); }}
                 colors={colors}
               />
             )}
@@ -888,6 +1007,7 @@ const styles = StyleSheet.create({
   etfSubsectionTitleBlock: { flex: 1 },
   etfSubsectionCaption: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 2 },
   holdingsCard: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 11 },
+  historyStatusRow: { gap: 6, marginTop: 7 },
   holdingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 8 },
   holdingIdentity: { flex: 1, minWidth: 0 },
   holdingName: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },

@@ -1062,7 +1062,7 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   assert.match(componentSource, /positionValue && !positionValue\.usedFallbackPrice/);
   assert.match(componentSource, /testID="paper-event-personal-best-progress"/);
   assert.match(componentSource, /Share\.share/);
-  assert.match(componentSource, /setEventNotifications\(value\)/);
+  assert.match(componentSource, /<EventArenaReminderControls compact \/>/);
   assert.match(componentSource, /Sharing\.shareAsync\(uri/);
   assert.match(componentSource, /share-paper-event-image-/);
   assert.match(cardSource, /MEISNER METHOD/);

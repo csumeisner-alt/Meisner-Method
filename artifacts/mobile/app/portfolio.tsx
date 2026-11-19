@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 import * as Haptics from 'expo-haptics';
 import { useApi } from '@/hooks/useApi';
 import * as Speech from 'expo-speech';
@@ -2467,6 +2468,7 @@ const gradeModalStyles = StyleSheet.create({
 
 export default function PortfolioScreen() {
   const colors = useColors();
+  const portfolioScroll = useRetainedTabScroll('main-tab:portfolio');
   const insets = useSafeAreaInsets();
   const { awardAchievement } = useAchievements();
 
@@ -2904,6 +2906,10 @@ export default function PortfolioScreen() {
         </View>
       ) : (
         <ScrollView
+          testID="main-tab-scroll-portfolio"
+          ref={portfolioScroll.ref}
+          onScroll={portfolioScroll.onScroll}
+          scrollEventThrottle={portfolioScroll.scrollEventThrottle}
           style={{ flex: 1 }}
           contentContainerStyle={[mainStyles.list, { paddingBottom: 24 }]}
           showsVerticalScrollIndicator={false}

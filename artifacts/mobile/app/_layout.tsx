@@ -9,7 +9,9 @@ import { Platform } from 'react-native';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { MainTabSwipeBoundary } from '@/components/MainTabSwipeBoundary';
 import { installLightningRoundNotificationResponseHandler } from '@/lib/lightningRoundNotificationResponse';
+import { EventArenaRemindersProvider } from '@/lib/eventArenaReminders';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -62,26 +64,28 @@ function RootLayoutNav() {
   }, []);
 
   return (
-    <Stack
-      screenOptions={({ route }) => {
-        const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
-        return {
-          headerShown: false,
-          animation: transition === 'left' ? 'slide_from_left' : 'slide_from_right',
-        };
-      }}
-    >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="portfolio" options={{ headerShown: false }} />
-      <Stack.Screen name="paper" options={{ headerShown: false }} />
-      <Stack.Screen name="event-arena" options={{ headerShown: false }} />
-      <Stack.Screen name="lightning-round" options={{ headerShown: false }} />
-      <Stack.Screen name="picks" options={{ headerShown: false }} />
-      <Stack.Screen name="heat-map" options={{ headerShown: false }} />
-      <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />
-      <Stack.Screen name="picks/[symbol]" options={{ headerShown: false }} />
-      <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
-    </Stack>
+      <MainTabSwipeBoundary>
+        <Stack
+          screenOptions={({ route }) => {
+            const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
+            return {
+              headerShown: false,
+              animation: transition === 'left' ? 'slide_from_left' : 'slide_from_right',
+            };
+          }}
+        >
+          <Stack.Screen name="index" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="portfolio" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="paper" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="event-arena" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="lightning-round" options={{ headerShown: false }} />
+          <Stack.Screen name="picks" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="heat-map" options={{ headerShown: false }} />
+          <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />
+          <Stack.Screen name="picks/[symbol]" options={{ headerShown: false }} />
+          <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
+        </Stack>
+      </MainTabSwipeBoundary>
   );
 }
 
@@ -106,15 +110,17 @@ export default function RootLayout() {
       <ErrorBoundary>
         <AmericanModeProvider>
           <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProviderCompat>
-                <AchievementsProvider>
-                  <RootLayoutNav />
-                  <AchievementsOverlay />
-                  <EventCashReceivedCelebration />
-                </AchievementsProvider>
-              </KeyboardProviderCompat>
-            </GestureHandlerRootView>
+            <EventArenaRemindersProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <KeyboardProviderCompat>
+                  <AchievementsProvider>
+                    <RootLayoutNav />
+                    <AchievementsOverlay />
+                    <EventCashReceivedCelebration />
+                  </AchievementsProvider>
+                </KeyboardProviderCompat>
+              </GestureHandlerRootView>
+            </EventArenaRemindersProvider>
           </QueryClientProvider>
         </AmericanModeProvider>
       </ErrorBoundary>

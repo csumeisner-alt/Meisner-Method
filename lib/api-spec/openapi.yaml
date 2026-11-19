@@ -53,6 +53,71 @@ paths:
                     format: date-time
         "500":
           description: Completed Event Arena weeks could not be loaded
+  /event-arena/reminder-preference:
+    get:
+      operationId: getEventArenaReminderPreference
+      tags: [eventArena]
+      summary: Get the requesting installation's saved Event Arena reminder preference
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous device identifier used only to retrieve this installation's preference.
+      responses:
+        "200":
+          description: Saved preference, or the default-off state when none has been saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, configured]
+                properties:
+                  enabled:
+                    type: boolean
+                  configured:
+                    type: boolean
+        "400":
+          description: The installation identifier is invalid
+        "500":
+          description: The saved reminder preference could not be loaded
+    put:
+      operationId: setEventArenaReminderPreference
+      tags: [eventArena]
+      summary: Save the requesting installation's Event Arena reminder preference
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous device identifier used only to save this installation's preference.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventArenaReminderPreferenceUpdate"
+      responses:
+        "200":
+          description: Saved preference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled]
+                properties:
+                  enabled:
+                    type: boolean
+        "400":
+          description: The installation identifier or preference is invalid
+        "500":
+          description: The saved reminder preference could not be updated
   /event-arena/{eventId}/config:
     parameters:
       - in: path
@@ -935,6 +1000,192 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/quote/{symbol}:
+    get:
+      operationId: getHeatMapQuote
+      tags: [stocks]
+      summary: Refresh one heat-map ticker quote
+      description: Returns a single fresh quote using the heat-map quote format, without reloading the full map.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: One current or most-recent heat-map quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapQuote"
+        "400":
+          description: Ticker symbol is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "404":
+          description: No quote is available for this ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "429":
+          description: The market-data provider is rate limiting requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "503":
+          description: The market-data provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "504":
+          description: The market-data provider did not respond in time
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/detail/{symbol}/summary:
+    get:
+      operationId: getHeatMapDetailSummary
+      tags: [stocks]
+      summary: Get essential market detail statistics
+      description: Returns quote statistics and ETF essentials without waiting for fund holdings or long-range market history.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: Essential instrument statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketInstrumentInfo"
+        "400":
+          description: Ticker symbol is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "429":
+          description: The market-data provider is rate limiting requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "503":
+          description: Essential market statistics are temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "504":
+          description: Essential market statistics did not load in time
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/detail/{symbol}/etf-fund-data:
+    get:
+      operationId: getHeatMapDetailEtfFundData
+      tags: [stocks]
+      summary: Get ETF essentials and reported holdings
+      description: Loads provider-reported fund-sector data and largest holdings independently from quote statistics and market history.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: ETF essentials and holdings state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapEtfFundDataResponse"
+        "400":
+          description: Ticker symbol is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "429":
+          description: The market-data provider is rate limiting requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "503":
+          description: ETF fund data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "504":
+          description: ETF fund data did not load in time
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/detail/{symbol}/etf-history-fit:
+    get:
+      operationId: getHeatMapDetailEtfHistoryFit
+      tags: [stocks]
+      summary: Get historical ETF market fit
+      description: Loads the historical market-regime comparison independently from quote statistics and fund holdings.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: Historical market-fit state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapEtfHistoryFitResponse"
+        "400":
+          description: Ticker symbol is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "429":
+          description: The market-data provider is rate limiting requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "503":
+          description: ETF market history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "504":
+          description: ETF market history did not load in time
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/heat-map/validate:
     post:
       operationId: validateHeatMapSymbol
@@ -1250,6 +1501,12 @@ components:
           minLength: 8
           maxLength: 96
           pattern: "^[A-Za-z0-9_-]+$"
+    EventArenaReminderPreferenceUpdate:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
     EventArenaCashTransferResponse:
       type: object
       required: [ok, transfer]
@@ -2373,6 +2630,7 @@ components:
         sectorWeightsRetrievedAt:
           type: string
           format: date-time
+          nullable: true
           description: Provider sector snapshot retrieval time, not a sector report date.
         topHoldings:
           type: array
@@ -2385,6 +2643,7 @@ components:
         topHoldingsRetrievedAt:
           type: string
           format: date-time
+          nullable: true
           description: Provider holdings snapshot retrieval time, not a holdings report date.
         marketRegime:
           allOf:
@@ -2571,6 +2830,55 @@ components:
         - bullThreshold
         - bearThreshold
         - periods
+
+    HeatMapDetailSectionStatus:
+      type: string
+      enum: [available, not_reported, unsupported]
+
+    HeatMapEtfFundDataResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        status:
+          $ref: "#/components/schemas/HeatMapDetailSectionStatus"
+        sectorWeights:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfSectorWeight"
+        sectorWeightsRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        topHoldings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfHolding"
+        topHoldingsReportedCount:
+          type: integer
+          minimum: 0
+        topHoldingsRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        largestSector:
+          type: string
+          nullable: true
+        largestSectorWeight:
+          type: number
+          nullable: true
+      required: [symbol, status, sectorWeights, sectorWeightsRetrievedAt, topHoldings, topHoldingsReportedCount, topHoldingsRetrievedAt, largestSector, largestSectorWeight]
+
+    HeatMapEtfHistoryFitResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        status:
+          $ref: "#/components/schemas/HeatMapDetailSectionStatus"
+        marketRegime:
+          allOf:
+            - $ref: "#/components/schemas/EtfMarketRegime"
+          nullable: true
+      required: [symbol, status, marketRegime]
 
     EtfRegimePeriod:
       type: object

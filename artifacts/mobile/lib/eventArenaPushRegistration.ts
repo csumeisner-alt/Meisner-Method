@@ -10,11 +10,15 @@ export async function registerEventArenaPushDevice(platform: 'ios' | 'android'):
   ]);
   const projectId = constantsModule.default.expoConfig?.extra?.eas?.projectId
     ?? constantsModule.default.easConfig?.projectId;
-  if (!projectId) return false;
+  if (!projectId) {
+    throw new Error('This build has no Expo project ID for remote push registration.');
+  }
 
   const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
   const expoPushToken = typeof tokenResult.data === 'string' ? tokenResult.data.trim() : '';
-  if (!expoPushToken) return false;
+  if (!expoPushToken) {
+    throw new Error('Expo did not return a push token for this device.');
+  }
   const installationId = await getInstallationId();
   const response = await fetch(`${API_BASE_URL}/api/notifications/device`, {
     method: 'POST',
@@ -25,6 +29,11 @@ export async function registerEventArenaPushDevice(platform: 'ios' | 'android'):
       platform,
     }),
   });
-  if (!response.ok) throw new Error('This phone could not be registered for push reminders.');
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: unknown };
+    throw new Error(typeof payload.error === 'string'
+      ? payload.error
+      : `This phone could not be registered for push reminders (HTTP ${response.status}).`);
+  }
   return true;
 }

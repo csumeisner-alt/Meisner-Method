@@ -30,7 +30,7 @@ export interface EtfProfile {
   /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
   sectorWeights: EtfSectorWeight[];
   /** Provider sector snapshot retrieval time, not a sector report date. */
-  sectorWeightsRetrievedAt: Date;
+  sectorWeightsRetrievedAt: Date | null;
   topHoldings: EtfHolding[];
   /**
      * Number of positions reported by the provider for this holdings snapshot.
@@ -38,7 +38,7 @@ export interface EtfProfile {
      */
   topHoldingsReportedCount: number;
   /** Provider holdings snapshot retrieval time, not a holdings report date. */
-  topHoldingsRetrievedAt: Date;
+  topHoldingsRetrievedAt: Date | null;
   marketRegime: EtfMarketRegime | null;
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;

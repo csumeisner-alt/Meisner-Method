@@ -38,11 +38,15 @@ import type {
   EventArenaDeviceSyncResponse,
   EventArenaLeaderboardHistoryResponse,
   EventArenaLeaderboardResponse,
+  EventArenaReminderPreferenceUpdate,
   EventArenaScoreSubmission,
   GetEventArenaLeaderboardWeeks200,
+  GetEventArenaReminderPreference200,
   GetMarketHeatMapParams,
   GetStockChart200,
   HealthStatus,
+  HeatMapEtfFundDataResponse,
+  HeatMapEtfHistoryFitResponse,
   HeatMapInstrumentSuggestion,
   HeatMapQuote,
   HeatMapResponse,
@@ -58,6 +62,7 @@ import type {
   RestoreDeviceTransferAlertsRequest,
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
+  SetEventArenaReminderPreference200,
   StockSymbolSuggestion,
   SubmitEventArenaScore200,
   SyncEventArenaDeviceState200,
@@ -167,6 +172,154 @@ export function useGetEventArenaLeaderboardWeeks<TData = Awaited<ReturnType<type
 
 
 
+
+export const getGetEventArenaReminderPreferenceUrl = () => {
+
+
+
+
+  return `/api/event-arena/reminder-preference`
+}
+
+/**
+ * @summary Get the requesting installation's saved Event Arena reminder preference
+ */
+export const getEventArenaReminderPreference = async ( options?: RequestInit): Promise<GetEventArenaReminderPreference200> => {
+
+  return customFetch<GetEventArenaReminderPreference200>(getGetEventArenaReminderPreferenceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaReminderPreferenceQueryKey = () => {
+    return [
+    `/api/event-arena/reminder-preference`
+    ] as const;
+    }
+
+
+export const getGetEventArenaReminderPreferenceQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaReminderPreference>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaReminderPreference>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaReminderPreferenceQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaReminderPreference>>> = ({ signal }) => getEventArenaReminderPreference({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaReminderPreference>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaReminderPreferenceQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaReminderPreference>>>
+export type GetEventArenaReminderPreferenceQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the requesting installation's saved Event Arena reminder preference
+ */
+
+export function useGetEventArenaReminderPreference<TData = Awaited<ReturnType<typeof getEventArenaReminderPreference>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaReminderPreference>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaReminderPreferenceQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetEventArenaReminderPreferenceUrl = () => {
+
+
+
+
+  return `/api/event-arena/reminder-preference`
+}
+
+/**
+ * @summary Save the requesting installation's Event Arena reminder preference
+ */
+export const setEventArenaReminderPreference = async (eventArenaReminderPreferenceUpdate: EventArenaReminderPreferenceUpdate, options?: RequestInit): Promise<SetEventArenaReminderPreference200> => {
+
+  return customFetch<SetEventArenaReminderPreference200>(getSetEventArenaReminderPreferenceUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventArenaReminderPreferenceUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetEventArenaReminderPreferenceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setEventArenaReminderPreference>>, TError,{data: BodyType<EventArenaReminderPreferenceUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setEventArenaReminderPreference>>, TError,{data: BodyType<EventArenaReminderPreferenceUpdate>}, TContext> => {
+
+const mutationKey = ['setEventArenaReminderPreference'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setEventArenaReminderPreference>>, {data: BodyType<EventArenaReminderPreferenceUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setEventArenaReminderPreference(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetEventArenaReminderPreferenceMutationResult = NonNullable<Awaited<ReturnType<typeof setEventArenaReminderPreference>>>
+    export type SetEventArenaReminderPreferenceMutationBody = BodyType<EventArenaReminderPreferenceUpdate>
+    export type SetEventArenaReminderPreferenceMutationError = ErrorType<void>
+
+    /**
+ * @summary Save the requesting installation's Event Arena reminder preference
+ */
+export const useSetEventArenaReminderPreference = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setEventArenaReminderPreference>>, TError,{data: BodyType<EventArenaReminderPreferenceUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setEventArenaReminderPreference>>,
+        TError,
+        {data: BodyType<EventArenaReminderPreferenceUpdate>},
+        TContext
+      > => {
+      return useMutation(getSetEventArenaReminderPreferenceMutationOptions(options));
+    }
 
 export const getEnsureEventArenaConfigurationUrl = (eventId: string,) => {
 
@@ -2212,6 +2365,318 @@ export function useGetMarketHeatMap<TData = Awaited<ReturnType<typeof getMarketH
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMarketHeatMapQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHeatMapQuoteUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/heat-map/quote/${symbol}`
+}
+
+/**
+ * Returns a single fresh quote using the heat-map quote format, without reloading the full map.
+ * @summary Refresh one heat-map ticker quote
+ */
+export const getHeatMapQuote = async (symbol: string, options?: RequestInit): Promise<HeatMapQuote> => {
+
+  return customFetch<HeatMapQuote>(getGetHeatMapQuoteUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHeatMapQuoteQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/heat-map/quote/${symbol}`
+    ] as const;
+    }
+
+
+export const getGetHeatMapQuoteQueryOptions = <TData = Awaited<ReturnType<typeof getHeatMapQuote>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHeatMapQuoteQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHeatMapQuote>>> = ({ signal }) => getHeatMapQuote(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHeatMapQuote>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHeatMapQuoteQueryResult = NonNullable<Awaited<ReturnType<typeof getHeatMapQuote>>>
+export type GetHeatMapQuoteQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Refresh one heat-map ticker quote
+ */
+
+export function useGetHeatMapQuote<TData = Awaited<ReturnType<typeof getHeatMapQuote>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHeatMapQuoteQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHeatMapDetailSummaryUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/heat-map/detail/${symbol}/summary`
+}
+
+/**
+ * Returns quote statistics and ETF essentials without waiting for fund holdings or long-range market history.
+ * @summary Get essential market detail statistics
+ */
+export const getHeatMapDetailSummary = async (symbol: string, options?: RequestInit): Promise<MarketInstrumentInfo> => {
+
+  return customFetch<MarketInstrumentInfo>(getGetHeatMapDetailSummaryUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHeatMapDetailSummaryQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/heat-map/detail/${symbol}/summary`
+    ] as const;
+    }
+
+
+export const getGetHeatMapDetailSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getHeatMapDetailSummary>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHeatMapDetailSummaryQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHeatMapDetailSummary>>> = ({ signal }) => getHeatMapDetailSummary(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHeatMapDetailSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getHeatMapDetailSummary>>>
+export type GetHeatMapDetailSummaryQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get essential market detail statistics
+ */
+
+export function useGetHeatMapDetailSummary<TData = Awaited<ReturnType<typeof getHeatMapDetailSummary>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHeatMapDetailSummaryQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHeatMapDetailEtfFundDataUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/heat-map/detail/${symbol}/etf-fund-data`
+}
+
+/**
+ * Loads provider-reported fund-sector data and largest holdings independently from quote statistics and market history.
+ * @summary Get ETF essentials and reported holdings
+ */
+export const getHeatMapDetailEtfFundData = async (symbol: string, options?: RequestInit): Promise<HeatMapEtfFundDataResponse> => {
+
+  return customFetch<HeatMapEtfFundDataResponse>(getGetHeatMapDetailEtfFundDataUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHeatMapDetailEtfFundDataQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/heat-map/detail/${symbol}/etf-fund-data`
+    ] as const;
+    }
+
+
+export const getGetHeatMapDetailEtfFundDataQueryOptions = <TData = Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHeatMapDetailEtfFundDataQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>> = ({ signal }) => getHeatMapDetailEtfFundData(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHeatMapDetailEtfFundDataQueryResult = NonNullable<Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>>
+export type GetHeatMapDetailEtfFundDataQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get ETF essentials and reported holdings
+ */
+
+export function useGetHeatMapDetailEtfFundData<TData = Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfFundData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHeatMapDetailEtfFundDataQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHeatMapDetailEtfHistoryFitUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/heat-map/detail/${symbol}/etf-history-fit`
+}
+
+/**
+ * Loads the historical market-regime comparison independently from quote statistics and fund holdings.
+ * @summary Get historical ETF market fit
+ */
+export const getHeatMapDetailEtfHistoryFit = async (symbol: string, options?: RequestInit): Promise<HeatMapEtfHistoryFitResponse> => {
+
+  return customFetch<HeatMapEtfHistoryFitResponse>(getGetHeatMapDetailEtfHistoryFitUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHeatMapDetailEtfHistoryFitQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/heat-map/detail/${symbol}/etf-history-fit`
+    ] as const;
+    }
+
+
+export const getGetHeatMapDetailEtfHistoryFitQueryOptions = <TData = Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHeatMapDetailEtfHistoryFitQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>> = ({ signal }) => getHeatMapDetailEtfHistoryFit(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHeatMapDetailEtfHistoryFitQueryResult = NonNullable<Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>>
+export type GetHeatMapDetailEtfHistoryFitQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get historical ETF market fit
+ */
+
+export function useGetHeatMapDetailEtfHistoryFit<TData = Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHeatMapDetailEtfHistoryFit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHeatMapDetailEtfHistoryFitQueryOptions(symbol,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

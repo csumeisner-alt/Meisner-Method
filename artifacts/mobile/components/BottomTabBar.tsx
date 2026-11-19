@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
-import { getPaperTabNavigationAction } from '@/lib/paperTabNavigation';
+import { getMainTabNavigationPlan, type MainTabRoute } from '@/lib/mainTabNavigation';
 
 export function BottomTabBar() {
   const colors = useColors();
@@ -20,66 +20,53 @@ export function BottomTabBar() {
   const isPortfolio = pathname === '/portfolio';
 
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
-  const tabOrder = ['/', '/picks', '/paper', '/portfolio', '/event-arena'] as const;
-
-  function go(path: '/' | '/picks' | '/paper' | '/portfolio' | '/event-arena') {
-    const currentTab = pathname.startsWith('/picks')
-      ? '/picks'
-      : pathname === '/paper'
-        ? '/paper'
-        : pathname === '/portfolio'
-          ? '/portfolio'
-          : pathname === '/event-arena'
-            ? '/event-arena'
-          : '/';
-    const currentIndex = tabOrder.indexOf(currentTab);
-    const targetIndex = tabOrder.indexOf(path);
-    const transition = targetIndex < currentIndex ? 'left' : 'right';
-    const target = { pathname: path, params: { transition } };
-    switch (getPaperTabNavigationAction(currentTab, path)) {
+  function go(path: MainTabRoute) {
+    const plan = getMainTabNavigationPlan(pathname, path);
+    if (!plan) return;
+    switch (plan.action) {
       case 'none':
         return;
       case 'push':
-        router.push(target);
+        router.push(plan.href);
         return;
       case 'navigate':
-        router.navigate(target);
+        router.navigate(plan.href);
         return;
       default:
-        router.replace(target);
+        router.replace(plan.href);
     }
   }
 
   return (
     <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: colors.border, backgroundColor: colors.background }]}>
-      <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Analyze" onPress={() => go('/')} activeOpacity={0.7}>
+      <TouchableOpacity testID="bottom-tab-analyze" style={styles.tab} accessibilityRole="button" accessibilityLabel="Analyze" accessibilityState={{ selected: isHome }} onPress={() => go('/')} activeOpacity={0.7}>
         <Feather name="search" size={22} color={isHome ? colors.heading : colors.mutedForeground} />
         <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
-        {isHome && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+        {isHome && <View testID="active-bottom-tab-indicator" style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
-      <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Top Picks" onPress={() => go('/picks')} activeOpacity={0.7}>
+      <TouchableOpacity testID="bottom-tab-top-picks" style={styles.tab} accessibilityRole="button" accessibilityLabel="Top Picks" accessibilityState={{ selected: isPicks }} onPress={() => go('/picks')} activeOpacity={0.7}>
         <Feather name="star" size={22} color={isPicks ? colors.heading : colors.mutedForeground} />
         <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
-        {isPicks && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+        {isPicks && <View testID="active-bottom-tab-indicator" style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
-      <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Paper Trading" onPress={() => go('/paper')} activeOpacity={0.7}>
+      <TouchableOpacity testID="bottom-tab-paper" style={styles.tab} accessibilityRole="button" accessibilityLabel="Paper Trading" accessibilityState={{ selected: isPaper }} onPress={() => go('/paper')} activeOpacity={0.7}>
         <Feather name="activity" size={22} color={isPaper ? colors.heading : colors.mutedForeground} />
         <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
-        {isPaper && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+        {isPaper && <View testID="active-bottom-tab-indicator" style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
-      <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Portfolio" onPress={() => go('/portfolio')} activeOpacity={0.7}>
+      <TouchableOpacity testID="bottom-tab-portfolio" style={styles.tab} accessibilityRole="button" accessibilityLabel="Portfolio" accessibilityState={{ selected: isPortfolio }} onPress={() => go('/portfolio')} activeOpacity={0.7}>
         <Feather name="briefcase" size={22} color={isPortfolio ? colors.heading : colors.mutedForeground} />
         <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
-        {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+        {isPortfolio && <View testID="active-bottom-tab-indicator" style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
@@ -88,6 +75,7 @@ export function BottomTabBar() {
         testID="bottom-tab-event-arena"
         accessibilityRole="button"
         accessibilityLabel="Event Arena"
+        accessibilityState={{ selected: isEventArena }}
         style={styles.tab}
         onPress={() => go('/event-arena')}
         activeOpacity={0.7}
@@ -96,7 +84,7 @@ export function BottomTabBar() {
         <Text style={[styles.label, styles.eventArenaLabel, { lineHeight: 11 * fontScale, color: isEventArena ? colors.heading : colors.mutedForeground }]}>
           EVENT{"\n"}ARENA
         </Text>
-        {isEventArena && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+        {isEventArena && <View testID="active-bottom-tab-indicator" style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
     </View>
   );

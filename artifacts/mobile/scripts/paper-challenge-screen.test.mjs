@@ -24,6 +24,8 @@ const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", 
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
 const leaderboardProgress = readFileSync(new URL("../lib/eventArenaCompetitiveProgress.ts", import.meta.url), "utf8");
 const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
+const eventArenaReminderControls = readFileSync(new URL("../components/EventArenaReminderControls.tsx", import.meta.url), "utf8");
+const eventArenaReminders = readFileSync(new URL("../lib/eventArenaReminders.ts", import.meta.url), "utf8");
 const lightningInvitation = readFileSync(new URL("../components/LightningRoundInvitation.tsx", import.meta.url), "utf8");
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
 const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
@@ -76,7 +78,7 @@ assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
 test("Paper Trading shows the local cache before waiting for Event Arena sync", () => {
-  const initStart = screen.indexOf("const init = useCallback(async (backgroundRefresh = false) =>");
+  const initStart = screen.indexOf("const init = useCallback(async (backgroundRefresh = false, allowDeviceSync = true) =>");
   const initEnd = screen.indexOf("\n  }, [apiFetch, pushEventArenaSnapshot]);", initStart);
   const init = screen.slice(initStart, initEnd);
 
@@ -88,20 +90,38 @@ test("Paper Trading shows the local cache before waiting for Event Arena sync", 
   assert.match(init, /if \(await AsyncStorage\.getItem\(EVENT_ARENA_DEVICE_DIRTY_KEY\)[\s\S]*?return;/);
 });
 
-test("Paper Trading keeps its selected account and view mounted between app tabs", () => {
+test("main tabs keep their mounted screens and Paper Trading's selected account", () => {
   assert.equal(getPaperTabNavigationAction("/paper", "/event-arena"), "push");
-  assert.equal(getPaperTabNavigationAction("/event-arena", "/paper"), "navigate");
+  assert.equal(getPaperTabNavigationAction("/event-arena", "/paper"), "push");
   assert.equal(getPaperTabNavigationAction("/paper", "/paper"), "none");
-  assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "replace");
+  assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "push");
+  assert.equal(getPaperTabNavigationAction("/", "/picks"), "push");
 
-  assert.match(bottomTabBar, /case 'push':\s*router\.push\(target\)/);
-  assert.match(bottomTabBar, /case 'navigate':\s*router\.navigate\(target\)/);
+  assert.match(bottomTabBar, /case 'push':\s*router\.push\(plan\.href\)/);
+  for (const route of ["index", "picks", "paper", "portfolio", "event-arena"]) {
+    assert.ok(mobileRootLayout.includes(`<Stack.Screen name="${route}" dangerouslySingular`));
+  }
   assert.match(screen, /const cachedActiveId = cached\.accounts\.some\(\(item\) => item\.id === preferredActiveId\)/);
   assert.match(screen, /didFocusOnceRef\.current && loadedRef\.current/);
+  assert.match(screen, /initRef\.current\(true, allowDeviceSync\)/);
+  assert.match(screen, /PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS/);
+  assert.doesNotMatch(screen, /fetchQuotesRef\.current/);
   assert.match(screen, /testID="paper-loading-account-skeleton"/);
   assert.match(screen, /testID="paper-loading-positions-skeleton"/);
   assert.match(screen, /testID="paper-refresh-indicator"/);
   assert.match(screen, /testID="paper-quote-refresh-error"/);
+});
+
+test("Event Arena does not refetch cash history on its one-second clock", () => {
+  const refreshStart = eventArena.indexOf("const refreshCashNotifications = useCallback");
+  const refreshEnd = eventArena.indexOf("\n  const openCashHistory", refreshStart);
+  const refresh = eventArena.slice(refreshStart, refreshEnd);
+  assert.ok(refreshStart >= 0 && refreshEnd > refreshStart);
+  assert.match(refresh, /nowRef\.current/);
+  assert.doesNotMatch(refresh, /\bnow, refreshAccountData/);
+  assert.match(eventArena, /useFocusEffect\(useCallback\(\(\) => \{[\s\S]*?setNow\(Date\.now\(\)\)[\s\S]*?setInterval\(\(\) => setNow\(Date\.now\(\)\), 1_000\)/);
+  assert.match(eventArena, /EVENT_ARENA_CASH_REFRESH_INTERVAL_MS/);
+  assert.match(eventArena, /loading=\{!accountDataReady \|\| storeState === 'loading'\}/);
 });
 
 test("Paper Trading refreshes quotes incrementally without replacing failed values", () => {
@@ -158,7 +178,8 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(lightningRound, /NEXT ROUND STARTS IN/);
   assert.match(lightningRound, /TIME LEFT IN THIS ROUND/);
   assert.match(lightningRound, /Event notifications in Event Arena settings can remind you when an eligible round opens/);
-  assert.match(events, /Includes eligible Lightning Round starts/);
+  assert.match(events, /<EventArenaReminderControls compact \/>/);
+  assert.match(eventArenaReminderControls, /eligible Lightning Round alerts/);
   assert.match(lightningRound, /ACCOUNT EQUITY/);
   assert.match(lightningRound, /DOLLAR P\/L/);
   assert.match(lightningRound, /PARTICIPANT/);
@@ -1378,12 +1399,25 @@ test("Mountain Championship blocks send and receive actions with an accessible l
 });
 
 test("Event Arena competition keeps its visual summary and reminders inside the scroll area", () => {
-  assert.match(
-    eventArenaOverview,
-    /<ScrollView[\s\S]*?testID="event-arena-overview"[\s\S]*?testID="paper-event-notifications-toggle"[\s\S]*?<\/ScrollView>/,
-  );
-  assert.match(eventArena, /notificationsEnabled=\{notificationsEnabled\}/);
-  assert.match(eventArena, /onNotificationsChange=\{\(value\) => \{ void setEventNotifications\(value\); \}\}/);
+  assert.match(eventArenaOverview, /<ScrollView[\s\S]*?testID="event-arena-overview"[\s\S]*?<\/ScrollView>/);
+  assert.match(eventArenaOverview, /<EventArenaReminderControls \/>/);
+  assert.match(eventArenaReminderControls, /testID="paper-event-notifications-toggle"/);
+  assert.match(eventArenaReminderControls, /Saved preference:/);
+  assert.match(eventArenaReminderControls, /Device permission:/);
+  assert.match(eventArenaReminderControls, /On-device reminders:/);
+  assert.match(eventArenaReminderControls, /Open device settings/);
+  assert.match(eventArenaReminderControls, /Retry remote setup/);
+  assert.match(eventArenaReminderControls, /event-arena-reminder-retry/);
+  assert.match(events, /<EventArenaReminderControls compact \/>/);
+  assert.match(mobileRootLayout, /<EventArenaRemindersProvider>/);
+  assert.match(eventArenaReminders, /getGetEventArenaReminderPreferenceQueryOptions/);
+  assert.match(eventArenaReminders, /if \(!state\.loaded \|\| state\.preferenceError \|\| mutationPromise \|\| state\.busy\) return/);
+  assert.match(eventArenaReminders, /Could not refresh Event Arena reminders: \$\{errorText\(error\)\}/);
+  const enableStart = eventArenaReminders.indexOf('export async function setEventArenaRemindersEnabled');
+  const scheduleBeforeSave = eventArenaReminders.indexOf('const schedule = await replaceLocalSchedule()', enableStart);
+  const serverSave = eventArenaReminders.indexOf('await syncServerPreference(true)', enableStart);
+  const localSave = eventArenaReminders.indexOf("await AsyncStorage.setItem(PREFERENCE_KEY, 'true')", enableStart);
+  assert.ok(enableStart >= 0 && scheduleBeforeSave < serverSave && serverSave < localSave);
 
   for (const label of [
     "STARTING BALANCE",

@@ -23,7 +23,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import {
-  getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey,
+  getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey, getHeatMapQuote,
   getSearchHeatMapInstrumentsQueryKey, getSearchStockSymbolsQueryKey,
   useGetMarketBreadth, useGetMarketHeatMap, useSearchHeatMapInstruments,
   useSearchStockSymbols, useValidateHeatMapSymbol,
@@ -749,7 +749,7 @@ export default function HeatMapScreen() {
     {
       query: {
         queryKey: symbolSearchQueryKey,
-        enabled: category === 'custom' && debouncedSymbolSearch.length >= 2,
+        enabled: category === 'custom' && customAssetType === 'stocks' && debouncedSymbolSearch.length >= 2,
         staleTime: 45_000,
       },
     },
@@ -762,28 +762,28 @@ export default function HeatMapScreen() {
   const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
     query: {
       queryKey: getSearchHeatMapInstrumentsQueryKey(etfSearchParams),
-      enabled: instrumentSearchEnabled,
+      enabled: instrumentSearchEnabled && customAssetType === 'etfs',
       staleTime: 45_000,
     },
   });
   const commoditySearch = useSearchHeatMapInstruments(commoditySearchParams, {
     query: {
       queryKey: getSearchHeatMapInstrumentsQueryKey(commoditySearchParams),
-      enabled: instrumentSearchEnabled,
+      enabled: instrumentSearchEnabled && customAssetType === 'commodities',
       staleTime: 45_000,
     },
   });
   const futuresSearch = useSearchHeatMapInstruments(futuresSearchParams, {
     query: {
       queryKey: getSearchHeatMapInstrumentsQueryKey(futuresSearchParams),
-      enabled: instrumentSearchEnabled,
+      enabled: instrumentSearchEnabled && customAssetType === 'futures',
       staleTime: 45_000,
     },
   });
   const cryptoSearch = useSearchHeatMapInstruments(cryptoSearchParams, {
     query: {
       queryKey: getSearchHeatMapInstrumentsQueryKey(cryptoSearchParams),
-      enabled: instrumentSearchEnabled,
+      enabled: instrumentSearchEnabled && customAssetType === 'cryptocurrency',
       staleTime: 45_000,
     },
   });
@@ -851,7 +851,7 @@ export default function HeatMapScreen() {
     && searchText.length >= 2
     && !validateSymbol.isPending;
   const searchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
-  const isCurrentCustomSearch = isCustomSearchInput && isStockSearchCurrent({
+  const isCurrentCustomSearch = customAssetType === 'stocks' && isCustomSearchInput && isStockSearchCurrent({
     input: searchText,
     settledQuery: debouncedSymbolSearch,
     resultQuery: searchResultQuery,
@@ -860,7 +860,7 @@ export default function HeatMapScreen() {
   const customSuggestions: StockSymbolSuggestion[] = isCurrentCustomSearch
     ? stockSearch.data ?? []
     : [];
-  const customSearchFeedback = isCustomSearchInput
+  const customSearchFeedback = customAssetType === 'stocks' && isCustomSearchInput
     ? getStockSearchFeedback({
         isFetching: !isCurrentCustomSearch || stockSearch.isFetching,
         isError: isCurrentCustomSearch && stockSearch.isError,
@@ -868,32 +868,34 @@ export default function HeatMapScreen() {
         suggestionCount: customSuggestions.length,
       })
     : null;
-  const instrumentSearchStates = [
-    { query: etfSearch, params: etfSearchParams },
-    { query: commoditySearch, params: commoditySearchParams },
-    { query: futuresSearch, params: futuresSearchParams },
-    { query: cryptoSearch, params: cryptoSearchParams },
-  ].map(({ query }) => ({
-    query,
-    isCurrent: isCustomSearchInput && isStockSearchCurrent({
+  const activeInstrumentSearch = customAssetType === 'etfs'
+    ? etfSearch
+    : customAssetType === 'commodities'
+      ? commoditySearch
+      : customAssetType === 'futures'
+        ? futuresSearch
+        : customAssetType === 'cryptocurrency'
+          ? cryptoSearch
+          : null;
+  const isCurrentCustomInstrumentSearch = activeInstrumentSearch !== null
+    && isCustomSearchInput
+    && isStockSearchCurrent({
       input: searchText,
       settledQuery: debouncedSymbolSearch,
-      resultQuery: getStockSearchQueryFromKey(query.queryKey),
-      isPlaceholderData: query.isPlaceholderData,
-    }),
-  }));
-  const isCurrentCustomInstrumentSearch = isCustomSearchInput
-    && instrumentSearchStates.every(({ isCurrent }) => isCurrent);
-  const customInstrumentSuggestions: HeatMapInstrumentSuggestion[] = instrumentSearchStates
-    .flatMap(({ query, isCurrent }) => isCurrent ? query.data ?? [] : []);
+      resultQuery: getStockSearchQueryFromKey(activeInstrumentSearch.queryKey),
+      isPlaceholderData: activeInstrumentSearch.isPlaceholderData,
+    });
+  const customInstrumentSuggestions: HeatMapInstrumentSuggestion[] = isCurrentCustomInstrumentSearch
+    ? activeInstrumentSearch?.data ?? []
+    : [];
   const instrumentSearchIsFetching = !isCurrentCustomInstrumentSearch
-    || instrumentSearchStates.some(({ query }) => query.isFetching);
+    || !!activeInstrumentSearch?.isFetching;
   const instrumentSearchHasError = isCurrentCustomInstrumentSearch
-    && instrumentSearchStates.some(({ query }) => query.isError);
+    && !!activeInstrumentSearch?.isError;
   const instrumentSearchHasNoSuccess = isCurrentCustomInstrumentSearch
-    && instrumentSearchStates.every(({ query }) => query.isError);
+    && !!activeInstrumentSearch?.isError;
   const instrumentSearchIsSettled = isCurrentCustomInstrumentSearch
-    && instrumentSearchStates.every(({ query }) => !query.isFetching);
+    && !activeInstrumentSearch?.isFetching;
   const matchingCustomAssetChoices = searchText.length > 0
     ? searchCustomHeatMapAssets(searchText)
     : customAssetType === 'stocks'
@@ -1348,6 +1350,7 @@ export default function HeatMapScreen() {
     }
   }
   async function addSymbol(rawSymbol = symbolInput) {
+    const wasEnteredDirectly = rawSymbol === symbolInput;
     const symbol = rawSymbol.trim().toUpperCase();
     if (!symbol) return;
     if (validateSymbol.isPending || isAddingSelectedAssets) return;
@@ -1362,6 +1365,7 @@ export default function HeatMapScreen() {
       const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, symbol);
       try { await persistSymbols(next); }
       catch { setFormError(`Couldn't save ${symbol} on this device. Try again.`); return; }
+      if (wasEnteredDirectly) setSymbolInput(symbol);
       awardCustomMapMilestones(next.length);
       setLastRemovedTicker(null);
       setCustomBatchFeedback({ message: `Added ${symbol} to your Watch Map.`, kind: 'success' });
@@ -1373,6 +1377,7 @@ export default function HeatMapScreen() {
         const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, quote.symbol);
         try { await persistSymbols(next); }
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
+        if (wasEnteredDirectly) setSymbolInput(quote.symbol);
         awardCustomMapMilestones(next.length);
         setLastRemovedTicker(null);
         setCustomBatchFeedback({ message: `Added ${quote.symbol} to your Watch Map.`, kind: 'success' });
@@ -1792,6 +1797,7 @@ export default function HeatMapScreen() {
                     setCustomAssetType(assetType.id);
                     setSymbolInput('');
                     setFormError('');
+                    setCustomBatchFeedback(null);
                   }}
                   style={[
                     styles.customAssetTypeOption,
@@ -2429,16 +2435,10 @@ export default function HeatMapScreen() {
           }}
           onRefreshQuote={async (symbol) => {
             try {
-              const result = await mapQuery.refetch();
-              if (result.isError) return null;
-              const refreshedQuote = result.data?.quotes.find(
-                (item) => item.symbol.toUpperCase() === symbol.toUpperCase(),
-              ) ?? null;
-              if (refreshedQuote) {
-                setSelectedQuote((current) => current?.symbol.toUpperCase() === symbol.toUpperCase()
-                  ? refreshedQuote
-                  : current);
-              }
+              const refreshedQuote = await getHeatMapQuote(symbol);
+              setSelectedQuote((current) => current?.symbol.toUpperCase() === symbol.toUpperCase()
+                ? refreshedQuote
+                : current);
               return refreshedQuote;
             } catch {
               return null;

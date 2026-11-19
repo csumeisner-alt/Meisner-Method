@@ -366,13 +366,15 @@ test("ETF holdings and sector context in the API schema matches mobile disclosur
 
   for (const schema of [responseSchema, profileSchema]) {
     assert.match(schema, /sectorWeights:\n\s+type: array/);
-    assert.match(schema, /sectorWeightsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider sector snapshot retrieval time/);
     assert.match(schema, /topHoldingsReportedCount:\n\s+type: integer\n\s+minimum: 0\n\s+description: Number of positions reported by the provider/);
-    assert.match(schema, /topHoldingsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider holdings snapshot retrieval time/);
     assert.match(schema, /sectorWeightsRetrievedAt/);
     assert.match(schema, /topHoldingsReportedCount/);
     assert.match(schema, /topHoldingsRetrievedAt/);
   }
+  assert.match(responseSchema, /sectorWeightsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider sector snapshot retrieval time/);
+  assert.match(responseSchema, /topHoldingsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider holdings snapshot retrieval time/);
+  assert.match(profileSchema, /sectorWeightsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+nullable: true\n\s+description: Provider sector snapshot retrieval time/);
+  assert.match(profileSchema, /topHoldingsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+nullable: true\n\s+description: Provider holdings snapshot retrieval time/);
 
   assert.match(etfAnalysisSource, /topHoldingsReportedCount: number;/);
   assert.match(etfAnalysisSource, /topHoldingsRetrievedAt: string;/);

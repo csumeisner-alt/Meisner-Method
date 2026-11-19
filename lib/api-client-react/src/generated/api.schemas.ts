@@ -487,6 +487,10 @@ export interface EventArenaCashTransferRequest {
   idempotencyKey: string;
 }
 
+export interface EventArenaReminderPreferenceUpdate {
+  enabled: boolean;
+}
+
 export type EventArenaCashTransferResponseTransfer = {
   id: string;
   eventId: string;
@@ -1607,7 +1611,7 @@ export interface EtfProfile {
   /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
   sectorWeights: EtfSectorWeight[];
   /** Provider sector snapshot retrieval time, not a sector report date. */
-  sectorWeightsRetrievedAt: string;
+  sectorWeightsRetrievedAt: string | null;
   topHoldings: EtfHolding[];
   /**
      * Number of positions reported by the provider for this holdings snapshot.
@@ -1615,7 +1619,7 @@ export interface EtfProfile {
      */
   topHoldingsReportedCount: number;
   /** Provider holdings snapshot retrieval time, not a holdings report date. */
-  topHoldingsRetrievedAt: string;
+  topHoldingsRetrievedAt: string | null;
   marketRegime: EtfMarketRegime | null;
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;
@@ -1651,6 +1655,34 @@ export interface MarketInstrumentInfo {
   maxSupply: number | null;
   volume24Hr: number | null;
   etfProfile?: EtfProfile;
+}
+
+export type HeatMapDetailSectionStatus = typeof HeatMapDetailSectionStatus[keyof typeof HeatMapDetailSectionStatus];
+
+
+export const HeatMapDetailSectionStatus = {
+  available: 'available',
+  not_reported: 'not_reported',
+  unsupported: 'unsupported',
+} as const;
+
+export interface HeatMapEtfFundDataResponse {
+  symbol: string;
+  status: HeatMapDetailSectionStatus;
+  sectorWeights: EtfSectorWeight[];
+  sectorWeightsRetrievedAt: string | null;
+  topHoldings: EtfHolding[];
+  /** @minimum 0 */
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string | null;
+  largestSector: string | null;
+  largestSectorWeight: number | null;
+}
+
+export interface HeatMapEtfHistoryFitResponse {
+  symbol: string;
+  status: HeatMapDetailSectionStatus;
+  marketRegime: EtfMarketRegime | null;
 }
 
 /**
@@ -1842,6 +1874,15 @@ export type GetEventArenaLeaderboardWeeks200WeeksItem = {
 export type GetEventArenaLeaderboardWeeks200 = {
   weeks: GetEventArenaLeaderboardWeeks200WeeksItem[];
   updatedAt: string;
+};
+
+export type GetEventArenaReminderPreference200 = {
+  enabled: boolean;
+  configured: boolean;
+};
+
+export type SetEventArenaReminderPreference200 = {
+  enabled: boolean;
 };
 
 export type SubmitEventArenaScore200 = {

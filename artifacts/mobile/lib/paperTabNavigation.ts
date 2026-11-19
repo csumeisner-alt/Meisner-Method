@@ -1,15 +1,14 @@
 export type PaperTabNavigationAction = 'none' | 'push' | 'navigate' | 'replace';
 
 /**
- * Keep the Paper Trading route underneath the other app tabs so its account
- * and view state remain mounted while the user visits another screen.
+ * Main tabs use a stable Stack route ID and push to it. Expo Router moves an
+ * existing route with that ID to the front instead of replacing or duplicating
+ * it, so every visited tab keeps its mounted state.
  */
 export function getPaperTabNavigationAction(
   currentTab: string,
   targetTab: string,
 ): PaperTabNavigationAction {
   if (currentTab === targetTab) return 'none';
-  if (currentTab === '/paper') return 'push';
-  if (targetTab === '/paper') return 'navigate';
-  return 'replace';
+  return 'push';
 }

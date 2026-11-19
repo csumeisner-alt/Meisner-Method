@@ -88,7 +88,7 @@ interface Props {
 interface WatchRowProps {
   item: WatchlistItem;
   index: number;
-  dragGesture: ReturnType<typeof Gesture.Simultaneous>;
+  dragGesture: GestureType;
   draggedIdx: SharedValue<number>;
   hoverIdx: SharedValue<number>;
   quote?: QuoteData;
@@ -375,19 +375,14 @@ export function DraggableWatchlist({
 
   const rowDragGestures = useMemo(
     () => Array.from({ length: n }, (_, index) => {
-      const longPress = Gesture.LongPress()
-        .minDuration(Platform.OS === 'web' ? 320 : 420)
-        .maxDistance(Platform.OS === 'web' ? 24 : 12)
-        .simultaneousWithExternalGesture(scrollGesture)
-        .onStart(() => {
-          draggedIdx.value = index;
-          hoverIdx.value = index;
-          dragTranslationY.value = 0;
-          runOnJS(triggerHaptic)();
-          runOnJS(setDragActive)(true);
-          runOnJS(startGhost)(index);
-        });
-
+      const startDrag = () => {
+        draggedIdx.value = index;
+        hoverIdx.value = index;
+        dragTranslationY.value = 0;
+        runOnJS(triggerHaptic)();
+        runOnJS(setDragActive)(true);
+        runOnJS(startGhost)(index);
+      };
       const pan = Gesture.Pan()
         .simultaneousWithExternalGesture(scrollGesture)
         .onUpdate((event) => {
@@ -406,6 +401,17 @@ export function DraggableWatchlist({
           runOnJS(endDrag)(from, to);
         });
 
+      if (Platform.OS !== 'web') {
+        return pan
+          .activateAfterLongPress(420)
+          .onStart(startDrag);
+      }
+
+      const longPress = Gesture.LongPress()
+        .minDuration(320)
+        .maxDistance(24)
+        .simultaneousWithExternalGesture(scrollGesture)
+        .onStart(startDrag);
       return Gesture.Simultaneous(longPress, pan);
     }),
     [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, scrollGesture, setDragActive, startGhost, triggerHaptic],

@@ -606,6 +606,87 @@ def build_etf_profile_payload(
     }
 
 
+HEAT_MAP_ETF_CONTEXT_KEYS = (
+    "quoteType",
+    "category",
+    "fundFamily",
+    "annualReportExpenseRatio",
+    "netExpenseRatio",
+    "grossExpenseRatio",
+    "expenseRatio",
+    "totalAssets",
+    "beta3Year",
+    "beta",
+    "yield",
+    "dividendYield",
+    "benchmarkSymbol",
+    "benchmarkName",
+)
+
+
+def build_heat_map_etf_context(info):
+    """Keep only provider fields needed by the independent ETF detail requests."""
+    return {key: info.get(key) for key in HEAT_MAP_ETF_CONTEXT_KEYS}
+
+
+def build_heat_map_etf_summary_profile(info):
+    """Project quick ETF facts without implying holdings or history were fetched."""
+    profile = build_etf_profile_payload(info)
+    profile.update({
+        "largestSector": None,
+        "largestSectorWeight": None,
+        "sectorWeights": [],
+        "sectorWeightsRetrievedAt": None,
+        "topHoldings": [],
+        "topHoldingsReportedCount": 0,
+        "topHoldingsRetrievedAt": None,
+        "marketRegime": None,
+    })
+    return profile
+
+
+def build_heat_map_etf_fund_data(info, ticker):
+    sector_weightings, top_holdings, peer_expense_ratio, peer_total_assets = (
+        get_fund_data_details(ticker, strict=True)
+    )
+    profile = build_etf_profile_payload(
+        info,
+        sector_weightings,
+        top_holdings,
+        market_regime=None,
+        category_average_expense_ratio=peer_expense_ratio,
+        tracking_comparison=None,
+        category_average_total_assets=peer_total_assets,
+    )
+    has_reported_data = bool(
+        profile["sectorWeights"]
+        or profile["topHoldings"]
+        or profile["largestSector"]
+        or profile["expenseRatio"] is not None
+        or profile["totalAssets"] is not None
+        or profile["dividendYield"] is not None
+        or profile["beta3Year"] is not None
+    )
+    return {
+        "status": "available" if has_reported_data else "not_reported",
+        "sectorWeights": profile["sectorWeights"],
+        "sectorWeightsRetrievedAt": profile["sectorWeightsRetrievedAt"],
+        "topHoldings": profile["topHoldings"],
+        "topHoldingsReportedCount": profile["topHoldingsReportedCount"],
+        "topHoldingsRetrievedAt": profile["topHoldingsRetrievedAt"],
+        "largestSector": profile["largestSector"],
+        "largestSectorWeight": profile["largestSectorWeight"],
+    }
+
+
+def build_heat_map_etf_history_fit(info, ticker, symbol):
+    market_regime = get_market_regime_performance(ticker, symbol, strict=True)
+    return {
+        "status": "available" if market_regime is not None else "not_reported",
+        "marketRegime": market_regime,
+    }
+
+
 def build_info_brief_payload(
     symbol,
     info,
@@ -673,11 +754,13 @@ def build_info_brief_payload(
     return payload
 
 
-def get_fund_data_details(ticker):
+def get_fund_data_details(ticker, strict=False):
     """Read provider-reported ETF sector exposures, holdings, and peer baselines."""
     try:
         fund_data = ticker.funds_data
     except Exception:
+        if strict:
+            raise
         return None, [], None, None
 
     try:
@@ -714,7 +797,7 @@ def get_fund_data_details(ticker):
     )
 
 
-def get_market_regime_performance(ticker, symbol):
+def get_market_regime_performance(ticker, symbol, strict=False):
     try:
         etf_history = ticker.history(
             period="max", interval="1mo", auto_adjust=True,
@@ -724,6 +807,8 @@ def get_market_regime_performance(ticker, symbol):
             period="max", interval="1mo", auto_adjust=True,
         )
     except Exception:
+        if strict:
+            raise
         return None
 
     return calculate_market_regime_performance(
@@ -738,8 +823,34 @@ def main():
         sys.exit(1)
 
     symbol = sys.argv[1].upper().strip()
+    mode = sys.argv[2].strip().lower() if len(sys.argv) > 2 else "full"
     try:
         ticker = yf.Ticker(symbol)
+        if mode in {"etf-fund-data", "etf-history-fit"}:
+            info = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
+            if not isinstance(info, dict):
+                raise ValueError("ETF detail context is invalid")
+            if not is_etf_info(info):
+                print(json.dumps({
+                    "symbol": symbol,
+                    "status": "unsupported",
+                    "sectorWeights": [],
+                    "sectorWeightsRetrievedAt": None,
+                    "topHoldings": [],
+                    "topHoldingsReportedCount": 0,
+                    "topHoldingsRetrievedAt": None,
+                    "largestSector": None,
+                    "largestSectorWeight": None,
+                    "marketRegime": None,
+                }, allow_nan=False))
+                return
+            if mode == "etf-fund-data":
+                payload = build_heat_map_etf_fund_data(info, ticker)
+            else:
+                payload = build_heat_map_etf_history_fit(info, ticker, symbol)
+            print(json.dumps({"symbol": symbol, **payload}, allow_nan=False))
+            return
+
         info = ticker.info
 
         # Validate that we got real data
@@ -747,6 +858,19 @@ def main():
         if not name:
             print(json.dumps({"error": f"No data found for {symbol}"}))
             sys.exit(1)
+
+        if mode == "summary":
+            etf_profile = build_heat_map_etf_summary_profile(info) if is_etf_info(info) else None
+            print(json.dumps({
+                "summary": clean_nan(build_info_brief_payload(
+                    symbol,
+                    info,
+                    etf_profile,
+                    None,
+                )),
+                "etfContext": clean_nan(build_heat_map_etf_context(info)),
+            }, allow_nan=False))
+            return
 
         etf_profile = None
         if is_etf_info(info):

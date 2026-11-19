@@ -9,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
   useWindowDimensions,
@@ -18,7 +17,9 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 import { PortfolioLineChart } from '@/components/PaperCharts';
+import { EventArenaReminderControls } from '@/components/EventArenaReminderControls';
 import type { PaperChallengeEnrollment, PaperChallengeWindow } from '@/lib/paperChallenge';
 import type {
   EventArenaCountdown,
@@ -48,8 +49,6 @@ export type EventArenaOverviewProps = {
   unreadCashNotifications: number;
   cashTransfersLocked?: boolean;
   onOpenTrades: () => void;
-  notificationsEnabled: boolean;
-  onNotificationsChange: (enabled: boolean) => void;
 };
 
 const money = (value: number | null | undefined) =>
@@ -104,11 +103,10 @@ export function EventArenaOverview({
   unreadCashNotifications,
   cashTransfersLocked,
   onOpenTrades,
-  notificationsEnabled,
-  onNotificationsChange,
 }: EventArenaOverviewProps) {
   const colors = useColors();
   const reduceMotion = useReduceMotion();
+  const competitionScroll = useRetainedTabScroll('event-arena:competition');
   const statusPulse = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(windowWidth - 32, 560));
@@ -228,6 +226,9 @@ export function EventArenaOverview({
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
+        ref={competitionScroll.ref}
+        onScroll={competitionScroll.onScroll}
+        scrollEventThrottle={competitionScroll.scrollEventThrottle}
         style={{ flex: 1 }}
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
         showsVerticalScrollIndicator={false}
@@ -563,23 +564,7 @@ export function EventArenaOverview({
           </View>
         )}
 
-        <View style={[styles.notificationsCard, { backgroundColor: surface, borderColor: border }]}>
-          <View style={[styles.notificationsIcon, { backgroundColor: 'rgba(184,149,90,0.12)' }]}>
-            <Feather name="bell" size={16} color={accent} />
-          </View>
-          <View style={styles.notificationsCopy}>
-            <Text style={[styles.notificationsTitle, { color: ink }]}>Event notifications</Text>
-            <Text style={[styles.notificationsDetail, { color: muted }]}>Up to three reminders per event</Text>
-          </View>
-          <Switch
-            testID="paper-event-notifications-toggle"
-            accessibilityLabel="Event notifications"
-            value={notificationsEnabled}
-            onValueChange={onNotificationsChange}
-            trackColor={{ false: colors.muted, true: colors.primary }}
-            thumbColor={colors.card}
-          />
-        </View>
+        <EventArenaReminderControls />
 
         {loading ? (
           <View style={styles.loadingRow} accessibilityRole="progressbar" accessibilityLabel="Loading event overview">

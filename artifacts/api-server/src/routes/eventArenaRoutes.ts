@@ -806,6 +806,30 @@ export function createEventArenaRouter(
     }
   });
 
+  router.get("/event-arena/reminder-preference", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    if (!validInstallationId(installationId)) {
+      res.status(400).json({ error: "A valid installation ID is required." });
+      return;
+    }
+    try {
+      const result = await db.query(
+        `SELECT enabled
+         FROM event_arena_reminder_preferences
+         WHERE installation_id=$1
+         LIMIT 1`,
+        [installationId],
+      );
+      const row = result.rows[0];
+      res.json({
+        enabled: row ? Boolean(row.enabled) : false,
+        configured: Boolean(row),
+      });
+    } catch {
+      res.status(500).json({ error: "Could not load Event Arena reminder settings." });
+    }
+  });
+
   router.put("/event-arena/reminder-preference", requireSchema, async (req: any, res: any) => {
     const installationId = req.get("x-event-arena-installation-id");
     const enabled = req.body?.enabled;

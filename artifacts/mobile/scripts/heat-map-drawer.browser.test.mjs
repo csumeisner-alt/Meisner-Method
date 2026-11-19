@@ -537,6 +537,73 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "The commodity detail should close before restoring the initial market map.",
     );
+    const etfFundData = {
+      symbol: "ETF_TEST",
+      status: "available",
+      sectorWeights: [{ sector: "Technology", weight: 0.3 }],
+      sectorWeightsRetrievedAt: "2026-11-18T12:00:00Z",
+      topHoldings: [{ symbol: "ALPHA", name: "Alpha Corp", weight: 0.1 }],
+      topHoldingsReportedCount: 1,
+      topHoldingsRetrievedAt: "2026-11-18T12:00:00Z",
+      largestSector: "Technology",
+      largestSectorWeight: 0.3,
+    };
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setDetailSectionResponses("etf-fund-data", [
+        { type: "reject" },
+        { type: "resolve", payload: ${JSON.stringify(etfFundData)} },
+      ]);
+      state.setDetailSectionResponses("etf-history-fit", [
+        { type: "reject" },
+        { type: "resolve", payload: { symbol: "ETF_TEST", status: "not_reported", marketRegime: null } },
+      ]);
+      state.setResponse({
+        ...state.initialData,
+        quotes: [...state.initialData.quotes, ${JSON.stringify(quote("ETF_TEST", { name: "Test ETF", assetType: "etf" }))}],
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-open-detail-ETF_TEST");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Test ETF"`,
+      "The ETF detail card should open for the test instrument.",
+    );
+    const etfDetailSnapshot = await browser.evaluate(`(() => ({
+      fundCategory: document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-fund-category"))})?.textContent,
+      fundRetry: !!document.querySelector(${JSON.stringify(selector("heat-map-etf-fund-data-retry"))}),
+      historyRetry: !!document.querySelector(${JSON.stringify(selector("heat-map-etf-history-retry"))}),
+      sections: window.__heatMapBrowserTest.detailEndpointRequests.slice(-2),
+      requests: window.__heatMapBrowserTest.detailRequests.slice(-2),
+    }))()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-fund-category"))})?.textContent === "Large Blend" && !!document.querySelector(${JSON.stringify(selector("heat-map-etf-fund-data-retry"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-etf-history-retry"))})`,
+      `ETF essentials should remain available when its separate holdings and history requests fail: ${JSON.stringify(etfDetailSnapshot)}`,
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailEndpointRequests.includes("/api/stocks/heat-map/detail/ETF_TEST/etf-fund-data") && window.__heatMapBrowserTest.detailEndpointRequests.includes("/api/stocks/heat-map/detail/ETF_TEST/etf-history-fit")`),
+      true,
+      "Fund data and market history should load through independent endpoints.",
+    );
+    await clickTestID(browser, "heat-map-etf-fund-data-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-scroll"))})?.textContent.includes("Alpha Corp") && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-fund-category"))})?.textContent === "Large Blend"`,
+      "Retrying holdings should restore provider data without replacing the loaded quote statistics.",
+    );
+    await clickTestID(browser, "heat-map-etf-history-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-scroll"))})?.textContent.includes("There is not enough reported history") && !document.querySelector(${JSON.stringify(selector("heat-map-etf-history-retry"))})`,
+      "A history retry should clear only its own error and preserve the available holdings.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The ETF detail card should close before continuing the summary retry checks.",
+    );
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
 
     await clickTestID(browser, "heat-map-open-detail-MATCH");
@@ -570,6 +637,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       });
     })()`);
     const refetchCountBeforeQuoteRefresh = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    const quoteRequestCountBeforeRefresh = await browser.evaluate("window.__heatMapBrowserTest.quoteRequests.length");
     await clickTestID(browser, "heat-map-detail-refresh-quote");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -590,9 +658,9 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await clickTestID(browser, "heat-map-detail-refresh-quote");
     }
     assert.equal(
-      await browser.evaluate(`window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1 && window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeQuoteRefresh + 1}`),
+      await browser.evaluate(`window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1 && window.__heatMapBrowserTest.quoteRequests.length === ${quoteRequestCountBeforeRefresh + 1} && window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeQuoteRefresh}`),
       true,
-      "Repeated taps during a pending quote refresh should not start overlapping heat-map refetches.",
+      "Repeated taps should keep one single-ticker refresh pending without reloading the map.",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})?.textContent.includes("Refreshing")`),
@@ -2034,6 +2102,13 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-category-picker");
     await clickTestID(browser, "heat-map-category-custom");
     await clickTestID(browser, "heat-map-add-ticker-open");
+    const addTickerPhoneBounds = await browser.evaluate(`(() => {
+      const sheet = document.querySelector(${JSON.stringify(selector("heat-map-add-ticker-modal"))});
+      const rect = sheet?.getBoundingClientRect();
+      return rect ? { left: rect.left, right: rect.right, width: rect.width, viewport: window.innerWidth } : null;
+    })()`);
+    assert.ok(addTickerPhoneBounds, "The add-ticker modal should render on a phone viewport.");
+    assert.ok(addTickerPhoneBounds.left >= 0 && addTickerPhoneBounds.right <= 320, "The modal must fit inside the 320px phone viewport.");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))})?.textContent.trim() === "Couldn't load saved tickers from this device." && !!document.querySelector(${JSON.stringify(selector("heat-map-storage-retry"))})`,
@@ -2633,10 +2708,23 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["SPY", "QQQ", "GLD", "AAPL", "MSFT", "NVDA", "TSLA"]))}`,
       "Direct ticker entry should still validate and add a stock.",
     );
+    const directAddAfterSave = await browser.evaluate(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector("heat-map-custom-add"))});
+      return {
+        disabled: button?.disabled,
+        text: button?.textContent,
+        label: button?.getAttribute("aria-label"),
+      };
+    })()`);
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-add"))})?.disabled && document.querySelector(${JSON.stringify(selector("heat-map-custom-add"))})?.getAttribute("aria-label") === "TSLA already added"`),
+      directAddAfterSave.disabled,
       true,
-      "The direct-add control should prevent a duplicate ticker.",
+      `The direct-add control should prevent a duplicate ticker. Rendered state: ${JSON.stringify(directAddAfterSave)}`,
+    );
+    assert.match(
+      `${directAddAfterSave.text} ${directAddAfterSave.label}`,
+      /Added|already added/i,
+      "The direct-add control should identify the saved ticker.",
     );
 
     await clickTestID(browser, "heat-map-custom-type-commodities");
@@ -2743,6 +2831,34 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "The full saved list should persist after reopening the app.",
     );
     await clickTestID(browser, "heat-map-add-ticker-close");
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await clickTestID(browser, "heat-map-add-ticker-open");
+    await delay(400);
+    const addTickerDesktopBounds = await browser.evaluate(`(() => {
+      const sheet = document.querySelector(${JSON.stringify(selector("heat-map-add-ticker-modal"))});
+      const rect = sheet?.getBoundingClientRect();
+      return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewport: window.innerWidth, height: window.innerHeight } : null;
+    })()`);
+    assert.ok(addTickerDesktopBounds, "The add-ticker modal should render on a desktop viewport.");
+    assert.ok(
+      addTickerDesktopBounds.left >= 0
+        && addTickerDesktopBounds.right <= 1280
+        && addTickerDesktopBounds.top >= 0
+        && addTickerDesktopBounds.bottom <= 900,
+      `The modal must stay inside the desktop viewport: ${JSON.stringify(addTickerDesktopBounds)}`,
+    );
+    await clickTestID(browser, "heat-map-add-ticker-close");
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 320,
+      height: 720,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
 
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
     // batch does not. The user's selected period and local filters remain intact.

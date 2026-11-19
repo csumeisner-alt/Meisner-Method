@@ -178,7 +178,9 @@ test("custom heat-map search offers company and category-aware asset suggestions
   assert.match(screenSource, /useSearchStockSymbols/);
   assert.match(screenSource, /CUSTOM_HEAT_MAP_ASSET_TYPES\.map/);
   assert.match(screenSource, /searchCustomHeatMapAssets\(searchText\)/);
-  assert.match(screenSource, /enabled: category === 'custom' && debouncedSymbolSearch\.length >= 2/);
+  assert.match(screenSource, /const instrumentSearchEnabled = category === 'custom' && debouncedSymbolSearch\.length >= 2/);
+  assert.match(screenSource, /enabled: category === 'custom' && customAssetType === 'stocks'/);
+  assert.match(screenSource, /enabled: instrumentSearchEnabled && customAssetType === 'commodities'/);
   assert.match(screenSource, /getSearchStockSymbolsQueryKey\(\{ q: debouncedSymbolSearch \}\)/);
   assert.match(screenSource, /getStockSearchQueryFromKey\(stockSearch\.queryKey\)/);
   assert.match(screenSource, /isStockSearchCurrent\(\{/);

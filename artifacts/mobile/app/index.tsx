@@ -30,6 +30,7 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
@@ -161,6 +162,7 @@ function formatPct(p: number) {
 
 export default function HomeScreen() {
   const colors = useColors();
+  const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
@@ -812,6 +814,10 @@ export default function HomeScreen() {
 
       <GestureDetector gesture={scrollGesture}>
         <ScrollView
+          testID="main-tab-scroll-analyze"
+          ref={analyzeScroll.ref}
+          onScroll={analyzeScroll.onScroll}
+          scrollEventThrottle={analyzeScroll.scrollEventThrottle}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: botPad + 24 }}
           keyboardShouldPersistTaps="handled"

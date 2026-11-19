@@ -49,6 +49,7 @@ import {
   normalizeHeatMapSymbols,
   type HeatMapCategory,
   type HeatMapPeriod,
+  type HeatMapQuote,
   type HeatMapSector,
   type HeatMapResponse,
 } from "../lib/marketHeatMap.js";
@@ -78,6 +79,9 @@ const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
 const MARKET_PULSE_SESSION_TTL = 30 * 1000;
 const MARKET_PULSE_FRESHNESS_LIMIT_SECONDS = 5 * 60;
+const HEAT_MAP_DETAIL_SUMMARY_TTL = 30 * 1000;
+const HEAT_MAP_DETAIL_FUND_DATA_TTL = 15 * 60 * 1000;
+const HEAT_MAP_DETAIL_HISTORY_TTL = 6 * 60 * 60 * 1000;
 const CRYPTO_SUPPLY_HISTORY_TTL = 6 * 60 * 60 * 1000;
 const COMMODITY_NEWS_TTL = 30 * 60 * 1000;
 const COMMODITY_RELATIONSHIP_HISTORY_TTL = 10 * 60 * 1000;
@@ -87,6 +91,15 @@ const commodityRelationshipHistoryCache = new Map<string, { data: CommodityRelat
 const commodityRelationshipHistoryRequests = new Map<string, Promise<CommodityRelationshipHistory>>();
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
+type HeatMapDetailSummaryEntry = {
+  summary: Record<string, unknown>;
+  etfContext: Record<string, unknown>;
+  expiresAt: number;
+};
+const heatMapDetailSummaryCache = new Map<string, HeatMapDetailSummaryEntry>();
+const heatMapDetailSummaryRequests = new Map<string, Promise<HeatMapDetailSummaryEntry>>();
+const heatMapDetailSectionCache = new Map<string, { data: unknown; expiresAt: number }>();
+const heatMapDetailSectionRequests = new Map<string, Promise<unknown>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
 let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
 let marketPulseSessionCache: { marketOpen: boolean; ts: number } | null = null;
@@ -429,11 +442,15 @@ async function fetchHeatMapBatch(
   symbols: string[],
   period: HeatMapPeriod,
   requestedSector: HeatMapSector | null,
+  forceRefresh = false,
+  timeoutMs = 75_000,
 ): Promise<HeatMapResponse> {
   const key = heatMapRequestCacheKey(category, period, symbols, requestedSector);
   const now = Date.now();
   const cached = heatMapCache.get(key);
-  if (cached && now - cached.ts < HEAT_MAP_TTL) return orderCustomHeatMapResponse(cached.data, symbols);
+  if (!forceRefresh && cached && now - cached.ts < HEAT_MAP_TTL) {
+    return orderCustomHeatMapResponse(cached.data, symbols);
+  }
 
   const pending = heatMapRequests.get(key);
   if (pending) return pending.then((data) => orderCustomHeatMapResponse(data, symbols));
@@ -442,7 +459,7 @@ async function fetchHeatMapBatch(
     const { stdout } = await execFileAsync(
       "python3",
       [HEAT_MAP_SCRIPT, category, symbols.join(","), period, requestedSector ?? ""],
-      { timeout: 75_000, maxBuffer: 5 * 1024 * 1024 },
+      { timeout: timeoutMs, maxBuffer: 5 * 1024 * 1024 },
     );
     const raw: unknown = JSON.parse(stdout.trim());
     if (
@@ -468,6 +485,147 @@ async function fetchHeatMapBatch(
     return orderCustomHeatMapResponse(await request, symbols);
   } finally {
     heatMapRequests.delete(key);
+  }
+}
+
+function heatMapProviderErrorStatus(error: unknown): number {
+  const detail = error && typeof error === "object"
+    ? `${String((error as { message?: unknown }).message ?? "")} ${String((error as { stderr?: unknown }).stderr ?? "")}`
+    : String(error ?? "");
+  if (/\b429\b|too many requests|rate.?limit/i.test(detail)) return 429;
+  if (/timed?\s*out|timeout|ETIMEDOUT|SIGTERM/i.test(detail)) return 504;
+  return 503;
+}
+
+function respondWithHeatMapProviderError(
+  req: Request,
+  res: Response,
+  error: unknown,
+  message: string,
+): void {
+  const status = heatMapProviderErrorStatus(error);
+  req.log.warn({ err: error, status }, "Heat-map detail provider request failed");
+  if (status === 429) res.set("Retry-After", "5");
+  res.status(status).json({
+    error: status === 429 ? "RATE_LIMITED" : status === 504 ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE",
+    message,
+  });
+}
+
+async function fetchHeatMapDetailSummary(
+  symbol: string,
+): Promise<HeatMapDetailSummaryEntry> {
+  const cached = heatMapDetailSummaryCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+  const pending = heatMapDetailSummaryRequests.get(symbol);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [INFO_SCRIPT, symbol, "summary"],
+      { timeout: 12_000, maxBuffer: 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (!raw || typeof raw !== "object") throw new Error("Invalid market detail summary");
+    const result = raw as Record<string, unknown>;
+    const summary = result["summary"];
+    const etfContext = result["etfContext"];
+    if (!summary || typeof summary !== "object" || !etfContext || typeof etfContext !== "object") {
+      throw new Error("Market detail summary was incomplete");
+    }
+    const summaryRecord = summary as Record<string, unknown>;
+    const entry: HeatMapDetailSummaryEntry = {
+      summary: {
+        ...summaryRecord,
+        dividendYield: normalizeDividendYield(
+          summaryRecord["dividendYield"],
+          summaryRecord["dividendRate"],
+          summaryRecord["currentPrice"],
+        ) ?? null,
+      },
+      etfContext: etfContext as Record<string, unknown>,
+      expiresAt: Date.now() + HEAT_MAP_DETAIL_SUMMARY_TTL,
+    };
+    heatMapDetailSummaryCache.set(symbol, entry);
+    if (heatMapDetailSummaryCache.size > 100) {
+      const oldestKey = heatMapDetailSummaryCache.keys().next().value;
+      if (oldestKey) heatMapDetailSummaryCache.delete(oldestKey);
+    }
+    return entry;
+  })();
+  heatMapDetailSummaryRequests.set(symbol, request);
+  try {
+    return await request;
+  } finally {
+    if (heatMapDetailSummaryRequests.get(symbol) === request) {
+      heatMapDetailSummaryRequests.delete(symbol);
+    }
+  }
+}
+
+async function fetchHeatMapEtfDetailSection(
+  symbol: string,
+  section: "etf-fund-data" | "etf-history-fit",
+): Promise<unknown> {
+  const ttl = section === "etf-fund-data"
+    ? HEAT_MAP_DETAIL_FUND_DATA_TTL
+    : HEAT_MAP_DETAIL_HISTORY_TTL;
+  const key = `${section}:${symbol}`;
+  const cached = heatMapDetailSectionCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const pending = heatMapDetailSectionRequests.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const summary = await fetchHeatMapDetailSummary(symbol);
+    const quoteType = String(summary.etfContext["quoteType"] ?? "").toUpperCase();
+    const isEtf = quoteType === "ETF"
+      || Boolean(summary.etfContext["category"] && summary.etfContext["fundFamily"]);
+    if (!isEtf) {
+      const data = section === "etf-fund-data"
+        ? {
+            symbol,
+            status: "unsupported",
+            sectorWeights: [],
+            sectorWeightsRetrievedAt: null,
+            topHoldings: [],
+            topHoldingsReportedCount: 0,
+            topHoldingsRetrievedAt: null,
+            largestSector: null,
+            largestSectorWeight: null,
+          }
+        : { symbol, status: "unsupported", marketRegime: null };
+      heatMapDetailSectionCache.set(key, { data, expiresAt: Date.now() + ttl });
+      return data;
+    }
+
+    const { stdout } = await execFileAsync(
+      "python3",
+      [INFO_SCRIPT, symbol, section, JSON.stringify(summary.etfContext)],
+      {
+        timeout: section === "etf-fund-data" ? 18_000 : 24_000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    const data: unknown = JSON.parse(stdout.trim());
+    if (!data || typeof data !== "object" || (data as Record<string, unknown>)["symbol"] !== symbol) {
+      throw new Error("Invalid ETF detail response");
+    }
+    heatMapDetailSectionCache.set(key, { data, expiresAt: Date.now() + ttl });
+    if (heatMapDetailSectionCache.size > 200) {
+      const oldestKey = heatMapDetailSectionCache.keys().next().value;
+      if (oldestKey) heatMapDetailSectionCache.delete(oldestKey);
+    }
+    return data;
+  })();
+  heatMapDetailSectionRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (heatMapDetailSectionRequests.get(key) === request) {
+      heatMapDetailSectionRequests.delete(key);
+    }
   }
 }
 
@@ -728,6 +886,87 @@ router.get("/stocks/heat-map", async (req, res) => {
       error: "HEAT_MAP_FAILED",
       message: "Market data is temporarily unavailable. Try refreshing the map.",
     });
+  }
+});
+
+router.get("/stocks/heat-map/quote/:symbol", async (req, res) => {
+  const normalized = normalizeHeatMapSymbols(req.params["symbol"]);
+  if (normalized.invalid || normalized.symbols.length !== 1) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  const [symbol] = normalized.symbols;
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  try {
+    const data = await fetchHeatMapBatch("custom", [symbol], "1d", null, true, 20_000);
+    const quote = data.quotes.find((item) => item.symbol.toUpperCase() === symbol);
+    if (!quote) {
+      res.status(404).json({ error: "QUOTE_NOT_FOUND", message: "A current heat-map quote is unavailable for this ticker." });
+      return;
+    }
+    res.set("Cache-Control", "private, no-store").json(quote);
+  } catch (error) {
+    respondWithHeatMapProviderError(req, res, error, "This ticker's quote is temporarily unavailable.");
+  }
+});
+
+router.get("/stocks/heat-map/detail/:symbol/summary", async (req, res) => {
+  const normalized = normalizeHeatMapSymbols(req.params["symbol"]);
+  if (normalized.invalid || normalized.symbols.length !== 1) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  const [symbol] = normalized.symbols;
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  try {
+    const result = await fetchHeatMapDetailSummary(symbol);
+    res.set("Cache-Control", "private, max-age=30").json(result.summary);
+  } catch (error) {
+    respondWithHeatMapProviderError(req, res, error, "Market statistics are temporarily unavailable.");
+  }
+});
+
+router.get("/stocks/heat-map/detail/:symbol/etf-fund-data", async (req, res) => {
+  const normalized = normalizeHeatMapSymbols(req.params["symbol"]);
+  if (normalized.invalid || normalized.symbols.length !== 1) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  const [symbol] = normalized.symbols;
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  try {
+    const data = await fetchHeatMapEtfDetailSection(symbol, "etf-fund-data");
+    res.set("Cache-Control", "private, max-age=900").json(data);
+  } catch (error) {
+    respondWithHeatMapProviderError(req, res, error, "ETF holdings data is temporarily unavailable.");
+  }
+});
+
+router.get("/stocks/heat-map/detail/:symbol/etf-history-fit", async (req, res) => {
+  const normalized = normalizeHeatMapSymbols(req.params["symbol"]);
+  if (normalized.invalid || normalized.symbols.length !== 1) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  const [symbol] = normalized.symbols;
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Use one valid ticker symbol." });
+    return;
+  }
+  try {
+    const data = await fetchHeatMapEtfDetailSection(symbol, "etf-history-fit");
+    res.set("Cache-Control", "private, max-age=21600").json(data);
+  } catch (error) {
+    respondWithHeatMapProviderError(req, res, error, "ETF market-history data is temporarily unavailable.");
   }
 });
 

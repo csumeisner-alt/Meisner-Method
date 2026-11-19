@@ -38,6 +38,7 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 import {
   AllocationBar,
   DividendBarChart,
@@ -213,6 +214,7 @@ const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 * 60_000;
 const PAPER_VALUE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60_000;
+const PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS = 60_000;
 
 interface PaperCache {
   accounts: PaperAccount[];
@@ -357,6 +359,7 @@ function defaultAccounts(): PaperAccount[] {
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
+  const paperScroll = useRetainedTabScroll('main-tab:paper');
   const reduceMotion = useReduceMotion();
   const { apiFetch } = useApi();
   const router = useRouter();
@@ -812,13 +815,9 @@ export default function PaperScreen() {
     });
   }
   const didFocusOnceRef = useRef(false);
-  const initRef = useRef<(backgroundRefresh?: boolean) => Promise<void>>(async () => {});
-  const fetchQuotesRef = useRef<(
-    pos: PaperPosition[],
-    accountId: string,
-    evaluateOrders?: boolean,
-    forceRefresh?: boolean,
-  ) => Promise<Record<string, LiveQuote>>>(async () => ({}));
+  const lastDeviceSyncAtRef = useRef(0);
+  const autoQuoteRefreshRef = useRef({ signature: '', refreshedAt: 0 });
+  const initRef = useRef<(backgroundRefresh?: boolean, allowDeviceSync?: boolean) => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (!lightningTradeOfferWindow) return;
@@ -1560,9 +1559,10 @@ export default function PaperScreen() {
   ]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
-  const init = useCallback(async (backgroundRefresh = false) => {
+  const init = useCallback(async (backgroundRefresh = false, allowDeviceSync = true) => {
     setErrorMsg('');
     if (!backgroundRefresh) setLoaded(false);
+    if (allowDeviceSync) lastDeviceSyncAtRef.current = Date.now();
     if (backgroundRefresh) {
       await paperCacheWriteQueue.catch(() => {});
     }
@@ -1684,7 +1684,10 @@ export default function PaperScreen() {
     setErrorMsg('');
     setLoaded(true);
 
-    if (!eventArenaDeviceSyncInFlightRef.current) {
+    if (
+      (allowDeviceSync || initialDirty === 'true')
+      && !eventArenaDeviceSyncInFlightRef.current
+    ) {
       const syncPromise = (async () => {
       try {
         if (!savedDeviceToken) return;
@@ -2412,20 +2415,24 @@ export default function PaperScreen() {
 
   useEffect(() => {
     if (!loaded || !isFocused || !activeId) return;
+    const refreshedAt = Date.now();
+    const previousRefresh = autoQuoteRefreshRef.current;
+    if (
+      previousRefresh.signature === activeQuoteSignature
+      && refreshedAt - previousRefresh.refreshedAt < PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS
+    ) return;
+    autoQuoteRefreshRef.current = { signature: activeQuoteSignature, refreshedAt };
     void fetchQuotes(positionsRef.current, activeIdRef.current)
       .catch(() => setQuoteRefreshError(true));
   }, [activeQuoteSignature, fetchQuotes, isFocused, loaded]);
 
   initRef.current = init;
-  fetchQuotesRef.current = fetchQuotes;
   useFocusEffect(useCallback(() => {
     setIsFocused(true);
     if (didFocusOnceRef.current && loadedRef.current) {
-      void (async () => {
-        await initRef.current(true);
-        if (!loadedRef.current) return;
-        await fetchQuotesRef.current(positionsRef.current, activeIdRef.current, true, true);
-      })().catch(() => setQuoteRefreshError(true));
+      const allowDeviceSync = Date.now() - lastDeviceSyncAtRef.current
+        >= PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS;
+      void initRef.current(true, allowDeviceSync).catch(() => setQuoteRefreshError(true));
     }
     didFocusOnceRef.current = true;
     return () => setIsFocused(false);
@@ -4413,6 +4420,10 @@ export default function PaperScreen() {
 
       {/* Content */}
       <ScrollView
+        testID="paper-content"
+        ref={paperScroll.ref}
+        onScroll={paperScroll.onScroll}
+        scrollEventThrottle={paperScroll.scrollEventThrottle}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}

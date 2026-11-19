@@ -18,7 +18,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -36,7 +36,6 @@ import {
 import {
   getPaperChallengeMilestones,
   getPaperChallengeArchiveChartWidth,
-  getPaperChallengeReminders,
   getPaperChallengeWindow,
   isMountainChampionshipTransferLocked,
   isPaperChallengeConfiguration,
@@ -66,16 +65,15 @@ import {
   getEventArenaParticipantId,
   syncStoredEventArenaDeviceSnapshot,
 } from '@/lib/eventArenaDeviceSync';
-import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { LightningRoundInvitation } from '@/components/LightningRoundInvitation';
 import { EventArenaTransferLockNotice } from '@/components/EventArenaTransferLockNotice';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 
-const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
-const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const EVENT_ARENA_CASH_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const EVENT_ARENA_CASH_REFRESH_INTERVAL_MS = 120_000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 async function syncPairedEventArenaState(): Promise<boolean> {
@@ -178,60 +176,6 @@ async function ensureStoredEventAccount(enrollment: PaperChallengeEnrollment) {
   }));
 }
 
-async function readScheduledIds() {
-  const saved = await AsyncStorage.getItem(NOTIFICATION_ID_KEY);
-  if (!saved) return [];
-  try {
-    const parsed = JSON.parse(saved) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [saved];
-  } catch {
-    return [saved];
-  }
-}
-
-async function syncEventReminderPreference(enabled: boolean) {
-  const installationId = await getInstallationId();
-  const response = await fetch(`${BASE_URL}/api/event-arena/reminder-preference`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Event-Arena-Installation-Id': installationId,
-    },
-    body: JSON.stringify({ enabled }),
-  });
-  if (!response.ok) throw new Error('Event Arena reminder settings could not be saved.');
-}
-
-async function scheduleUpcomingEventReminders() {
-  const Notifications = await import('expo-notifications');
-  const oldIds = await readScheduledIds();
-  await Promise.all(oldIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('paper-event-reminders', {
-      name: 'Paper event reminders',
-      description: 'Reminders when a new paper event starts.',
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
-  const ids: string[] = [];
-  for (const reminder of getPaperChallengeReminders()) {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: reminder.body,
-        data: { type: reminder.kind, eventId: reminder.eventId },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(reminder.scheduledAtMs),
-        ...(Platform.OS === 'android' ? { channelId: 'paper-event-reminders' } : {}),
-      },
-    });
-    ids.push(id);
-  }
-  await AsyncStorage.setItem(NOTIFICATION_ID_KEY, JSON.stringify(ids));
-}
-
 export function EventArenaScreen() {
   const calendarError = getRegularEventCalendarError();
   if (calendarError) return <EventArenaCalendarUnavailable message={calendarError} />;
@@ -271,6 +215,7 @@ function EventArenaScreenContent() {
     orders: [],
     snapshots: [],
   });
+  const [accountDataReady, setAccountDataReady] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, number>>({});
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
@@ -285,7 +230,6 @@ function EventArenaScreenContent() {
   const [cashTransferLockNoticeOpen, setCashTransferLockNoticeOpen] = useState(false);
   const [cashNotificationsLoading, setCashNotificationsLoading] = useState(false);
   const [cashNotificationsError, setCashNotificationsError] = useState('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [withdrawConfirmationOpen, setWithdrawConfirmationOpen] = useState(false);
   const [withdrawError, setWithdrawError] = useState('');
@@ -296,13 +240,29 @@ function EventArenaScreenContent() {
   const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [selectedPastEventId, setSelectedPastEventId] = useState<string | null>(null);
+  const pastListScroll = useRetainedTabScroll(
+    'event-arena:past-list',
+    section === 'past' && !selectedPastEventId,
+  );
+  const pastDetailScroll = useRetainedTabScroll(
+    'event-arena:past-detail',
+    section === 'past' && !!selectedPastEventId,
+  );
+  const eventTradesScroll = useRetainedTabScroll(
+    'event-arena:trades',
+    section === 'trades',
+  );
   const [imageShareEvent, setImageShareEvent] = useState<PaperChallengeSummary | null>(null);
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
   const accountRefreshInFlightRef = useRef(false);
   const transferRefreshInFlightRef = useRef(false);
   const cashNotificationRequestSequenceRef = useRef(0);
+  const lastCashNotificationsRefreshAtRef = useRef(0);
   const [now, setNow] = useState(Date.now());
+  const [isScreenFocused, setIsScreenFocused] = useState(false);
+  const nowRef = useRef(now);
+  nowRef.current = now;
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const enrollment = hasCurrentEnrollment ? store.enrollment : null;
@@ -399,6 +359,7 @@ function EventArenaScreenContent() {
         snapshots,
       };
       setAccountData(nextData);
+      setAccountDataReady(true);
       const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
       const eventPositions = currentEnrollment
         ? nextData.positions.filter((item) => item.accountId === currentEnrollment.accountId && item.shares > 0)
@@ -429,6 +390,7 @@ function EventArenaScreenContent() {
       setAccountError('Event account data could not be refreshed. Your saved trading data is unchanged.');
     } finally {
       accountRefreshInFlightRef.current = false;
+      setAccountDataReady(true);
       setAccountLoading(false);
     }
   }, [currentWindow.id, store.enrollment]);
@@ -447,11 +409,12 @@ function EventArenaScreenContent() {
         currentWindow.eventType,
         currentWindow.id,
         currentWindow.endAtMs,
-        now,
+        nowRef.current,
       ))
       || (transferRefreshInFlightRef.current && !markRead)
     ) return;
     transferRefreshInFlightRef.current = true;
+    lastCashNotificationsRefreshAtRef.current = Date.now();
     const requestSequence = ++cashNotificationRequestSequenceRef.current;
     setCashNotificationsLoading(true);
     setCashNotificationsError('');
@@ -527,7 +490,7 @@ function EventArenaScreenContent() {
         transferRefreshInFlightRef.current = false;
       }
     }
-  }, [currentWindow.endAtMs, currentWindow.eventType, currentWindow.id, currentWindow.phase, now, refreshAccountData, store.enrollment]);
+  }, [currentWindow.endAtMs, currentWindow.eventType, currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
 
   const openCashHistory = (eventId: string) => {
     if (eventId === currentWindow.id && isMountainChampionshipTransferLocked(
@@ -606,19 +569,17 @@ function EventArenaScreenContent() {
 
   useEffect(() => {
     void readStore();
-    void AsyncStorage.getItem(NOTIFICATIONS_KEY)
-      .then(async (value) => {
-        const enabled = value === 'true';
-        setNotificationsEnabled(enabled);
-        if (Platform.OS !== 'web') await syncEventReminderPreference(enabled);
-      })
-      .catch(() => {});
   }, [readStore]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    setIsScreenFocused(true);
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
-  }, []);
+    return () => {
+      clearInterval(timer);
+      setIsScreenFocused(false);
+    };
+  }, []));
 
   useEffect(() => {
     const requestedSection = Array.isArray(params.section) ? params.section[0] : params.section;
@@ -643,11 +604,26 @@ function EventArenaScreenContent() {
   }, [currentWindow.artworkId, currentWindow.endAtMs, currentWindow.id, currentWindow.startAtMs, storeState]);
 
   useEffect(() => {
-    if (storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
-    void refreshCashNotifications(false);
-    const timer = setInterval(() => { void refreshCashNotifications(false); }, 120_000);
-    return () => clearInterval(timer);
-  }, [currentWindow.phase, enrollment?.accountId, refreshCashNotifications, storeState]);
+    if (!isScreenFocused || storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const runRefresh = () => {
+      lastCashNotificationsRefreshAtRef.current = Date.now();
+      void refreshCashNotifications(false);
+    };
+    const remaining = Math.max(
+      0,
+      EVENT_ARENA_CASH_REFRESH_INTERVAL_MS
+        - (Date.now() - lastCashNotificationsRefreshAtRef.current),
+    );
+    const timeout = setTimeout(() => {
+      runRefresh();
+      interval = setInterval(runRefresh, EVENT_ARENA_CASH_REFRESH_INTERVAL_MS);
+    }, remaining);
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [currentWindow.phase, enrollment?.accountId, isScreenFocused, refreshCashNotifications, storeState]);
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener('eventArenaCashReceived', (payload: { eventId?: string; accountId?: string }) => {
@@ -677,19 +653,6 @@ function EventArenaScreenContent() {
     })();
     return () => { cancelled = true; };
   }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment, storeState]);
-
-  useEffect(() => {
-    if (!notificationsEnabled || Platform.OS === 'web') return;
-    let cancelled = false;
-    void (async () => {
-      const Notifications = await import('expo-notifications');
-      const permission = await Notifications.getPermissionsAsync();
-      if (permission.granted && !cancelled) await scheduleUpcomingEventReminders();
-    })().catch(() => {
-      if (!cancelled) Alert.alert('Could not refresh event reminders', 'Try again from Event Arena.');
-    });
-    return () => { cancelled = true; };
-  }, [notificationsEnabled]);
 
   const joinEvent = async (rawAlias: string) => {
     const event = getPaperChallengeWindow(Date.now());
@@ -804,42 +767,6 @@ function EventArenaScreenContent() {
     setStore((current) => ({ ...current, enrollment: nextEnrollment }));
   }, []);
 
-  const setEventNotifications = async (enabled: boolean) => {
-    if (Platform.OS === 'web') {
-      Alert.alert('Mobile notifications only', 'Enable event notifications from the mobile app.');
-      return;
-    }
-    try {
-      const Notifications = await import('expo-notifications');
-      if (!enabled) {
-        await syncEventReminderPreference(false);
-        const ids = await readScheduledIds();
-        await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
-        await AsyncStorage.multiRemove([NOTIFICATIONS_KEY, NOTIFICATION_ID_KEY]);
-        setNotificationsEnabled(false);
-        return;
-      }
-      let permission = await Notifications.getPermissionsAsync();
-      if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
-        return;
-      }
-      const pushReady = await registerEventArenaPushDevice(Platform.OS === 'ios' ? 'ios' : 'android');
-      if (!pushReady) {
-        Alert.alert(
-          'Push reminders unavailable',
-          'This build cannot register remote reminders. Your on-device Event Arena reminders will still work.',
-        );
-      }
-      await syncEventReminderPreference(true);
-      await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
-      setNotificationsEnabled(true);
-    } catch {
-      Alert.alert('Could not update notifications', 'Please try again from Event Arena.');
-    }
-  };
-
   const shareSummary = async (event: PaperChallengeSummary) => {
     const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(', ') : 'No trades';
     const milestones = getPaperChallengeMilestones(event, store.history);
@@ -901,7 +828,14 @@ function EventArenaScreenContent() {
       </View>
     );
     return (
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        testID="event-arena-past-detail-scroll"
+        ref={pastDetailScroll.ref}
+        onScroll={pastDetailScroll.onScroll}
+        scrollEventThrottle={pastDetailScroll.scrollEventThrottle}
+        contentContainerStyle={{ padding: 16, paddingBottom: 30 }}
+        showsVerticalScrollIndicator={false}
+      >
         <TouchableOpacity
           testID="event-arena-past-detail-back"
           accessibilityRole="button"
@@ -1025,7 +959,14 @@ function EventArenaScreenContent() {
   const renderPastEvents = () => selectedPastEvent
     ? renderPastEventDetails(selectedPastEvent)
     : (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      testID="event-arena-past-list-scroll"
+      ref={pastListScroll.ref}
+      onScroll={pastListScroll.onScroll}
+      scrollEventThrottle={pastListScroll.scrollEventThrottle}
+      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={{ padding: 16, borderRadius: 18, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Your event history</Text>
         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 5 }}>
@@ -1243,7 +1184,14 @@ function EventArenaScreenContent() {
     }
 
     return (
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        testID="event-arena-trades-scroll"
+        ref={eventTradesScroll.ref}
+        onScroll={eventTradesScroll.onScroll}
+        scrollEventThrottle={eventTradesScroll.scrollEventThrottle}
+        contentContainerStyle={{ padding: 16, paddingBottom: 30 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={{ padding: 16, borderRadius: 18, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8 }}>ISOLATED EVENT ACCOUNT</Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 5 }}>{store.enrollment.accountName}</Text>
@@ -1330,7 +1278,7 @@ function EventArenaScreenContent() {
         countdown={countdown}
         performance={performance}
         rank={rank}
-        loading={accountLoading || storeState === 'loading'}
+        loading={!accountDataReady || storeState === 'loading'}
         saving={saving}
         onOpenNotifications={() => openCashHistory(currentWindow.id)}
         unreadCashNotifications={cashNotificationsUnread}
@@ -1340,8 +1288,6 @@ function EventArenaScreenContent() {
           currentWindow.endAtMs,
           now,
         )}
-        notificationsEnabled={notificationsEnabled}
-        onNotificationsChange={(value) => { void setEventNotifications(value); }}
         onJoin={() => {
           setJoinAliasDraft('');
           setJoinAliasError('');

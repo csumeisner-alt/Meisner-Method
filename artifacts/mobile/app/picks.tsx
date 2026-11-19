@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
+import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
@@ -74,6 +75,7 @@ const badgeStyles = StyleSheet.create({
 
 export default function PicksScreen() {
   const colors = useColors();
+  const picksScroll = useRetainedTabScroll('main-tab:top-picks');
   const { isActive } = useAmericanMode();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -177,6 +179,10 @@ export default function PicksScreen() {
         </View>
       ) : (
         <ScrollView
+          testID="main-tab-scroll-top-picks"
+          ref={picksScroll.ref}
+          onScroll={picksScroll.onScroll}
+          scrollEventThrottle={picksScroll.scrollEventThrottle}
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
