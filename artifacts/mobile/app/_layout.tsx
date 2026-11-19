@@ -4,6 +4,7 @@ import { AchievementsProvider } from '@/contexts/AchievementsContext';
 import { AchievementsOverlay } from '@/components/AchievementsOverlay';
 import { EventCashReceivedCelebration } from '@/components/EventCashReceivedCelebration';
 import { PaperPortfolioPreloader } from '@/components/PaperPortfolioPreloader';
+import { EventArenaPreloader } from '@/components/EventArenaPreloader';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Platform } from 'react-native';
@@ -116,6 +117,7 @@ export default function RootLayout() {
                 <KeyboardProviderCompat>
                   <AchievementsProvider>
                     <PaperPortfolioPreloader />
+                    <EventArenaPreloader />
                     <RootLayoutNav />
                     <AchievementsOverlay />
                     <EventCashReceivedCelebration />

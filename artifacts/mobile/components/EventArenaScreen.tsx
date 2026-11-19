@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   DeviceEventEmitter,
   ImageBackground,
   Modal,
@@ -57,6 +58,21 @@ import {
   parseAccountValueSnapshots,
   type PaperLot,
 } from '@/lib/paperMath';
+import {
+  getEventArenaPreloadState,
+  eventArenaQuotePrices,
+  mergeEventArenaPreloadQuotes,
+  subscribeEventArenaPreload,
+  refreshEventArenaQuotes,
+} from '@/lib/eventArenaPreload';
+import {
+  getPaperPortfolioPreloadState,
+  mergePaperPreloadQuotes,
+  PAPER_QUOTE_CACHE_KEY,
+  parsePaperQuoteCache,
+  persistPaperPreloadQuotes,
+  requestPaperPreloadQuote,
+} from '@/lib/paperPortfolioPreload';
 import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
 import { getInstallationId } from '@/lib/installation';
 import {
@@ -74,6 +90,7 @@ const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const EVENT_ARENA_CASH_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_ARENA_CASH_REFRESH_INTERVAL_MS = 120_000;
+const EVENT_ARENA_BACKGROUND_REFRESH_INTERVAL_MS = 60_000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 async function syncPairedEventArenaState(): Promise<boolean> {
@@ -205,18 +222,23 @@ function EventArenaScreenContent() {
   const params = useLocalSearchParams<{ section?: string | string[]; eventId?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const initialPreload = getEventArenaPreloadState();
   const [section, setSection] = useState<Section>('competition');
-  const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
-  const [storeState, setStoreState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [accountData, setAccountData] = useState<EventArenaAccountData>({
+  const [store, setStore] = useState<PaperChallengeStore>(() => initialPreload.ready
+    ? initialPreload.store
+    : { enrollment: null, lightningEnrollment: null, history: [] });
+  const [storeState, setStoreState] = useState<'loading' | 'ready' | 'error'>(initialPreload.ready ? 'ready' : 'loading');
+  const [accountData, setAccountData] = useState<EventArenaAccountData>(() => initialPreload.ready
+    ? initialPreload.accountData
+    : {
     accounts: [],
     positions: [],
     transactions: [],
     orders: [],
     snapshots: [],
   });
-  const [accountDataReady, setAccountDataReady] = useState(false);
-  const [quotes, setQuotes] = useState<Record<string, number>>({});
+  const [accountDataReady, setAccountDataReady] = useState(initialPreload.ready);
+  const [quotes, setQuotes] = useState<Record<string, number>>(() => eventArenaQuotePrices(initialPreload.quotes));
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
   const [eventConfigurationError, setEventConfigurationError] = useState('');
@@ -256,6 +278,9 @@ function EventArenaScreenContent() {
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
   const accountRefreshInFlightRef = useRef(false);
+  const storeReadInFlightRef = useRef(false);
+  const storeHasLoadedRef = useRef(initialPreload.ready);
+  const accountDataHasLoadedRef = useRef(initialPreload.ready);
   const transferRefreshInFlightRef = useRef(false);
   const cashNotificationRequestSequenceRef = useRef(0);
   const lastCashNotificationsRefreshAtRef = useRef(0);
@@ -263,6 +288,21 @@ function EventArenaScreenContent() {
   const [isScreenFocused, setIsScreenFocused] = useState(false);
   const nowRef = useRef(now);
   nowRef.current = now;
+
+  useEffect(() => subscribeEventArenaPreload((state) => {
+    if (!state.ready) return;
+    setQuotes((current) => ({ ...current, ...eventArenaQuotePrices(state.quotes) }));
+    if (!storeHasLoadedRef.current) {
+      storeHasLoadedRef.current = true;
+      setStore(state.store);
+      setStoreState('ready');
+    }
+    if (!accountDataHasLoadedRef.current) {
+      accountDataHasLoadedRef.current = true;
+      setAccountData(state.accountData);
+      setAccountDataReady(true);
+    }
+  }), []);
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const enrollment = hasCurrentEnrollment ? store.enrollment : null;
@@ -327,30 +367,51 @@ function EventArenaScreenContent() {
   const selectedPastEvent = store.history.find((event) => event.eventId === selectedPastEventId) ?? null;
 
   const readStore = useCallback(async () => {
-    setStoreState('loading');
+    if (storeReadInFlightRef.current) return;
+    storeReadInFlightRef.current = true;
+    if (!storeHasLoadedRef.current) setStoreState('loading');
     try {
       const loadedStore = await loadPaperChallengeStore({
         getItem: (key) => AsyncStorage.getItem(key),
       });
-      setStore(loadedStore);
+      setStore((current) => JSON.stringify(current) === JSON.stringify(loadedStore)
+        ? current
+        : loadedStore);
+      storeHasLoadedRef.current = true;
       setStoreState('ready');
     } catch {
-      setStoreState('error');
+      if (!storeHasLoadedRef.current) setStoreState('error');
+    } finally {
+      storeReadInFlightRef.current = false;
     }
   }, []);
 
-  const refreshAccountData = useCallback(async () => {
+  const refreshAccountData = useCallback(async (
+    forceQuoteRefresh = false,
+    showRefreshIndicator = false,
+  ) => {
     if (accountRefreshInFlightRef.current) return;
     accountRefreshInFlightRef.current = true;
-    setAccountLoading(true);
+    if (showRefreshIndicator || !accountDataHasLoadedRef.current) setAccountLoading(true);
     setAccountError('');
     try {
-      const [rawCache, rawSnapshots] = await Promise.all([
+      const [rawCache, rawSnapshots, rawQuoteCache] = await Promise.all([
         AsyncStorage.getItem(PAPER_CACHE_KEY),
         AsyncStorage.getItem(PAPER_VALUE_SNAPSHOT_KEY),
+        AsyncStorage.getItem(PAPER_QUOTE_CACHE_KEY),
       ]);
       const cache = rawCache ? JSON.parse(rawCache) as StoredPaperCache : {};
       const snapshots = parseAccountValueSnapshots(rawSnapshots ? JSON.parse(rawSnapshots) : null);
+      const cachedQuotes = parsePaperQuoteCache(rawQuoteCache);
+      mergePaperPreloadQuotes(cachedQuotes);
+      setQuotes((current) => {
+        const next = { ...eventArenaQuotePrices(cachedQuotes), ...current };
+        const currentKeys = Object.keys(current);
+        return currentKeys.length === Object.keys(next).length
+          && currentKeys.every((key) => current[key] === next[key])
+          ? current
+          : next;
+      });
       const nextData: EventArenaAccountData = {
         accounts: Array.isArray(cache.accounts) ? cache.accounts : [],
         positions: Array.isArray(cache.positions) ? cache.positions : [],
@@ -358,34 +419,42 @@ function EventArenaScreenContent() {
         orders: Array.isArray(cache.orders) ? cache.orders : [],
         snapshots,
       };
-      setAccountData(nextData);
+      setAccountData((current) => JSON.stringify(current) === JSON.stringify(nextData)
+        ? current
+        : nextData);
+      accountDataHasLoadedRef.current = true;
       setAccountDataReady(true);
-      const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
-      const eventPositions = currentEnrollment
-        ? nextData.positions.filter((item) => item.accountId === currentEnrollment.accountId && item.shares > 0)
-        : [];
-      const eventOrderSymbols = currentEnrollment
-        ? nextData.orders.filter((item) =>
-          item.accountId === currentEnrollment.accountId && item.status === 'pending',
-        ).map((item) => item.symbol)
-        : [];
+      const enrolledAccountIds = new Set(
+        [store.enrollment?.accountId, store.lightningEnrollment?.accountId]
+          .filter((accountId): accountId is string => !!accountId),
+      );
+      const eventPositions = nextData.positions.filter((item) =>
+        enrolledAccountIds.has(item.accountId) && item.shares > 0,
+      );
+      const eventOrderSymbols = nextData.orders.filter((item) =>
+        enrolledAccountIds.has(item.accountId) && item.status === 'pending',
+      ).map((item) => item.symbol);
       const symbols = [...new Set([
         ...eventPositions.map((item) => item.symbol),
         ...eventOrderSymbols,
       ].map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
-      const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
-        const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
-        if (!response.ok) throw new Error(`Quote unavailable for ${symbol}`);
-        const result = await response.json() as { currentPrice?: unknown };
-        const price = Number(result.currentPrice);
-        if (!Number.isFinite(price) || price <= 0) throw new Error(`Quote unavailable for ${symbol}`);
-        return [symbol, price] as const;
-      }));
-      const nextQuotes: Record<string, number> = {};
-      quoteResults.forEach((result) => {
-        if (result.status === 'fulfilled') nextQuotes[result.value[0]] = result.value[1];
+      const refreshedQuotes = await refreshEventArenaQuotes(
+        symbols,
+        getPaperPortfolioPreloadState().quotes,
+        requestPaperPreloadQuote,
+        forceQuoteRefresh,
+      );
+      mergePaperPreloadQuotes(refreshedQuotes);
+      mergeEventArenaPreloadQuotes(refreshedQuotes);
+      setQuotes((current) => {
+        const next = eventArenaQuotePrices(refreshedQuotes);
+        const currentKeys = Object.keys(current);
+        return currentKeys.length === Object.keys(next).length
+          && currentKeys.every((key) => current[key] === next[key])
+          ? current
+          : next;
       });
-      setQuotes(nextQuotes);
+      void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     } catch {
       setAccountError('Event account data could not be refreshed. Your saved trading data is unchanged.');
     } finally {
@@ -570,6 +639,28 @@ function EventArenaScreenContent() {
   useEffect(() => {
     void readStore();
   }, [readStore]);
+
+  useEffect(() => {
+    if (!isScreenFocused) return;
+    let appIsActive = AppState.currentState === 'active';
+    const refreshInBackground = (forceQuoteRefresh = false) => {
+      if (!appIsActive) return;
+      setNow(Date.now());
+      void readStore();
+      void refreshAccountData(forceQuoteRefresh);
+    };
+    refreshInBackground(true);
+    const interval = setInterval(refreshInBackground, EVENT_ARENA_BACKGROUND_REFRESH_INTERVAL_MS);
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      const resumed = !appIsActive && state === 'active';
+      appIsActive = state === 'active';
+      if (resumed) refreshInBackground(true);
+    });
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [isScreenFocused, readStore, refreshAccountData]);
 
   useFocusEffect(useCallback(() => {
     setIsScreenFocused(true);
@@ -1209,7 +1300,7 @@ function EventArenaScreenContent() {
               accessibilityRole="button"
               accessibilityLabel="Retry loading event account data"
               disabled={accountLoading}
-              onPress={() => { void refreshAccountData(); }}
+              onPress={() => { void refreshAccountData(false, true); }}
               style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 8 }}
             >
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>{accountLoading ? 'RETRYING…' : 'RETRY'}</Text>

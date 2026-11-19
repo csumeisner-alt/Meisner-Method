@@ -10,6 +10,7 @@ import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-na
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -238,6 +239,7 @@ const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 * 60_000;
 const PAPER_VALUE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60_000;
 const PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS = 60_000;
+const PAPER_QUOTE_REFRESH_INTERVAL_MS = 60_000;
 
 async function readPaperCache(): Promise<PaperCache | null> {
   return loadOrCreatePaperCache(AsyncStorage);
@@ -800,6 +802,15 @@ export default function PaperScreen() {
   const tradeEntryCheckInFlightRef = useRef(false);
   const quoteRefreshCountRef = useRef(0);
   const quoteRefreshRunRef = useRef(0);
+  const quoteRefreshPromisesRef = useRef(new Map<string, Promise<Record<string, LiveQuote>>>());
+  const quoteRefreshEvaluateRequestedRef = useRef(new Set<string>());
+  const quoteRefreshIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (quoteRefreshIndicatorTimerRef.current) {
+      clearTimeout(quoteRefreshIndicatorTimerRef.current);
+      quoteRefreshIndicatorTimerRef.current = null;
+    }
+  }, []);
   const didFocusOnceRef = useRef(false);
   const lastDeviceSyncAtRef = useRef(0);
   const autoQuoteRefreshRef = useRef({ signature: '', refreshedAt: 0 });
@@ -2020,56 +2031,84 @@ export default function PaperScreen() {
   }, [saveAll]);
 
   // ── Fetch quotes ──────────────────────────────────────────────────────────
-  const fetchQuotes = useCallback(async (
+  const fetchQuotes = useCallback((
     pos: PaperPosition[],
     accountId: string,
     evaluateOrders = true,
     forceRefresh = false,
   ): Promise<Record<string, LiveQuote>> => {
-    // Fetch quotes for positions of the active account PLUS any pending-order symbols
-    const posSymbols = pos.filter(p => p.accountId === accountId).map(p => p.symbol);
-    const orderSymbols = ordersRef.current
-      .filter(o => o.accountId === accountId && o.status === 'pending')
-      .map(o => o.symbol);
-    const symbols = [...new Set([...posSymbols, ...orderSymbols])];
+    if (evaluateOrders) quoteRefreshEvaluateRequestedRef.current.add(accountId);
+    const inFlight = quoteRefreshPromisesRef.current.get(accountId);
+    if (inFlight) return inFlight;
+
     const refreshRun = ++quoteRefreshRunRef.current;
-    if (symbols.length === 0) {
-      if (refreshRun === quoteRefreshRunRef.current) setQuoteRefreshError(false);
-      await recordAccountValueSnapshot(accountId, {});
-      return {};
-    }
-    quoteRefreshCountRef.current += 1;
-    setLoadingQuotes(true);
-    try {
-      const results = await Promise.allSettled(
-        symbols.map(async sym => {
-          const quote = await requestPaperPreloadQuote(sym, forceRefresh);
-          const shared = mergePaperPreloadQuotes({ [sym]: quote });
-          setQuotes(shared.quotes);
-          return { sym, quote };
-        }),
-      );
-      const next: Record<string, LiveQuote> = {};
-      for (const r of results) {
-        if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
+    const refresh = async () => {
+      // Fetch quotes for positions of the active account PLUS any pending-order symbols.
+      const posSymbols = pos.filter(p => p.accountId === accountId).map(p => p.symbol);
+      const orderSymbols = ordersRef.current
+        .filter(o => o.accountId === accountId && o.status === 'pending')
+        .map(o => o.symbol);
+      const symbols = [...new Set([...posSymbols, ...orderSymbols])];
+      if (symbols.length === 0) {
+        if (refreshRun === quoteRefreshRunRef.current) setQuoteRefreshError(false);
+        await recordAccountValueSnapshot(accountId, {});
+        return {};
       }
-      void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
-      if (refreshRun === quoteRefreshRunRef.current) {
-        setQuoteRefreshError(results.some((result) => result.status === 'rejected'));
+      quoteRefreshCountRef.current += 1;
+      if (!quoteRefreshIndicatorTimerRef.current) {
+        quoteRefreshIndicatorTimerRef.current = setTimeout(() => {
+          quoteRefreshIndicatorTimerRef.current = null;
+          if (quoteRefreshCountRef.current > 0) setLoadingQuotes(true);
+        }, 500);
       }
-      // Evaluate pending orders with the freshly-fetched quotes
-      if (evaluateOrders) evaluatePendingOrders({ ...quotes, ...next });
-      await recordAccountValueSnapshot(accountId, next);
-      return next;
-    } finally {
-      quoteRefreshCountRef.current = Math.max(0, quoteRefreshCountRef.current - 1);
-      setLoadingQuotes(quoteRefreshCountRef.current > 0);
-    }
+      try {
+        const results = await Promise.allSettled(
+          symbols.map(async sym => {
+            const quote = await requestPaperPreloadQuote(sym, forceRefresh);
+            const shared = mergePaperPreloadQuotes({ [sym]: quote });
+            setQuotes(shared.quotes);
+            return { sym, quote };
+          }),
+        );
+        const next: Record<string, LiveQuote> = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
+        }
+        void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
+        if (refreshRun === quoteRefreshRunRef.current) {
+          setQuoteRefreshError(results.some((result) => result.status === 'rejected'));
+        }
+        if (quoteRefreshEvaluateRequestedRef.current.has(accountId)) {
+          evaluatePendingOrders(next);
+        }
+        await recordAccountValueSnapshot(accountId, next);
+        return next;
+      } finally {
+        quoteRefreshEvaluateRequestedRef.current.delete(accountId);
+        quoteRefreshCountRef.current = Math.max(0, quoteRefreshCountRef.current - 1);
+        if (quoteRefreshCountRef.current === 0) {
+          if (quoteRefreshIndicatorTimerRef.current) {
+            clearTimeout(quoteRefreshIndicatorTimerRef.current);
+            quoteRefreshIndicatorTimerRef.current = null;
+          }
+          setLoadingQuotes(false);
+        }
+      }
+    };
+
+    const promise = refresh();
+    quoteRefreshPromisesRef.current.set(accountId, promise);
+    void promise.finally(() => {
+      if (quoteRefreshPromisesRef.current.get(accountId) === promise) {
+        quoteRefreshPromisesRef.current.delete(accountId);
+      }
+    }).catch(() => {});
+    return promise;
   }, [evaluatePendingOrders, recordAccountValueSnapshot]);
 
   // Keep the selector's equity cards current without evaluating orders from
   // accounts that are not active in the trading workspace.
-  const fetchInactiveAccountCardQuotes = useCallback(async () => {
+  const fetchInactiveAccountCardQuotes = useCallback(async (forceRefresh = false) => {
     const inactiveAccounts = accounts.filter((item) => item.id !== activeId);
     const symbols = [...new Set(
       positions
@@ -2083,7 +2122,7 @@ export default function PaperScreen() {
       return;
     }
     const results = await Promise.allSettled(symbols.map(async (symbol) => {
-      const quote = await requestPaperPreloadQuote(symbol);
+      const quote = await requestPaperPreloadQuote(symbol, forceRefresh);
       const shared = mergePaperPreloadQuotes({ [symbol]: quote });
       setQuotes(shared.quotes);
       return [symbol, quote] as const;
@@ -2100,9 +2139,21 @@ export default function PaperScreen() {
 
   useEffect(() => {
     if (!loaded || !isFocused) return;
-    void fetchInactiveAccountCardQuotes();
-    const timer = setInterval(() => void fetchInactiveAccountCardQuotes(), 60_000);
-    return () => clearInterval(timer);
+    let appIsActive = AppState.currentState === 'active';
+    const refresh = (forceRefresh = false) => {
+      if (appIsActive) void fetchInactiveAccountCardQuotes(forceRefresh).catch(() => {});
+    };
+    refresh();
+    const timer = setInterval(() => refresh(), PAPER_QUOTE_REFRESH_INTERVAL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      const resumed = !appIsActive && state === 'active';
+      appIsActive = state === 'active';
+      if (resumed) refresh(true);
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, [fetchInactiveAccountCardQuotes, isFocused, loaded]);
 
   useEffect(() => {
@@ -2441,11 +2492,22 @@ export default function PaperScreen() {
 
   useEffect(() => {
     if (!loaded || !isFocused || !activeId) return;
-    const timer = setInterval(() => {
-      void fetchQuotes(positionsRef.current, activeIdRef.current, false)
+    let appIsActive = AppState.currentState === 'active';
+    const refresh = (forceRefresh = false) => {
+      if (!appIsActive) return;
+      void fetchQuotes(positionsRef.current, activeIdRef.current, false, forceRefresh)
         .catch(() => setQuoteRefreshError(true));
-    }, PAPER_VALUE_SNAPSHOT_INTERVAL_MS);
-    return () => clearInterval(timer);
+    };
+    const timer = setInterval(() => refresh(), PAPER_QUOTE_REFRESH_INTERVAL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      const resumed = !appIsActive && state === 'active';
+      appIsActive = state === 'active';
+      if (resumed) refresh(true);
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, [activeId, fetchQuotes, isFocused, loaded]);
 
   const onRefresh = async () => {
@@ -2462,26 +2524,10 @@ export default function PaperScreen() {
   const refreshOrderQuote = async (symbol: string) => {
     const normalizedSymbol = symbol.trim().toUpperCase();
     if (!normalizedSymbol) throw new Error('Choose a stock before refreshing its quote.');
-    const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(normalizedSymbol)}`);
-    const data = await response.json();
-    if (!response.ok || data.error) {
-      throw new Error(data.message ?? 'The market-data provider could not refresh this quote.');
-    }
-    if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
-      throw new Error('The provider did not return a valid price.');
-    }
-    setQuotes((current) => ({
-      ...current,
-      [normalizedSymbol]: {
-        price: data.currentPrice,
-        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
-        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
-        priceTimestamp: data.priceTimestamp ?? null,
-        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
-        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
-        fetchedAtMs: Date.now(),
-      },
-    }));
+    const quote = await requestPaperPreloadQuote(normalizedSymbol, true);
+    const shared = mergePaperPreloadQuotes({ [normalizedSymbol]: quote });
+    setQuotes(shared.quotes);
+    void persistPaperPreloadQuotes(AsyncStorage, shared.quotes);
   };
 
   // ── Account actions ───────────────────────────────────────────────────────
@@ -2721,8 +2767,27 @@ export default function PaperScreen() {
           }
         }
       }
-      const currentQuote = quotes[sym];
+      let currentQuote: LiveQuote;
+      try {
+        // Account data remains guest-local. Refresh the provider price at submit
+        // time so a cached display quote can never authorize an order.
+        currentQuote = await requestPaperPreloadQuote(sym, true);
+        const shared = mergePaperPreloadQuotes({ [sym]: currentQuote });
+        setQuotes(shared.quotes);
+        void persistPaperPreloadQuotes(AsyncStorage, shared.quotes);
+      } catch {
+        return {
+          status: 'rejected',
+          message: 'A fresh provider quote is unavailable. No order was submitted.',
+        };
+      }
       if (args.orderType === 'market') {
+        if (getOrderQuoteState(currentQuote) !== 'fresh') {
+          return {
+            status: 'rejected',
+            message: 'The provider quote is stale. Refresh it and review the updated price before confirming.',
+          };
+        }
         const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice);
         if (quoteError) return { status: 'rejected', message: quoteError };
       } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {

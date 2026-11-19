@@ -283,14 +283,21 @@ export function publishPaperPortfolioPreload(
 
 export function mergePaperPreloadQuotes(incoming: Record<string, LiveQuote>) {
   const next = { ...sharedState.quotes };
+  let changed = false;
   for (const [rawSymbol, rawQuote] of Object.entries(incoming)) {
     const symbol = rawSymbol.trim().toUpperCase();
     if (!symbol || !isValidQuote(rawQuote)) continue;
     const quote = normalizeQuote(rawQuote);
     const previous = next[symbol];
     if ((previous?.fetchedAtMs ?? 0) > (quote.fetchedAtMs ?? 0)) continue;
+    if (previous && Object.keys(quote).length === Object.keys(previous).length
+      && Object.entries(quote).every(([key, value]) =>
+        previous[key as keyof LiveQuote] === value,
+      )) continue;
     next[symbol] = quote;
+    changed = true;
   }
+  if (!changed) return sharedState;
   sharedState = {
     quotes: next,
     portfolios: sharedState.portfolios.map((portfolio) => {

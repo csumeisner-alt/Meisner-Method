@@ -9,6 +9,7 @@ import {
   preloadPaperPortfolioQuotes,
   publishPaperPortfolioPreload,
   getPaperPortfolioPreloadState,
+  mergePaperPreloadQuotes,
 } from '../paperPortfolioPreload.ts';
 import { loadOrCreatePaperCache, PAPER_CACHE_KEY } from '../paperCache.ts';
 import { INITIAL_BALANCE, type LiveQuote } from '../paperMath.ts';
@@ -159,6 +160,13 @@ test('quote and summary caches reject malformed values but keep valid recent pri
   ));
   assert.equal(summary?.portfolios.length, 1);
   assert.equal(parsePaperPortfolioPreloadCache('{broken'), null);
+});
+
+test('merging an unchanged cached quote preserves the published state reference', () => {
+  publishPaperPortfolioPreload([], { AAA: quote(125) });
+  const state = getPaperPortfolioPreloadState();
+  const merged = mergePaperPreloadQuotes({ AAA: { ...state.quotes.AAA } });
+  assert.equal(merged, state, 'unchanged quote values should not trigger dependent screen updates');
 });
 
 test('first-launch cache creation shares the same three unchanged starting accounts', async () => {
