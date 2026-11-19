@@ -68,7 +68,7 @@
 - [React Native Web image fit checks](rn-web-image-fit-checks.md) — verify `resizeMode` on the visible background-image layer; the hidden accessibility `<img>` does not expose the fit mode.
 - [React Native Web chart hit-testing](react-native-web-chart-hit-testing.md) — `Pressable` may omit local touch coordinates; derive them from page coordinates and the target bounds.
 - [Native image shares with captions](native-image-sharing-caption.md) — Expo Sharing sends native files without text; use a native share API that accepts both file and message.
-- [React Native Web section scrolling](rn-web-section-scrolling.md) — measure target and scroll frame, then use nonanimated `scrollTo` for reliable section jumps.
+- [React Native Web section scrolling](rn-web-section-scrolling.md) — use nonanimated `scrollTo` for jumps and save focused-screen offsets; stable routes alone do not retain scroll position.
 - [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.
 - [Crypto supply history provenance](crypto-supply-history-provenance.md) — disclose provider-defined on-chain supply history and preserve observation gaps; keep it separate from max-supply share.
 - [Commodity quote units and notional](commodity-contract-specs.md) — preserve exchange quote units and convert cent quotes only when computing USD contract notional.

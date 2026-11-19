@@ -116,7 +116,25 @@ import {
   renamePaperAccount,
   resetPaperAccountData,
 } from '@/lib/paperAccountManagement';
-import { createPaperQuoteRequestCache } from '@/lib/paperQuoteRefresh';
+import {
+  PAPER_CACHE_KEY,
+  createDefaultPaperCache,
+  loadOrCreatePaperCache,
+  type StoredPaperCache as PaperCache,
+} from '@/lib/paperCache';
+import {
+  PAPER_PORTFOLIO_PRELOAD_KEY,
+  PAPER_QUOTE_CACHE_KEY,
+  buildPaperPortfolioPreloadSummaries,
+  createPaperPortfolioPreloadCache,
+  getPaperPortfolioPreloadState,
+  mergePaperPreloadQuotes,
+  parsePaperQuoteCache,
+  persistPaperPreloadQuotes,
+  publishPaperPortfolioPreload,
+  requestPaperPreloadQuote,
+  subscribePaperPortfolioPreload,
+} from '@/lib/paperPortfolioPreload';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
@@ -210,40 +228,28 @@ type PaperBuySuggestion = {
 
 // ── Local cache ─────────────────────────────────────────────────────────────
 // Bumped to v2: adds orders, lots, and extended account fields.
-const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 * 60_000;
 const PAPER_VALUE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60_000;
 const PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS = 60_000;
 
-interface PaperCache {
-  accounts: PaperAccount[];
-  positions: PaperPosition[];
-  transactions: PaperTransaction[];
-  orders: PaperOrder[];
-  lots: PaperLot[];
-  activeId: string;
-}
-
 async function readPaperCache(): Promise<PaperCache | null> {
-  try {
-    const raw = await AsyncStorage.getItem(PAPER_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PaperCache;
-    // Ensure new fields exist for caches written before v2 features
-    if (!parsed.orders) parsed.orders = [];
-    if (!parsed.lots) parsed.lots = [];
-    return parsed;
-  } catch { return null; }
+  return loadOrCreatePaperCache(AsyncStorage);
 }
 
 async function writePaperCache(data: PaperCache) {
   // AsyncStorage writes are asynchronous and can complete out of order when
   // an order fill and a quote poll save at nearly the same time. Serialize
   // them so an older snapshot can never overwrite a newer position update.
+  const preloadSummaries = buildPaperPortfolioPreloadSummaries(data);
+  publishPaperPortfolioPreload(preloadSummaries, getPaperPortfolioPreloadState().quotes);
+  const preloadCache = createPaperPortfolioPreloadCache(preloadSummaries);
   paperCacheWriteQueue = paperCacheWriteQueue
     .catch(() => {})
-    .then(() => AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify(data)))
+    .then(async () => {
+      await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify(data));
+      await AsyncStorage.setItem(PAPER_PORTFOLIO_PRELOAD_KEY, JSON.stringify(preloadCache));
+    })
     .catch(() => {});
   await paperCacheWriteQueue;
 }
@@ -347,15 +353,6 @@ function pnlColor(n: number) {
   return n > 0 ? BUY_COLOR : n < 0 ? SELL_COLOR : SILVER;
 }
 
-function defaultAccounts(): PaperAccount[] {
-  const now = new Date().toISOString();
-  return [
-    { id: uid(), name: 'Strategy 1', cash: INITIAL_BALANCE, createdAt: now },
-    { id: uid(), name: 'Strategy 2', cash: INITIAL_BALANCE, createdAt: now },
-    { id: uid(), name: 'Strategy 3', cash: INITIAL_BALANCE, createdAt: now },
-  ];
-}
-
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
@@ -424,10 +421,16 @@ export default function PaperScreen() {
   const challengeBaselineCapturingRef = useRef<string | null>(null);
 
   // Live quotes
-  const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
+  const [quotes, setQuotes] = useState<Record<string, LiveQuote>>(
+    () => getPaperPortfolioPreloadState().quotes,
+  );
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [quoteRefreshError, setQuoteRefreshError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => subscribePaperPortfolioPreload((state) => {
+    setQuotes(state.quotes);
+  }), []);
 
   // UI
   const [activeTab, setActiveTab] = useState<TabId>('positions');
@@ -794,26 +797,6 @@ export default function PaperScreen() {
   const tradeEntryCheckInFlightRef = useRef(false);
   const quoteRefreshCountRef = useRef(0);
   const quoteRefreshRunRef = useRef(0);
-  const quoteRequestCacheRef = useRef<ReturnType<typeof createPaperQuoteRequestCache> | null>(null);
-  if (!quoteRequestCacheRef.current) {
-    quoteRequestCacheRef.current = createPaperQuoteRequestCache(async (symbol) => {
-      const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
-      if (!response.ok) throw new Error(`Quote request failed for ${symbol}`);
-      const data = await response.json();
-      if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
-        throw new Error(`Invalid quote for ${symbol}`);
-      }
-      return {
-        price: data.currentPrice,
-        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
-        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
-        priceTimestamp: data.priceTimestamp ?? null,
-        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
-        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
-        fetchedAtMs: Date.now(),
-      };
-    });
-  }
   const didFocusOnceRef = useRef(false);
   const lastDeviceSyncAtRef = useRef(0);
   const autoQuoteRefreshRef = useRef({ signature: '', refreshedAt: 0 });
@@ -1570,14 +1553,25 @@ export default function PaperScreen() {
 
     // Paper trading is guest-local: load the exact state used by order
     // execution and never replace it with an unauthenticated server response.
-    const [cached, rawSnapshots, storedDeviceToken, rawRevision, storedSourceInstallationId, initialDirty] = await Promise.all([
+    const [
+      cached,
+      rawSnapshots,
+      rawQuotes,
+      storedDeviceToken,
+      rawRevision,
+      storedSourceInstallationId,
+      initialDirty,
+    ] = await Promise.all([
       readPaperCache(),
       AsyncStorage.getItem(PAPER_VALUE_SNAPSHOT_KEY).catch(() => null),
+      AsyncStorage.getItem(PAPER_QUOTE_CACHE_KEY).catch(() => null),
       AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY).catch(() => null),
       AsyncStorage.getItem(EVENT_ARENA_DEVICE_REVISION_KEY).catch(() => '0'),
       AsyncStorage.getItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY).catch(() => null),
       AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null),
     ]);
+    const cachedQuotes = parsePaperQuoteCache(rawQuotes);
+    setQuotes(mergePaperPreloadQuotes(cachedQuotes).quotes);
     let savedSnapshots: PaperAccountValueSnapshot[] | null = null;
     try {
       if (rawSnapshots !== null) {
@@ -1614,7 +1608,7 @@ export default function PaperScreen() {
       setActiveId(cachedActiveId);
     }
     else if (!backgroundRefresh) {
-      const localAccounts = defaultAccounts();
+      const localAccounts = createDefaultPaperCache().accounts;
       const localActiveId = localAccounts[0].id;
       accountsRef.current = localAccounts;
       positionsRef.current = [];
@@ -2046,8 +2040,9 @@ export default function PaperScreen() {
     try {
       const results = await Promise.allSettled(
         symbols.map(async sym => {
-          const quote = await quoteRequestCacheRef.current!(sym, forceRefresh);
-          setQuotes((current) => current[sym] === quote ? current : { ...current, [sym]: quote });
+          const quote = await requestPaperPreloadQuote(sym, forceRefresh);
+          const shared = mergePaperPreloadQuotes({ [sym]: quote });
+          setQuotes(shared.quotes);
           return { sym, quote };
         }),
       );
@@ -2055,6 +2050,7 @@ export default function PaperScreen() {
       for (const r of results) {
         if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
       }
+      void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
       if (refreshRun === quoteRefreshRunRef.current) {
         setQuoteRefreshError(results.some((result) => result.status === 'rejected'));
       }
@@ -2084,10 +2080,12 @@ export default function PaperScreen() {
       return;
     }
     const results = await Promise.allSettled(symbols.map(async (symbol) => {
-      const quote = await quoteRequestCacheRef.current!(symbol);
-      setQuotes((current) => current[symbol] === quote ? current : { ...current, [symbol]: quote });
+      const quote = await requestPaperPreloadQuote(symbol);
+      const shared = mergePaperPreloadQuotes({ [symbol]: quote });
+      setQuotes(shared.quotes);
       return [symbol, quote] as const;
     }));
+    void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     const next: Record<string, LiveQuote> = {};
     for (const result of results) {
       if (result.status === 'fulfilled') next[result.value[0]] = result.value[1];

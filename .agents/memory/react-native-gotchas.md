@@ -39,3 +39,15 @@ real/EAS builds. Also expo-audio's `setAudioModeAsync` uses `playsInSilentMode` 
 `allowsRecording` (NOT the expo-av `...IOS` names).
 **How to apply:** remote-audio playback only works in the EAS build; Expo Go always
 falls back to on-device speech.
+
+## Keep explicit refs off a React Native Web `GestureDetector` child
+In React Native Web with React 19, `GestureDetector`'s web wrapper inspects its
+immediate child with RNGH's `isRNSVGNode`. Giving that child an explicit `ref`
+causes the helper to read the deprecated `element.ref` property and log a React
+error. Keep the direct child ref-free (for example, wrap a scroll view in a
+`View`) and put the imperative scroll ref on the nested scroll view.
+**Why:** Adding a retained-scroll ref to the Analyze screen's direct gesture child
+reproduced the React 19 error in the browser preview.
+**How to apply:** When a gesture-wrapped view needs an imperative ref, attach the
+gesture to a plain wrapper and keep the ref on an inner view; verify the browser
+console after the change.

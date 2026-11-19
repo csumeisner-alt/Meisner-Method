@@ -128,8 +128,8 @@ test("Event Arena does not refetch cash history on its one-second clock", () => 
 
 test("Paper Trading refreshes quotes incrementally without replacing failed values", () => {
   assert.match(screen, /const refreshRun = \+\+quoteRefreshRunRef\.current;[\s\S]*?if \(symbols\.length === 0\)/);
-  assert.match(screen, /quoteRequestCacheRef\.current!\(sym, forceRefresh\)/);
-  assert.match(screen, /setQuotes\(\(current\) => current\[sym\] === quote \? current : \{ \.\.\.current, \[sym\]: quote \}\)/);
+  assert.match(screen, /requestPaperPreloadQuote\(sym, forceRefresh\)/);
+  assert.match(screen, /const shared = mergePaperPreloadQuotes\(\{ \[sym\]: quote \}\);[\s\S]*?setQuotes\(shared\.quotes\)/);
   assert.match(screen, /setQuoteRefreshError\(results\.some\(\(result\) => result\.status === 'rejected'\)\)/);
   assert.match(screen, /const myPositions = positions\.filter\(p => p\.accountId === activeId\)/);
   assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);

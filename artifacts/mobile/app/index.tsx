@@ -813,25 +813,26 @@ export default function HomeScreen() {
       </View>
 
       <GestureDetector gesture={scrollGesture}>
-        <ScrollView
-          testID="main-tab-scroll-analyze"
-          ref={analyzeScroll.ref}
-          onScroll={analyzeScroll.onScroll}
-          scrollEventThrottle={analyzeScroll.scrollEventThrottle}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: botPad + 24 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={scrollEnabled}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.mutedForeground}
-              colors={[colors.primary]}
-            />
-          }
-        >
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            testID="main-tab-scroll-analyze"
+            ref={analyzeScroll.ref}
+            onScroll={analyzeScroll.onScroll}
+            scrollEventThrottle={analyzeScroll.scrollEventThrottle}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: botPad + 24 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={scrollEnabled}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.mutedForeground}
+                colors={[colors.primary]}
+              />
+            }
+          >
         {/* Recent searches */}
         {recent.length > 0 && (
           <View style={styles.section}>
@@ -1025,7 +1026,8 @@ export default function HomeScreen() {
         <Text style={[styles.disclaimer, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
           For informational purposes only. Not financial advice.
         </Text>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </GestureDetector>
       <BottomTabBar />
 
