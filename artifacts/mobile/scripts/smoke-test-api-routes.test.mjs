@@ -19,9 +19,14 @@ test("builds expected mobile GET routes from OpenAPI and mobile-only paths", () 
   const paths = getOpenApiGetPaths(openApiSource);
   assert.ok(paths.includes("/healthz"));
   assert.ok(paths.includes("/stocks/info/{symbol}"));
-  assert.ok(paths.includes("/stocks/heat-map/detail/{symbol}/summary"));
-  assert.ok(paths.includes("/stocks/heat-map/detail/{symbol}/etf-fund-data"));
-  assert.ok(paths.includes("/stocks/heat-map/detail/{symbol}/etf-history-fit"));
+  for (const path of [
+    "/stocks/heat-map/quote/{symbol}",
+    "/stocks/heat-map/detail/{symbol}/summary",
+    "/stocks/heat-map/detail/{symbol}/etf-fund-data",
+    "/stocks/heat-map/detail/{symbol}/etf-history-fit",
+  ]) {
+    assert.ok(paths.includes(path), `missing heat-map preflight route: ${path}`);
+  }
   assert.ok(!paths.includes("/stocks/analyze"));
   assert.ok(!paths.includes("/stocks/quotes"));
   const expectedMobilePaths = getExpectedMobileGetPaths(openApiSource);
