@@ -21,9 +21,15 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
+import {
+  markInterruptedInteractionIfNeeded,
+  recordDiagnosticError,
+  recordDiagnosticInteraction,
+  setDiagnosticRoute,
+} from '@/lib/crashDiagnosticsRuntime';
 
 // Set API base URL for Expo (needs absolute URL since it runs outside the web proxy)
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
@@ -38,36 +44,64 @@ const queryClient = new QueryClient({
 });
 
 function RootLayoutNav() {
+  const segments = useSegments();
+
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    setDiagnosticRoute(segments);
+  }, [segments]);
+
+  useEffect(() => {
+    void markInterruptedInteractionIfNeeded();
+    const globalWithErrorUtils = globalThis as typeof globalThis & {
+      ErrorUtils?: {
+        getGlobalHandler?: () => (error: Error, isFatal?: boolean) => void;
+        setGlobalHandler?: (handler: (error: Error, isFatal?: boolean) => void) => void;
+      };
+    };
+    const errorUtils = globalWithErrorUtils.ErrorUtils;
+    const previousHandler = errorUtils?.getGlobalHandler?.();
+    const diagnosticHandler = (error: Error, isFatal?: boolean) => {
+      if (isFatal) recordDiagnosticError('fatal_js_error', error);
+      previousHandler?.(error, isFatal);
+    };
+    errorUtils?.setGlobalHandler?.(diagnosticHandler);
+
     let active = true;
     let stopHandlingResponses: (() => void) | undefined;
 
-    void import('expo-notifications').then(async (Notifications) => {
-      if (!active) return;
-      stopHandlingResponses = installLightningRoundNotificationResponseHandler(
-        Notifications,
-        (eventId) => {
-          router.push({
-            pathname: '/lightning-round',
-            params: {
-              tab: 'past',
-              ...(eventId ? { eventId } : {}),
-            },
-          });
-        },
-      );
-    }).catch(() => {});
+    if (Platform.OS !== 'web') {
+      void import('expo-notifications').then(async (Notifications) => {
+        if (!active) return;
+        stopHandlingResponses = installLightningRoundNotificationResponseHandler(
+          Notifications,
+          (eventId) => {
+            router.push({
+              pathname: '/lightning-round',
+              params: {
+                tab: 'past',
+                ...(eventId ? { eventId } : {}),
+              },
+            });
+          },
+        );
+      }).catch(() => {});
+    }
 
     return () => {
       active = false;
       stopHandlingResponses?.();
+      if (previousHandler) errorUtils?.setGlobalHandler?.(previousHandler);
     };
   }, []);
 
   return (
       <MainTabSwipeBoundary>
         <Stack
+          screenListeners={{
+            transitionStart: () => recordDiagnosticInteraction('navigation_transition', 'started'),
+            transitionEnd: () => recordDiagnosticInteraction('navigation_transition', 'completed'),
+            gestureCancel: () => recordDiagnosticInteraction('navigation_transition', 'cancelled'),
+          }}
           screenOptions={({ route }) => {
             const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
             return {

@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +58,7 @@ import {
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDiagnosticExport } from '@/lib/crashDiagnosticsRuntime';
 
 type MarketSessionProxyQuote = {
   marketSession: string;
@@ -557,6 +559,17 @@ export default function HomeScreen() {
   const selectedAlert = alertModalAlertId
     ? watchlist.alerts.find((alert) => alert.id === alertModalAlertId) ?? null
     : null;
+
+  const exportDiagnostics = useCallback(async () => {
+    try {
+      await Share.share({
+        title: 'Meisner Method diagnostics',
+        message: await getDiagnosticExport(),
+      });
+    } catch {
+      // Sharing is user-initiated and diagnostics remain on-device otherwise.
+    }
+  }, []);
 
   return (
     <AmericanSteelBackground>
@@ -1073,6 +1086,7 @@ export default function HomeScreen() {
         onEditAlert={openManagedAlertModal}
         onSetAlertPaused={(id, paused) => watchlist.setAlertPaused(id, paused)}
         onDeleteAlert={(id) => watchlist.deleteAlert(id)}
+        onExportDiagnostics={() => { void exportDiagnostics(); }}
       />
     </AmericanSteelBackground>
   );

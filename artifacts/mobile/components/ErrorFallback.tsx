@@ -3,6 +3,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { reloadAppAsync } from 'expo';
+import { getDiagnosticExport } from '@/lib/crashDiagnosticsRuntime';
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -30,6 +32,17 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
     } catch (restartError) {
       console.error('Failed to restart app:', restartError);
       resetError();
+    }
+  };
+
+  const handleExportDiagnostics = async () => {
+    try {
+      await Share.share({
+        title: 'Meisner Method diagnostics',
+        message: await getDiagnosticExport(),
+      });
+    } catch {
+      // The report stays on-device if sharing is unavailable.
     }
   };
 
@@ -93,6 +106,23 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             Try Again
           </Text>
         </Pressable>
+        <Pressable
+          onPress={() => { void handleExportDiagnostics(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Export privacy-safe diagnostics"
+          testID="export-crash-diagnostics"
+          style={({ pressed }) => [
+            styles.exportButton,
+            { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Text style={[styles.exportButtonText, { color: colors.foreground }]}>
+            Export diagnostics
+          </Text>
+        </Pressable>
+        <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
+          Saved only on this device. Export shares app and navigation diagnostics, not financial data.
+        </Text>
       </View>
 
       {__DEV__ ? (
@@ -223,6 +253,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     fontSize: 16,
+  },
+  exportButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    minWidth: 200,
+    borderWidth: 1,
+  },
+  exportButtonText: {
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  privacyNote: {
+    maxWidth: 360,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   modalOverlay: {
     flex: 1,

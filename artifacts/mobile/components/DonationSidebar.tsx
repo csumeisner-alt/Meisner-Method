@@ -64,6 +64,7 @@ interface Props {
   onEditAlert: (alert: AlertData) => void;
   onSetAlertPaused: (id: string, paused: boolean) => Promise<void>;
   onDeleteAlert: (id: string) => Promise<void>;
+  onExportDiagnostics: () => void;
 }
 
 const ALERTS_COLLAPSED_KEY = '@stocksense/alerts_collapsed';
@@ -389,6 +390,7 @@ export function DonationSidebar({
   onEditAlert,
   onSetAlertPaused,
   onDeleteAlert,
+  onExportDiagnostics,
 }: Props) {
   const colors = useColors();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -636,6 +638,44 @@ export function DonationSidebar({
               onSetAlertPaused={onSetAlertPaused}
               onDeleteAlert={onDeleteAlert}
             />
+            <View
+              testID="settings-diagnostics"
+              style={{
+                marginBottom: 20,
+                padding: 14,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+              }}
+            >
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>
+                App diagnostics
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 5 }}>
+                Crash and navigation details stay on this device. Reports exclude financial and account data; nothing is sent automatically.
+              </Text>
+              <TouchableOpacity
+                testID="settings-export-diagnostics"
+                accessibilityRole="button"
+                accessibilityLabel="Export app diagnostics"
+                onPress={onExportDiagnostics}
+                style={{
+                  minHeight: 44,
+                  marginTop: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                  Export diagnostics
+                </Text>
+              </TouchableOpacity>
+            </View>
             {DONATION_FEATURE_ENABLED && (
               <>
                 {/* Archived donation flow — re-enable only if donations return. */}
