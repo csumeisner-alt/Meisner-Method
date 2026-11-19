@@ -38,6 +38,7 @@ async function buildFixture() {
     ["@/components/PaperEventShareCard", join(fixtureDir, "mocks/components.tsx")],
     ["@/components/PaperChallengeMilestoneBadges", join(fixtureDir, "mocks/components.tsx")],
     ["@/components/PaperCharts", join(fixtureDir, "mocks/components.tsx")],
+    ["@/components/EventArenaReminderControls", join(fixtureDir, "mocks/components.tsx")],
     ["@/lib/installation", join(fixtureDir, "mocks/installation.ts")],
   ]);
   const result = await build({
@@ -379,6 +380,9 @@ test("signed-in Lightning Round reads mixed device history and opens saved archi
 
     await clickTestID(browser, "fixture-open-event-history");
     await clickTestID(browser, "settings-events-button");
+    await waitFor(browser,
+      `!!document.querySelector(${JSON.stringify(selector("open-paper-event-archive"))})`,
+      "The Event Arena history modal did not finish opening.");
     await clickTestID(browser, "open-paper-event-archive");
     await waitFor(browser,
       `!!document.querySelector(${JSON.stringify(selector("paper-event-lightning-season-summary"))})`,

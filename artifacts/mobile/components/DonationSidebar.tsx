@@ -9,7 +9,6 @@ import {
   TextInput,
   ScrollView,
   Animated,
-  Dimensions,
   useWindowDimensions,
   Linking,
   Platform,
@@ -29,6 +28,7 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { Confetti } from '@/components/Confetti';
+import { getSettingsPanelWidth, getSettingsScrollBottomPadding } from '@/lib/settingsPanelLayout';
 import {
   useAmericanMode,
   AMERICAN_MODE_THRESHOLD,
@@ -48,10 +48,6 @@ const DONATION_FEATURE_ENABLED = false;
 const PRESETS = [2.4, 5, 10];
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const PANEL_WIDTH = Math.min(360, SCREEN_WIDTH * 0.88);
 
 // How long the celebratory thank-you lingers before gently fading out.
 const CELEBRATION_MS = 3200;
@@ -395,6 +391,8 @@ export function DonationSidebar({
   onDeleteAlert,
 }: Props) {
   const colors = useColors();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const panelWidth = getSettingsPanelWidth(screenWidth);
   const { earnedIds, openGallery } = useAchievements();
   const insets = useSafeAreaInsets();
   const {
@@ -582,7 +580,7 @@ export function DonationSidebar({
   });
   const translateX = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [PANEL_WIDTH, 0],
+    outputRange: [panelWidth, 0],
   });
 
   // Keep the panel itself below the system status bar. The header retains the
@@ -590,7 +588,7 @@ export function DonationSidebar({
   // area remains outside the Settings surface.
   const panelTopInset = Platform.OS === 'web' ? 0 : insets.top;
   const topPad = Platform.OS === 'web' ? 24 : 12;
-  const botPad = (Platform.OS === 'web' ? 24 : insets.bottom) + 20;
+  const bottomScrollPadding = getSettingsScrollBottomPadding(insets.bottom, Platform.OS === 'web');
 
   return (
     <Modal transparent visible={rendered} onRequestClose={onClose} animationType="none">
@@ -600,12 +598,13 @@ export function DonationSidebar({
         </Animated.View>
 
         <Animated.View
+          testID="settings-panel"
           style={[
             styles.panel,
             {
-              width: PANEL_WIDTH,
+              width: panelWidth,
               marginTop: panelTopInset,
-              height: Platform.OS === 'web' ? '100%' : SCREEN_HEIGHT - panelTopInset,
+              height: Platform.OS === 'web' ? '100%' : screenHeight - panelTopInset,
               backgroundColor: colors.background,
               borderLeftColor: colors.border,
               transform: [{ translateX }],
@@ -623,8 +622,9 @@ export function DonationSidebar({
           </View>
 
           <ScrollView
+            testID="settings-scroll-view"
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 20, paddingBottom: botPad }}
+            contentContainerStyle={{ padding: 20, paddingBottom: bottomScrollPadding }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -900,7 +900,7 @@ export function DonationSidebar({
               </View>
               <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View testID="settings-bottom-divider" style={[styles.divider, { backgroundColor: colors.border }]} />
 
           </ScrollView>
 
@@ -918,7 +918,7 @@ export function DonationSidebar({
               pointerEvents="none"
               style={[styles.celebOverlay, { opacity: celebAnim }]}
             >
-              <Confetti width={PANEL_WIDTH} height={SCREEN_HEIGHT} />
+              <Confetti width={panelWidth} height={screenHeight} />
               <Animated.View
                 style={[
                   styles.celebCard,

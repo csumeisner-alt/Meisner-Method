@@ -88,7 +88,7 @@ interface Props {
 interface WatchRowProps {
   item: WatchlistItem;
   index: number;
-  dragGesture: GestureType;
+  dragGesture: ReturnType<typeof Gesture.Pan> | ReturnType<typeof Gesture.Simultaneous>;
   draggedIdx: SharedValue<number>;
   hoverIdx: SharedValue<number>;
   quote?: QuoteData;

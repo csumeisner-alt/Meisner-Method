@@ -21,6 +21,10 @@ export function PaperChallengeMilestoneBadges() {
   return <View />;
 }
 
+export function EventArenaReminderControls() {
+  return <View testID="test-event-arena-reminder-controls" />;
+}
+
 export function PortfolioLineChart() {
   return <View testID="test-portfolio-line-chart" />;
 }

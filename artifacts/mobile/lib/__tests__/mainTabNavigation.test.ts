@@ -42,7 +42,7 @@ test('gesture direction requires horizontal intent, distance, and a dead zone', 
   assert.equal(getCommittedMainTabSwipeDirection(70, 8, 0.1), 'right');
 });
 
-test('bottom taps and swipes retain each main tab and preserve direction', () => {
+test('bottom taps and swipes preserve Paper and route direction', () => {
   assert.deepEqual(getMainTabNavigationPlan('/paper', '/event-arena'), {
     action: 'push',
     href: { pathname: '/event-arena', params: { transition: 'right' } },
@@ -73,7 +73,13 @@ test('repeated switching across all five tabs keeps one route instance per tab',
 
   for (const target of sequence) {
     const plan = getMainTabNavigationPlan(current, target as (typeof MAIN_TAB_ROUTES)[number]);
-    assert.equal(plan?.action, 'push');
+    assert.ok(plan);
+    assert.equal(plan.href.pathname, target);
+    const expectedTransition = MAIN_TAB_ROUTES.indexOf(target as (typeof MAIN_TAB_ROUTES)[number])
+      < MAIN_TAB_ROUTES.indexOf(current as (typeof MAIN_TAB_ROUTES)[number])
+      ? 'left'
+      : 'right';
+    assert.equal(plan.href.params.transition, expectedTransition);
     const existingIndex = stack.indexOf(target);
     if (existingIndex >= 0) stack.splice(existingIndex, 1);
     stack.push(target);

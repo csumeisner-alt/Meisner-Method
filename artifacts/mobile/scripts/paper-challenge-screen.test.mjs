@@ -97,7 +97,9 @@ test("main tabs keep their mounted screens and Paper Trading's selected account"
   assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "push");
   assert.equal(getPaperTabNavigationAction("/", "/picks"), "push");
 
+  assert.match(bottomTabBar, /const plan = getMainTabNavigationPlan\(pathname, path\)/);
   assert.match(bottomTabBar, /case 'push':\s*router\.push\(plan\.href\)/);
+  assert.match(bottomTabBar, /case 'navigate':\s*router\.navigate\(plan\.href\)/);
   for (const route of ["index", "picks", "paper", "portfolio", "event-arena"]) {
     assert.ok(mobileRootLayout.includes(`<Stack.Screen name="${route}" dangerouslySingular`));
   }
