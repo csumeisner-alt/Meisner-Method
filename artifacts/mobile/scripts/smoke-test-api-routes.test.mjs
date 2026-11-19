@@ -15,7 +15,7 @@ const openApiSource = await readFile(
   "utf8",
 );
 
-test("builds expected mobile GET routes from OpenAPI and mobile-only paths", () => {
+test("builds expected mobile GET routes entirely from OpenAPI", () => {
   const paths = getOpenApiGetPaths(openApiSource);
   assert.ok(paths.includes("/healthz"));
   assert.ok(paths.includes("/stocks/info/{symbol}"));
@@ -29,11 +29,16 @@ test("builds expected mobile GET routes from OpenAPI and mobile-only paths", () 
   }
   assert.ok(!paths.includes("/stocks/analyze"));
   assert.ok(!paths.includes("/stocks/quotes"));
+  for (const path of [
+    "/stocks/chart/{symbol}",
+    "/stocks/quote/{symbol}",
+    "/stocks/top-picks",
+    "/stocks/trending",
+  ]) {
+    assert.ok(paths.includes(path), `missing documented mobile route: ${path}`);
+  }
   const expectedMobilePaths = getExpectedMobileGetPaths(openApiSource);
-  assert.ok(expectedMobilePaths.includes("/stocks/chart/{symbol}"));
-  assert.ok(expectedMobilePaths.includes("/stocks/quote/{symbol}"));
-  assert.ok(expectedMobilePaths.includes("/stocks/top-picks"));
-  assert.ok(expectedMobilePaths.includes("/stocks/trending"));
+  assert.deepEqual(expectedMobilePaths, paths);
   assert.equal(expectedMobilePaths.length, 18);
 });
 

@@ -43,7 +43,9 @@ import type {
   GetEventArenaLeaderboardWeeks200,
   GetEventArenaReminderPreference200,
   GetMarketHeatMapParams,
-  GetStockChart200,
+  GetStockChart400,
+  GetStockChartByQuery400,
+  GetStockChartByQueryParams,
   HealthStatus,
   HeatMapEtfFundDataResponse,
   HeatMapEtfHistoryFitResponse,
@@ -53,6 +55,7 @@ import type {
   LightningRoundPreparationResponse,
   MarketInstrumentInfo,
   MarketPulseResponse,
+  PortfolioQuote,
   PortfolioQuoteBatch,
   PortfolioQuoteBatchRequest,
   RedeemDeviceTransfer200,
@@ -63,9 +66,12 @@ import type {
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   SetEventArenaReminderPreference200,
+  StockChartResponse,
   StockSymbolSuggestion,
+  StockTopPick,
   SubmitEventArenaScore200,
   SyncEventArenaDeviceState200,
+  TrendingStock,
   ValidateHeatMapSymbolRequest
 } from './api.schemas';
 
@@ -1591,9 +1597,9 @@ export const getGetStockChartUrl = (symbol: string,
  */
 export const getStockChart = async (symbol: string,
     period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
-    interval: '15m' | '1h' | '1d' | '1wk', options?: RequestInit): Promise<GetStockChart200> => {
+    interval: '15m' | '1h' | '1d' | '1wk', options?: RequestInit): Promise<StockChartResponse> => {
 
-  return customFetch<GetStockChart200>(getGetStockChartUrl(symbol,period,interval),
+  return customFetch<StockChartResponse>(getGetStockChartUrl(symbol,period,interval),
   {
     ...options,
     method: 'GET'
@@ -1615,7 +1621,7 @@ export const getGetStockChartQueryKey = (symbol: string,
     }
 
 
-export const getGetStockChartQueryOptions = <TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<void>>(symbol: string,
+export const getGetStockChartQueryOptions = <TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<GetStockChart400 | AnalysisError>>(symbol: string,
     period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
     interval: '15m' | '1h' | '1d' | '1wk', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
@@ -1636,14 +1642,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetStockChartQueryResult = NonNullable<Awaited<ReturnType<typeof getStockChart>>>
-export type GetStockChartQueryError = ErrorType<void>
+export type GetStockChartQueryError = ErrorType<GetStockChart400 | AnalysisError>
 
 
 /**
  * @summary Retrieve provider chart history and adjusted-return data
  */
 
-export function useGetStockChart<TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<void>>(
+export function useGetStockChart<TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<GetStockChart400 | AnalysisError>>(
  symbol: string,
     period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
     interval: '15m' | '1h' | '1d' | '1wk', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
@@ -1651,6 +1657,96 @@ export function useGetStockChart<TData = Awaited<ReturnType<typeof getStockChart
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStockChartQueryOptions(symbol,period,interval,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStockChartByQueryUrl = (symbol: string,
+    params?: GetStockChartByQueryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/chart/${symbol}?${stringifiedParams}` : `/api/stocks/chart/${symbol}`
+}
+
+/**
+ * Backwards-compatible chart route. Omitted period and interval default to 3mo and 1d.
+ * @summary Retrieve stock chart history using query parameters
+ */
+export const getStockChartByQuery = async (symbol: string,
+    params?: GetStockChartByQueryParams, options?: RequestInit): Promise<StockChartResponse> => {
+
+  return customFetch<StockChartResponse>(getGetStockChartByQueryUrl(symbol,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockChartByQueryQueryKey = (symbol: string,
+    params?: GetStockChartByQueryParams,) => {
+    return [
+    `/api/stocks/chart/${symbol}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetStockChartByQueryQueryOptions = <TData = Awaited<ReturnType<typeof getStockChartByQuery>>, TError = ErrorType<GetStockChartByQuery400 | AnalysisError>>(symbol: string,
+    params?: GetStockChartByQueryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChartByQuery>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockChartByQueryQueryKey(symbol,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockChartByQuery>>> = ({ signal }) => getStockChartByQuery(symbol,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockChartByQuery>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockChartByQueryQueryResult = NonNullable<Awaited<ReturnType<typeof getStockChartByQuery>>>
+export type GetStockChartByQueryQueryError = ErrorType<GetStockChartByQuery400 | AnalysisError>
+
+
+/**
+ * @summary Retrieve stock chart history using query parameters
+ */
+
+export function useGetStockChartByQuery<TData = Awaited<ReturnType<typeof getStockChartByQuery>>, TError = ErrorType<GetStockChartByQuery400 | AnalysisError>>(
+ symbol: string,
+    params?: GetStockChartByQueryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChartByQuery>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockChartByQueryQueryOptions(symbol,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1819,6 +1915,162 @@ export function useSearchStockSymbols<TData = Awaited<ReturnType<typeof searchSt
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchStockSymbolsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStockTopPicksUrl = () => {
+
+
+
+
+  return `/api/stocks/top-picks`
+}
+
+/**
+ * Returns up to 12 stocks with at least 5 percent calculated upside and a composite score of at least 55, ordered by risk-adjusted score.
+ * @summary Get ranked stock picks
+ */
+export const getStockTopPicks = async ( options?: RequestInit): Promise<StockTopPick[]> => {
+
+  return customFetch<StockTopPick[]>(getGetStockTopPicksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockTopPicksQueryKey = () => {
+    return [
+    `/api/stocks/top-picks`
+    ] as const;
+    }
+
+
+export const getGetStockTopPicksQueryOptions = <TData = Awaited<ReturnType<typeof getStockTopPicks>>, TError = ErrorType<AnalysisError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockTopPicks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockTopPicksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockTopPicks>>> = ({ signal }) => getStockTopPicks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockTopPicks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockTopPicksQueryResult = NonNullable<Awaited<ReturnType<typeof getStockTopPicks>>>
+export type GetStockTopPicksQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get ranked stock picks
+ */
+
+export function useGetStockTopPicks<TData = Awaited<ReturnType<typeof getStockTopPicks>>, TError = ErrorType<AnalysisError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockTopPicks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockTopPicksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTrendingStocksUrl = () => {
+
+
+
+
+  return `/api/stocks/trending`
+}
+
+/**
+ * Returns up to 10 most-active stocks, with a watchlist fallback when the provider screener is unavailable.
+ * @summary Get trending stocks
+ */
+export const getTrendingStocks = async ( options?: RequestInit): Promise<TrendingStock[]> => {
+
+  return customFetch<TrendingStock[]>(getGetTrendingStocksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTrendingStocksQueryKey = () => {
+    return [
+    `/api/stocks/trending`
+    ] as const;
+    }
+
+
+export const getGetTrendingStocksQueryOptions = <TData = Awaited<ReturnType<typeof getTrendingStocks>>, TError = ErrorType<AnalysisError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrendingStocks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTrendingStocksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrendingStocks>>> = ({ signal }) => getTrendingStocks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrendingStocks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTrendingStocksQueryResult = NonNullable<Awaited<ReturnType<typeof getTrendingStocks>>>
+export type GetTrendingStocksQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get trending stocks
+ */
+
+export function useGetTrendingStocks<TData = Awaited<ReturnType<typeof getTrendingStocks>>, TError = ErrorType<AnalysisError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrendingStocks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTrendingStocksQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -2213,6 +2465,84 @@ export const useGetPortfolioQuotes = <TError = ErrorType<AnalysisError>,
       > => {
       return useMutation(getGetPortfolioQuotesMutationOptions(options));
     }
+
+export const getGetStockQuoteUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/quote/${symbol}`
+}
+
+/**
+ * Returns the latest available market-session price and change data for one ticker.
+ * @summary Get a current stock quote
+ */
+export const getStockQuote = async (symbol: string, options?: RequestInit): Promise<PortfolioQuote> => {
+
+  return customFetch<PortfolioQuote>(getGetStockQuoteUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockQuoteQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/quote/${symbol}`
+    ] as const;
+    }
+
+
+export const getGetStockQuoteQueryOptions = <TData = Awaited<ReturnType<typeof getStockQuote>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockQuoteQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockQuote>>> = ({ signal }) => getStockQuote(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockQuote>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockQuoteQueryResult = NonNullable<Awaited<ReturnType<typeof getStockQuote>>>
+export type GetStockQuoteQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get a current stock quote
+ */
+
+export function useGetStockQuote<TData = Awaited<ReturnType<typeof getStockQuote>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockQuoteQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetMarketPulseUrl = () => {
 

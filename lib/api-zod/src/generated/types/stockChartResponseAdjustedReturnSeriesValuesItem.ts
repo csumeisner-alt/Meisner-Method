@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetStockChart200AdjustedReturnSeriesValuesItem = {
+export type StockChartResponseAdjustedReturnSeriesValuesItem = {
   date: Date;
   /** Cumulative adjusted return in percentage points from the first observation. */
   returnPercent: number;

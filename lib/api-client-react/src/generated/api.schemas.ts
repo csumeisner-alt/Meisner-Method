@@ -5,6 +5,143 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type StockChartResponseSeriesType = typeof StockChartResponseSeriesType[keyof typeof StockChartResponseSeriesType];
+
+
+export const StockChartResponseSeriesType = {
+  continuous_futures: 'continuous_futures',
+  market_history: 'market_history',
+} as const;
+
+export type StockChartResponseAdjustedReturnSeriesStatus = typeof StockChartResponseAdjustedReturnSeriesStatus[keyof typeof StockChartResponseAdjustedReturnSeriesStatus];
+
+
+export const StockChartResponseAdjustedReturnSeriesStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * Cumulative return from the first observation, calculated from provider Adj Close.
+ */
+export type StockChartResponseAdjustedReturnSeriesMethod = typeof StockChartResponseAdjustedReturnSeriesMethod[keyof typeof StockChartResponseAdjustedReturnSeriesMethod];
+
+
+export const StockChartResponseAdjustedReturnSeriesMethod = {
+  provider_adjusted_close: 'provider_adjusted_close',
+} as const;
+
+export type StockChartResponseAdjustedReturnSeriesValuesItem = {
+  date: string;
+  /** Cumulative adjusted return in percentage points from the first observation. */
+  returnPercent: number;
+};
+
+export type StockChartResponseAdjustedReturnSeries = {
+  status: StockChartResponseAdjustedReturnSeriesStatus;
+  /** Cumulative return from the first observation, calculated from provider Adj Close. */
+  method: StockChartResponseAdjustedReturnSeriesMethod;
+  /** Empty unless every candle has a valid adjusted close and reported distribution value. */
+  values: StockChartResponseAdjustedReturnSeriesValuesItem[];
+  reason: string | null;
+};
+
+export interface StockChartCandle {
+  /** Unix timestamp in seconds. */
+  t: number;
+  date: string;
+  o: number;
+  h: number;
+  l: number;
+  /** Raw provider Close; not automatically adjusted by this endpoint. */
+  c: number;
+  /** Provider Adj Close when explicitly supplied. */
+  adjClose: number | null;
+  /** Provider cash distribution for this date, or null when unavailable. */
+  dividend: number | null;
+  v: number;
+  ma20: number | null;
+  ma50: number | null;
+  ma200: number | null;
+}
+
+export interface StockChartResponse {
+  symbol: string;
+  period: string;
+  interval: string;
+  seriesType: StockChartResponseSeriesType;
+  candles: StockChartCandle[];
+  adjustedReturnSeries: StockChartResponseAdjustedReturnSeries;
+}
+
+export interface StockTopPick {
+  symbol: string;
+  name: string;
+  /** @exclusiveMinimum 0 */
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  priceTarget: number;
+  /**
+     * @minimum 45
+     * @maximum 94
+     */
+  confidence: number;
+  /** @minimum 5 */
+  upside: number;
+  /**
+     * @minimum 55
+     * @maximum 100
+     */
+  compositeScore: number;
+  /** @maximum 100 */
+  riskAdjScore: number;
+  /** @minimum 0 */
+  volatility: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  technicalScore: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  fundamentalScore: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  momentumScore: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  analystScore: number;
+  marketCap: number | null;
+  sector: string | null;
+  industry: string | null;
+  targetHighPrice: number | null;
+  targetLowPrice: number | null;
+  /** @minimum 0 */
+  numberOfAnalysts: number;
+  /** @maxItems 6 */
+  reasons: string[];
+  /** @minimum 0 */
+  volume: number;
+}
+
+export interface TrendingStock {
+  symbol: string;
+  name: string;
+  /** @exclusiveMinimum 0 */
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  /** @minimum 0 */
+  volume: number;
+}
+
 export type DeviceTransferBundleVersion = typeof DeviceTransferBundleVersion[keyof typeof DeviceTransferBundleVersion];
 
 
@@ -1956,63 +2093,56 @@ export const SearchHeatMapInstrumentsCategory = {
   cryptocurrency: 'cryptocurrency',
 } as const;
 
-export type GetStockChart200CandlesItem = {
-  t: number;
-  date: string;
-  o: number;
-  h: number;
-  l: number;
-  /** Raw provider Close; not automatically adjusted by this endpoint. */
-  c: number;
-  /** Provider Adj Close when explicitly supplied. */
-  adjClose: number | null;
-  /** Provider cash distribution for this date, or null when unavailable. */
-  dividend: number | null;
-  v: number;
-  ma20?: number | null;
-  ma50?: number | null;
-  ma200?: number | null;
-};
-
-export type GetStockChart200AdjustedReturnSeriesStatus = typeof GetStockChart200AdjustedReturnSeriesStatus[keyof typeof GetStockChart200AdjustedReturnSeriesStatus];
+export type GetStockChart400Error = typeof GetStockChart400Error[keyof typeof GetStockChart400Error];
 
 
-export const GetStockChart200AdjustedReturnSeriesStatus = {
-  available: 'available',
-  unavailable: 'unavailable',
+export const GetStockChart400Error = {
+  INVALID_PARAMS: 'INVALID_PARAMS',
 } as const;
 
-/**
- * Cumulative return from the first observation, calculated from provider Adj Close.
- */
-export type GetStockChart200AdjustedReturnSeriesMethod = typeof GetStockChart200AdjustedReturnSeriesMethod[keyof typeof GetStockChart200AdjustedReturnSeriesMethod];
+export type GetStockChart400 = {
+  error: GetStockChart400Error;
+};
+
+export type GetStockChartByQueryParams = {
+period?: GetStockChartByQueryPeriod;
+interval?: GetStockChartByQueryInterval;
+};
+
+export type GetStockChartByQueryPeriod = typeof GetStockChartByQueryPeriod[keyof typeof GetStockChartByQueryPeriod];
 
 
-export const GetStockChart200AdjustedReturnSeriesMethod = {
-  provider_adjusted_close: 'provider_adjusted_close',
+export const GetStockChartByQueryPeriod = {
+  '5d': '5d',
+  '1mo': '1mo',
+  '3mo': '3mo',
+  '6mo': '6mo',
+  '1y': '1y',
+  '2y': '2y',
+  '3y': '3y',
+  '5y': '5y',
+  max: 'max',
 } as const;
 
-export type GetStockChart200AdjustedReturnSeriesValuesItem = {
-  date: string;
-  /** Cumulative adjusted return in percentage points from the first observation. */
-  returnPercent: number;
-};
+export type GetStockChartByQueryInterval = typeof GetStockChartByQueryInterval[keyof typeof GetStockChartByQueryInterval];
 
-export type GetStockChart200AdjustedReturnSeries = {
-  status: GetStockChart200AdjustedReturnSeriesStatus;
-  /** Cumulative return from the first observation, calculated from provider Adj Close. */
-  method: GetStockChart200AdjustedReturnSeriesMethod;
-  /** Empty unless every candle has a valid adjusted close and reported distribution value. */
-  values: GetStockChart200AdjustedReturnSeriesValuesItem[];
-  reason: string | null;
-};
 
-export type GetStockChart200 = {
-  symbol: string;
-  period: string;
-  interval: string;
-  candles: GetStockChart200CandlesItem[];
-  adjustedReturnSeries: GetStockChart200AdjustedReturnSeries;
+export const GetStockChartByQueryInterval = {
+  '15m': '15m',
+  '1h': '1h',
+  '1d': '1d',
+  '1wk': '1wk',
+} as const;
+
+export type GetStockChartByQuery400Error = typeof GetStockChartByQuery400Error[keyof typeof GetStockChartByQuery400Error];
+
+
+export const GetStockChartByQuery400Error = {
+  INVALID_PARAMS: 'INVALID_PARAMS',
+} as const;
+
+export type GetStockChartByQuery400 = {
+  error: GetStockChartByQuery400Error;
 };
 
 export type SearchStockSymbolsParams = {

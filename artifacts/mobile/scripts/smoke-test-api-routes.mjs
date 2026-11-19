@@ -16,14 +16,6 @@ const SAMPLE_QUERY_PARAMETERS = {
   "/stocks/chart/{symbol}": { period: "3mo", interval: "1d" },
 };
 
-// These read-only routes are used by mobile but are not yet described in OpenAPI.
-const MOBILE_GET_PATHS_NOT_IN_OPENAPI = [
-  "/stocks/chart/{symbol}",
-  "/stocks/quote/{symbol}",
-  "/stocks/top-picks",
-  "/stocks/trending",
-];
-
 function normalizeBaseUrl(value) {
   const input = value?.trim();
   if (!input) {
@@ -80,10 +72,7 @@ export function getOpenApiGetPaths(openApiSource) {
 }
 
 export function getExpectedMobileGetPaths(openApiSource) {
-  return [...new Set([
-    ...getOpenApiGetPaths(openApiSource),
-    ...MOBILE_GET_PATHS_NOT_IN_OPENAPI,
-  ])];
+  return getOpenApiGetPaths(openApiSource);
 }
 
 function sampleValueForParameter(name, path) {

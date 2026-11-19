@@ -9,9 +9,9 @@
 /**
  * Cumulative return from the first observation, calculated from provider Adj Close.
  */
-export type GetStockChart200AdjustedReturnSeriesMethod = typeof GetStockChart200AdjustedReturnSeriesMethod[keyof typeof GetStockChart200AdjustedReturnSeriesMethod];
+export type StockChartResponseAdjustedReturnSeriesMethod = typeof StockChartResponseAdjustedReturnSeriesMethod[keyof typeof StockChartResponseAdjustedReturnSeriesMethod];
 
 
-export const GetStockChart200AdjustedReturnSeriesMethod = {
+export const StockChartResponseAdjustedReturnSeriesMethod = {
   provider_adjusted_close: 'provider_adjusted_close',
 } as const;

@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetStockChart200CandlesItem = {
+export interface StockChartCandle {
+  /** Unix timestamp in seconds. */
   t: number;
   date: Date;
   o: number;
@@ -19,7 +20,7 @@ export type GetStockChart200CandlesItem = {
   /** Provider cash distribution for this date, or null when unavailable. */
   dividend: number | null;
   v: number;
-  ma20?: number | null;
-  ma50?: number | null;
-  ma200?: number | null;
-};
+  ma20: number | null;
+  ma50: number | null;
+  ma200: number | null;
+}

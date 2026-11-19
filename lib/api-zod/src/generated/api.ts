@@ -734,8 +734,9 @@ export const GetStockChartResponse = zod.object({
   "symbol": zod.string(),
   "period": zod.string(),
   "interval": zod.string(),
+  "seriesType": zod.enum(['continuous_futures', 'market_history']),
   "candles": zod.array(zod.object({
-  "t": zod.number(),
+  "t": zod.number().describe('Unix timestamp in seconds.'),
   "date": zod.coerce.date(),
   "o": zod.number(),
   "h": zod.number(),
@@ -744,9 +745,59 @@ export const GetStockChartResponse = zod.object({
   "adjClose": zod.number().nullable().describe('Provider Adj Close when explicitly supplied.'),
   "dividend": zod.number().nullable().describe('Provider cash distribution for this date, or null when unavailable.'),
   "v": zod.number(),
-  "ma20": zod.number().nullish(),
-  "ma50": zod.number().nullish(),
-  "ma200": zod.number().nullish()
+  "ma20": zod.number().nullable(),
+  "ma50": zod.number().nullable(),
+  "ma200": zod.number().nullable()
+})),
+  "adjustedReturnSeries": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "method": zod.enum(['provider_adjusted_close']).describe('Cumulative return from the first observation, calculated from provider Adj Close.'),
+  "values": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "returnPercent": zod.number().describe('Cumulative adjusted return in percentage points from the first observation.')
+})).describe('Empty unless every candle has a valid adjusted close and reported distribution value.'),
+  "reason": zod.string().nullable()
+})
+})
+
+
+/**
+ * Backwards-compatible chart route. Omitted period and interval default to 3mo and 1d.
+ * @summary Retrieve stock chart history using query parameters
+ */
+
+
+
+export const GetStockChartByQueryParams = zod.object({
+  "symbol": zod.coerce.string().min(1)
+})
+
+export const getStockChartByQueryQueryPeriodDefault = `3mo`;
+export const getStockChartByQueryQueryIntervalDefault = `1d`;
+
+export const GetStockChartByQueryQueryParams = zod.object({
+  "period": zod.enum(['5d', '1mo', '3mo', '6mo', '1y', '2y', '3y', '5y', 'max']).default(getStockChartByQueryQueryPeriodDefault),
+  "interval": zod.enum(['15m', '1h', '1d', '1wk']).default(getStockChartByQueryQueryIntervalDefault)
+})
+
+export const GetStockChartByQueryResponse = zod.object({
+  "symbol": zod.string(),
+  "period": zod.string(),
+  "interval": zod.string(),
+  "seriesType": zod.enum(['continuous_futures', 'market_history']),
+  "candles": zod.array(zod.object({
+  "t": zod.number().describe('Unix timestamp in seconds.'),
+  "date": zod.coerce.date(),
+  "o": zod.number(),
+  "h": zod.number(),
+  "l": zod.number(),
+  "c": zod.number().describe('Raw provider Close; not automatically adjusted by this endpoint.'),
+  "adjClose": zod.number().nullable().describe('Provider Adj Close when explicitly supplied.'),
+  "dividend": zod.number().nullable().describe('Provider cash distribution for this date, or null when unavailable.'),
+  "v": zod.number(),
+  "ma20": zod.number().nullable(),
+  "ma50": zod.number().nullable(),
+  "ma200": zod.number().nullable()
 })),
   "adjustedReturnSeries": zod.object({
   "status": zod.enum(['available', 'unavailable']),
@@ -951,6 +1002,93 @@ export const SearchStockSymbolsResponseItem = zod.object({
   "exchange": zod.string()
 })
 export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseItem)
+
+
+/**
+ * Returns up to 12 stocks with at least 5 percent calculated upside and a composite score of at least 55, ordered by risk-adjusted score.
+ * @summary Get ranked stock picks
+ */
+export const getStockTopPicksResponseCurrentPriceExclusiveMin = 0;
+
+export const getStockTopPicksResponseConfidenceMin = 45;
+export const getStockTopPicksResponseConfidenceMax = 94;
+
+export const getStockTopPicksResponseUpsideMin = 5;
+
+export const getStockTopPicksResponseCompositeScoreMin = 55;
+export const getStockTopPicksResponseCompositeScoreMax = 100;
+
+export const getStockTopPicksResponseRiskAdjScoreMax = 100;
+
+export const getStockTopPicksResponseVolatilityMin = 0;
+
+export const getStockTopPicksResponseTechnicalScoreMin = 0;
+export const getStockTopPicksResponseTechnicalScoreMax = 100;
+
+export const getStockTopPicksResponseFundamentalScoreMin = 0;
+export const getStockTopPicksResponseFundamentalScoreMax = 100;
+
+export const getStockTopPicksResponseMomentumScoreMin = 0;
+export const getStockTopPicksResponseMomentumScoreMax = 100;
+
+export const getStockTopPicksResponseAnalystScoreMin = 0;
+export const getStockTopPicksResponseAnalystScoreMax = 100;
+
+export const getStockTopPicksResponseNumberOfAnalystsMin = 0;
+
+export const getStockTopPicksResponseReasonsMax = 6;
+
+export const getStockTopPicksResponseVolumeMin = 0;
+
+
+
+export const GetStockTopPicksResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "currentPrice": zod.number().gt(getStockTopPicksResponseCurrentPriceExclusiveMin),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "priceTarget": zod.number(),
+  "confidence": zod.number().min(getStockTopPicksResponseConfidenceMin).max(getStockTopPicksResponseConfidenceMax),
+  "upside": zod.number().min(getStockTopPicksResponseUpsideMin),
+  "compositeScore": zod.number().min(getStockTopPicksResponseCompositeScoreMin).max(getStockTopPicksResponseCompositeScoreMax),
+  "riskAdjScore": zod.number().max(getStockTopPicksResponseRiskAdjScoreMax),
+  "volatility": zod.number().min(getStockTopPicksResponseVolatilityMin),
+  "technicalScore": zod.number().min(getStockTopPicksResponseTechnicalScoreMin).max(getStockTopPicksResponseTechnicalScoreMax),
+  "fundamentalScore": zod.number().min(getStockTopPicksResponseFundamentalScoreMin).max(getStockTopPicksResponseFundamentalScoreMax),
+  "momentumScore": zod.number().min(getStockTopPicksResponseMomentumScoreMin).max(getStockTopPicksResponseMomentumScoreMax),
+  "analystScore": zod.number().min(getStockTopPicksResponseAnalystScoreMin).max(getStockTopPicksResponseAnalystScoreMax),
+  "marketCap": zod.number().nullable(),
+  "sector": zod.string().nullable(),
+  "industry": zod.string().nullable(),
+  "targetHighPrice": zod.number().nullable(),
+  "targetLowPrice": zod.number().nullable(),
+  "numberOfAnalysts": zod.number().min(getStockTopPicksResponseNumberOfAnalystsMin),
+  "reasons": zod.array(zod.string()).max(getStockTopPicksResponseReasonsMax),
+  "volume": zod.number().min(getStockTopPicksResponseVolumeMin)
+})
+export const GetStockTopPicksResponse = zod.array(GetStockTopPicksResponseItem)
+
+
+/**
+ * Returns up to 10 most-active stocks, with a watchlist fallback when the provider screener is unavailable.
+ * @summary Get trending stocks
+ */
+export const getTrendingStocksResponseCurrentPriceExclusiveMin = 0;
+
+export const getTrendingStocksResponseVolumeMin = 0;
+
+
+
+export const GetTrendingStocksResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "currentPrice": zod.number().gt(getTrendingStocksResponseCurrentPriceExclusiveMin),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "volume": zod.number().min(getTrendingStocksResponseVolumeMin)
+})
+export const GetTrendingStocksResponse = zod.array(GetTrendingStocksResponseItem)
 
 
 /**
@@ -1649,6 +1787,33 @@ export const GetPortfolioQuotesResponse = zod.object({
   "expenseRatio": zod.number().nullable()
 })),
   "unavailableSymbols": zod.array(zod.string())
+})
+
+
+/**
+ * Returns the latest available market-session price and change data for one ticker.
+ * @summary Get a current stock quote
+ */
+
+
+
+export const GetStockQuoteParams = zod.object({
+  "symbol": zod.coerce.string().min(1)
+})
+
+export const getStockQuoteResponseCurrentPriceExclusiveMin = 0;
+
+
+
+export const GetStockQuoteResponse = zod.object({
+  "symbol": zod.string(),
+  "currentPrice": zod.number().gt(getStockQuoteResponseCurrentPriceExclusiveMin),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "marketSession": zod.string(),
+  "priceSource": zod.string(),
+  "priceTimestamp": zod.number().nullable(),
+  "expenseRatio": zod.number().nullable()
 })
 
 

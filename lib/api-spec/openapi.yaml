@@ -623,85 +623,75 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [symbol, period, interval, candles, adjustedReturnSeries]
-                properties:
-                  symbol:
-                    type: string
-                  period:
-                    type: string
-                  interval:
-                    type: string
-                  candles:
-                    type: array
-                    items:
-                      type: object
-                      required: [t, date, o, h, l, c, adjClose, dividend, v]
-                      properties:
-                        t:
-                          type: integer
-                        date:
-                          type: string
-                          format: date
-                        o:
-                          type: number
-                        h:
-                          type: number
-                        l:
-                          type: number
-                        c:
-                          type: number
-                          description: Raw provider Close; not automatically adjusted by this endpoint.
-                        adjClose:
-                          type: number
-                          nullable: true
-                          description: Provider Adj Close when explicitly supplied.
-                        dividend:
-                          type: number
-                          nullable: true
-                          description: Provider cash distribution for this date, or null when unavailable.
-                        v:
-                          type: integer
-                        ma20:
-                          type: number
-                          nullable: true
-                        ma50:
-                          type: number
-                          nullable: true
-                        ma200:
-                          type: number
-                          nullable: true
-                  adjustedReturnSeries:
-                    type: object
-                    required: [status, method, values, reason]
-                    properties:
-                      status:
-                        type: string
-                        enum: [available, unavailable]
-                      method:
-                        type: string
-                        enum: [provider_adjusted_close]
-                        description: Cumulative return from the first observation, calculated from provider Adj Close.
-                      values:
-                        type: array
-                        description: Empty unless every candle has a valid adjusted close and reported distribution value.
-                        items:
-                          type: object
-                          required: [date, returnPercent]
-                          properties:
-                            date:
-                              type: string
-                              format: date
-                            returnPercent:
-                              type: number
-                              description: Cumulative adjusted return in percentage points from the first observation.
-                      reason:
-                        type: string
-                        nullable: true
+                $ref: "#/components/schemas/StockChartResponse"
         "400":
           description: Invalid symbol, period, or interval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [INVALID_PARAMS]
         "422":
           description: Provider history could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/chart/{symbol}:
+    get:
+      operationId: getStockChartByQuery
+      tags: [stocks]
+      summary: Retrieve stock chart history using query parameters
+      description: Backwards-compatible chart route. Omitted period and interval default to 3mo and 1d.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [5d, 1mo, 3mo, 6mo, 1y, 2y, 3y, 5y, max]
+            default: 3mo
+        - in: query
+          name: interval
+          required: false
+          schema:
+            type: string
+            enum: [15m, 1h, 1d, 1wk]
+            default: 1d
+      responses:
+        "200":
+          description: Provider chart candles and adjusted-return data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockChartResponse"
+        "400":
+          description: Symbol, period, or interval is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [INVALID_PARAMS]
+        "422":
+          description: Provider history could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/commodity-relationships/{relationshipId}/{period}:
     get:
       operationId: getCommodityRelationship
@@ -763,6 +753,48 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
         "502":
           description: The upstream company search is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/top-picks:
+    get:
+      operationId: getStockTopPicks
+      tags: [stocks]
+      summary: Get ranked stock picks
+      description: Returns up to 12 stocks with at least 5 percent calculated upside and a composite score of at least 55, ordered by risk-adjusted score.
+      responses:
+        "200":
+          description: Ranked stock picks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockTopPick"
+        "422":
+          description: Stock pick data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/trending:
+    get:
+      operationId: getTrendingStocks
+      tags: [stocks]
+      summary: Get trending stocks
+      description: Returns up to 10 most-active stocks, with a watchlist fallback when the provider screener is unavailable.
+      responses:
+        "200":
+          description: Trending stocks ordered by trading volume
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrendingStock"
+        "422":
+          description: Trending stock data is temporarily unavailable
           content:
             application/json:
               schema:
@@ -918,6 +950,38 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
         "422":
           description: Quote provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/quote/{symbol}:
+    get:
+      operationId: getStockQuote
+      tags: [stocks]
+      summary: Get a current stock quote
+      description: Returns the latest available market-session price and change data for one ticker.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Current quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioQuote"
+        "400":
+          description: Symbol is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Quote data is temporarily unavailable
           content:
             application/json:
               schema:
@@ -1218,6 +1282,132 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    StockChartResponse:
+      type: object
+      required: [symbol, period, interval, seriesType, candles, adjustedReturnSeries]
+      properties:
+        symbol:
+          type: string
+        period:
+          type: string
+        interval:
+          type: string
+        seriesType:
+          type: string
+          enum: [continuous_futures, market_history]
+        candles:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockChartCandle"
+        adjustedReturnSeries:
+          type: object
+          required: [status, method, values, reason]
+          properties:
+            status:
+              type: string
+              enum: [available, unavailable]
+            method:
+              type: string
+              enum: [provider_adjusted_close]
+              description: Cumulative return from the first observation, calculated from provider Adj Close.
+            values:
+              type: array
+              description: Empty unless every candle has a valid adjusted close and reported distribution value.
+              items:
+                type: object
+                required: [date, returnPercent]
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  returnPercent:
+                    type: number
+                    description: Cumulative adjusted return in percentage points from the first observation.
+            reason:
+              type: string
+              nullable: true
+
+    StockChartCandle:
+      type: object
+      required: [t, date, o, h, l, c, adjClose, dividend, v, ma20, ma50, ma200]
+      properties:
+        t:
+          type: integer
+          description: Unix timestamp in seconds.
+        date:
+          type: string
+          format: date
+        o:
+          type: number
+        h:
+          type: number
+        l:
+          type: number
+        c:
+          type: number
+          description: Raw provider Close; not automatically adjusted by this endpoint.
+        adjClose:
+          type: number
+          nullable: true
+          description: Provider Adj Close when explicitly supplied.
+        dividend:
+          type: number
+          nullable: true
+          description: Provider cash distribution for this date, or null when unavailable.
+        v:
+          type: integer
+        ma20:
+          type: number
+          nullable: true
+        ma50:
+          type: number
+          nullable: true
+        ma200:
+          type: number
+          nullable: true
+
+    StockTopPick:
+      type: object
+      required: [symbol, name, currentPrice, priceChange, priceChangePercent, priceTarget, confidence, upside, compositeScore, riskAdjScore, volatility, technicalScore, fundamentalScore, momentumScore, analystScore, marketCap, sector, industry, targetHighPrice, targetLowPrice, numberOfAnalysts, reasons, volume]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        currentPrice: { type: number, exclusiveMinimum: 0 }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        priceTarget: { type: number }
+        confidence: { type: integer, minimum: 45, maximum: 94 }
+        upside: { type: number, minimum: 5 }
+        compositeScore: { type: number, minimum: 55, maximum: 100 }
+        riskAdjScore: { type: number, maximum: 100 }
+        volatility: { type: number, minimum: 0 }
+        technicalScore: { type: integer, minimum: 0, maximum: 100 }
+        fundamentalScore: { type: integer, minimum: 0, maximum: 100 }
+        momentumScore: { type: integer, minimum: 0, maximum: 100 }
+        analystScore: { type: integer, minimum: 0, maximum: 100 }
+        marketCap: { type: number, nullable: true }
+        sector: { type: string, nullable: true }
+        industry: { type: string, nullable: true }
+        targetHighPrice: { type: number, nullable: true }
+        targetLowPrice: { type: number, nullable: true }
+        numberOfAnalysts: { type: integer, minimum: 0 }
+        reasons:
+          type: array
+          maxItems: 6
+          items: { type: string }
+        volume: { type: integer, minimum: 0 }
+
+    TrendingStock:
+      type: object
+      required: [symbol, name, currentPrice, priceChange, priceChangePercent, volume]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        currentPrice: { type: number, exclusiveMinimum: 0 }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        volume: { type: integer, minimum: 0 }
+
     DeviceTransferBundle:
       type: object
       required: [version, bundleId, exportedAt, categories]
