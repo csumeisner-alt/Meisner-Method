@@ -20,8 +20,8 @@ export const modules: ModuleMap = {
   "./components/mockups/one-stock-leaderboard/Current.tsx": () => import("../components/mockups/one-stock-leaderboard/Current.tsx"),
   "./components/mockups/one-stock-leaderboard/FullCard.tsx": () => import("../components/mockups/one-stock-leaderboard/FullCard.tsx"),
   "./components/mockups/premium-flag-collection/Current.tsx": () => import("../components/mockups/premium-flag-collection/Current.tsx"),
-  "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),
+  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx"),
   "./components/mockups/smart-pro-bottle/Current.tsx": () => import("../components/mockups/smart-pro-bottle/Current.tsx"),
   "./components/mockups/smart-pro-bottle/Interactive.tsx": () => import("../components/mockups/smart-pro-bottle/Interactive.tsx"),
-  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx")
+  "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx")
 };
