@@ -32,8 +32,16 @@ test("heat-map routes are registered and reject invalid inputs before provider a
             { filter: /.*/, namespace: "failing-heat-map-search-provider" },
             () => ({
               contents: `
-                export async function searchYahooHeatMapInstruments() {
-                  throw new Error("Market-data provider unavailable");
+                export async function searchYahooHeatMapInstruments(query, category) {
+                  if (query === "gold") {
+                    throw new Error("Market-data provider unavailable");
+                  }
+                  return [{
+                    symbol: "GC=F",
+                    name: "Gold Futures",
+                    exchange: "COMEX",
+                    category,
+                  }];
                 }
                 export async function searchYahooStocks() {
                   return [];
@@ -134,6 +142,18 @@ test("heat-map routes are registered and reject invalid inputs before provider a
       error: "INSTRUMENT_SEARCH_FAILED",
       message: "Instrument search is temporarily unavailable.",
     });
+
+    const successfulSearchResponse = await fetch(
+      `http://127.0.0.1:${address.port}/stocks/heat-map/search?q=golden&category=commodities`,
+    );
+    assert.equal(successfulSearchResponse.status, 200);
+    assert.equal(successfulSearchResponse.headers.get("cache-control"), "private, max-age=30");
+    assert.deepEqual(await successfulSearchResponse.json(), [{
+      symbol: "GC=F",
+      name: "Gold Futures",
+      exchange: "COMEX",
+      category: "commodity",
+    }]);
 
     const validationResponse = await fetch(
       `http://127.0.0.1:${address.port}/stocks/heat-map/validate`,
