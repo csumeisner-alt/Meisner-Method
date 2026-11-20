@@ -289,6 +289,34 @@ paths:
           description: The event has ended
         "429":
           description: The score was submitted too recently
+    delete:
+      operationId: deleteEventArenaLeaderboardEntry
+      tags: [eventArena]
+      summary: Remove the requesting participant from one Event Arena leaderboard
+      description: Deactivates the requesting installation's public entry and clears its saved leaderboard history for this event.
+      parameters:
+        - in: query
+          name: installationId
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous device identifier that owns the leaderboard entry.
+      responses:
+        "200":
+          description: The participant's entry was removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+        "400":
+          description: The event or installation ID is invalid
+        "500":
+          description: The leaderboard entry could not be removed
   /event-arena/{eventId}/leaderboard/history:
     parameters:
       - in: path

@@ -52,6 +52,25 @@ export function getOpenApiPaths(openApiSource) {
   return [...openApiSource.matchAll(/^  (\/[^:\s]+):\s*$/gm)].map((match) => match[1]);
 }
 
+export function getOpenApiMethodsByPath(openApiSource) {
+  const methodsByPath = new Map();
+  let currentPath = null;
+
+  for (const line of openApiSource.split(/\r?\n/)) {
+    const pathMatch = line.match(/^  (\/[^:\s]+):\s*$/);
+    if (pathMatch) {
+      currentPath = pathMatch[1];
+      methodsByPath.set(currentPath, new Set());
+      continue;
+    }
+
+    const methodMatch = currentPath && line.match(/^    (get|post|put|patch|delete):\s*$/i);
+    if (methodMatch) methodsByPath.get(currentPath).add(methodMatch[1].toUpperCase());
+  }
+
+  return methodsByPath;
+}
+
 function pathsMatch(mobilePath, openApiPath) {
   const mobileSegments = mobilePath.split("/").filter(Boolean);
   const openApiSegments = openApiPath.split("/").filter(Boolean);
@@ -66,6 +85,28 @@ export function getMissingMobileApiPaths(mobilePaths, openApiSource) {
   return [...new Set(mobilePaths)]
     .filter((mobilePath) => !documentedPaths.some((path) => pathsMatch(mobilePath, path)))
     .sort();
+}
+
+export function getMissingMobileApiMethods(mobileRequests, openApiSource) {
+  const methodsByPath = getOpenApiMethodsByPath(openApiSource);
+  const missing = new Map();
+
+  for (const request of mobileRequests) {
+    const documentedPath = [...methodsByPath.keys()].find((path) =>
+      pathsMatch(request.path, path),
+    );
+    if (!documentedPath) continue;
+    if (methodsByPath.get(documentedPath).has(request.method.toUpperCase())) {
+      continue;
+    }
+
+    const key = `${request.method.toUpperCase()} ${request.path}`;
+    missing.set(key, { path: request.path, method: request.method.toUpperCase() });
+  }
+
+  return [...missing.values()].sort((left, right) =>
+    left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
+  );
 }
 
 async function listMobileSourceFiles(directory) {
@@ -91,10 +132,45 @@ async function listMobileSourceFiles(directory) {
   return files;
 }
 
-export async function getMobileApiPaths(
+function getMethodAfterApiLiteral(source, literalEnd) {
+  let cursor = literalEnd;
+  while (/\s/.test(source[cursor] ?? "")) cursor += 1;
+  if (source[cursor] !== ",") return "GET";
+
+  cursor += 1;
+  while (/\s/.test(source[cursor] ?? "")) cursor += 1;
+  if (source[cursor] !== "{") return "GET";
+
+  const optionsStart = cursor;
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  for (; cursor < source.length; cursor += 1) {
+    const character = source[cursor];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}" && --depth === 0) {
+      break;
+    }
+  }
+
+  const options = source.slice(optionsStart, cursor + 1);
+  const methodMatch = options.match(/\bmethod\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE)\1/i);
+  return methodMatch?.[2].toUpperCase() ?? "GET";
+}
+
+export async function getMobileApiRequests(
   mobileRoot = resolve(SCRIPT_DIR, ".."),
 ) {
-  const paths = new Set();
+  const requests = new Map();
   const sourceFiles = await listMobileSourceFiles(mobileRoot);
   const stringLiteralPattern =
     /(?:'((?:\\.|[^'\\\r\n])*)'|"((?:\\.|[^"\\\r\n])*)"|`([^`\r\n]*)`)/g;
@@ -111,11 +187,20 @@ export async function getMobileApiPaths(
         .replace(/\$\{[^{}]*\}/g, "{param}")
         .split(/[?#]/, 1)[0]
         .replace(/\/+$/, "");
-      if (route.startsWith("/")) paths.add(route);
+      if (route.startsWith("/")) {
+        const method = getMethodAfterApiLiteral(source, match.index + match[0].length);
+        requests.set(`${method} ${route}`, { path: route, method });
+      }
     }
   }
 
-  return [...paths].sort();
+  return [...requests.values()].sort((left, right) =>
+    left.path.localeCompare(right.path) || left.method.localeCompare(right.method),
+  );
+}
+
+export async function getMobileApiPaths(mobileRoot = resolve(SCRIPT_DIR, "..")) {
+  return [...new Set((await getMobileApiRequests(mobileRoot)).map(({ path }) => path))].sort();
 }
 
 export function getOpenApiGetPaths(openApiSource) {

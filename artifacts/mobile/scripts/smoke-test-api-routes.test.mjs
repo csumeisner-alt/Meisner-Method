@@ -5,7 +5,9 @@ import {
   buildProbeUrl,
   formatRouteResult,
   getExpectedMobileGetPaths,
+  getMissingMobileApiMethods,
   getMissingMobileApiPaths,
+  getMobileApiRequests,
   getMobileApiPaths,
   getOpenApiGetPaths,
   getPublishedApiBaseUrl,
@@ -28,6 +30,23 @@ test("documents every API path used by mobile source", async () => {
   );
 });
 
+test("documents every HTTP method used by mobile source", async () => {
+  const mobileRequests = await getMobileApiRequests();
+  const missingMethods = getMissingMobileApiMethods(mobileRequests, openApiSource);
+
+  assert.deepEqual(
+    missingMethods,
+    [],
+    `Mobile API methods missing from OpenAPI: ${missingMethods
+      .map(({ method, path }) => `${method} ${path}`)
+      .join(", ")}`,
+  );
+  assert.ok(
+    mobileRequests.some(({ method }) => method === "POST"),
+    "mobile API scan should capture explicit request methods",
+  );
+});
+
 test("reports undocumented mobile paths by name and matches path parameters", () => {
   const fixtureSpec = [
     "paths:",
@@ -43,6 +62,29 @@ test("reports undocumented mobile paths by name and matches path parameters", ()
       fixtureSpec,
     ),
     ["/notifications/alerts/{param}"],
+  );
+});
+
+test("reports a mobile method that the matching OpenAPI path does not support", () => {
+  const fixtureSpec = [
+    "paths:",
+    "  /notifications/alerts/{id}:",
+    "    delete:",
+    "  /user/recent:",
+    "    get:",
+  ].join("\n");
+
+  assert.deepEqual(
+    getMissingMobileApiMethods(
+      [
+        { path: "/notifications/alerts/{param}", method: "GET" },
+        { path: "/notifications/alerts/{param}", method: "DELETE" },
+        { path: "/user/recent", method: "GET" },
+        { path: "/unlisted/path", method: "POST" },
+      ],
+      fixtureSpec,
+    ),
+    [{ path: "/notifications/alerts/{param}", method: "GET" }],
   );
 });
 
