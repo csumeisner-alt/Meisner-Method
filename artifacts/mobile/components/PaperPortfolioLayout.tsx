@@ -101,7 +101,7 @@ export function PaperPortfolioSummary({
       >
         {paperLayoutCurrency(equity)}
       </Text>
-      <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
+      <Text testID="paper-account-equity-label" style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
       <View style={[styles.heroStats, compactStats && styles.heroStatsCompact]}>
         <View style={[styles.heroStat, compactStats && styles.heroStatCompact]}>
           <Text
@@ -118,7 +118,7 @@ export function PaperPortfolioSummary({
           >
             {todayText}
           </Text>
-          <Text allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
+          <Text testID="paper-account-today-pnl-label" allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
             TODAY’S P/L
           </Text>
         </View>
@@ -138,7 +138,7 @@ export function PaperPortfolioSummary({
           >
             {totalReturnText}
           </Text>
-          <Text allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
+          <Text testID="paper-account-total-return-label" allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
             TOTAL RETURN
           </Text>
         </View>
@@ -158,7 +158,7 @@ export function PaperPortfolioSummary({
           >
             {buyingPowerText}
           </Text>
-          <Text allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
+          <Text testID="paper-account-buying-power-label" allowFontScaling style={[styles.heroStatLabel, compactStats && styles.heroStatLabelCompact]}>
             BUYING POWER
           </Text>
         </View>

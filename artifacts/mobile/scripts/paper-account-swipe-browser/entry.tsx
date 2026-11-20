@@ -85,6 +85,8 @@ const testWindow = globalThis as typeof globalThis & {
   __setPaperSharing?: (enabled: boolean) => void;
   __setEventState?: (phase: 'upcoming' | 'active' | 'ended') => void;
   __setPaperPlatform?: (os: string) => void;
+  __paperFontScale?: number;
+  __setPaperFontScale?: (fontScale: number) => void;
   __setPaperStressScenario?: (enabled: boolean) => void;
 };
 testWindow.__setPaperPlatform = (os) => {
@@ -105,6 +107,10 @@ function PaperAccountInteractionFixture() {
   const [sharing, setSharing] = useState(true);
   const [lightningPromotion, setLightningPromotion] = useState(false);
   const [, setFixtureRefresh] = useState(0);
+  testWindow.__setPaperFontScale = (fontScale) => {
+    testWindow.__paperFontScale = fontScale;
+    setFixtureRefresh((current) => current + 1);
+  };
   const activeAccount = accounts.find((account) => account.id === activeId);
   if (!activeAccount) throw new Error(`Unknown paper account: ${activeId}`);
   const activePositions = positions.filter((position) => position.accountId === activeId);

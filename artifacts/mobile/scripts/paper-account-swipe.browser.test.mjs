@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,8 +12,6 @@ import { build } from "esbuild";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const mobileDir = resolve(scriptDir, "..");
 const fixtureDir = join(scriptDir, "paper-account-swipe-browser");
-const require = createRequire(import.meta.url);
-const reactNativeWebEntry = require.resolve("react-native-web", { paths: [mobileDir] });
 const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 const selector = (testID) => `[data-testid=${JSON.stringify(testID)}]`;
 let nextTouchId = 1;
@@ -40,6 +37,7 @@ function browserExecutable() {
 
 async function buildFixture() {
   const aliases = new Map([
+    ["react-native", join(fixtureDir, "mocks/react-native.tsx")],
     ["expo-haptics", join(fixtureDir, "mocks/expo-haptics.ts")],
     ["expo-router", join(fixtureDir, "mocks/expo-router.ts")],
     ["react-native-safe-area-context", join(fixtureDir, "mocks/safe-area-context.tsx")],
@@ -62,7 +60,7 @@ async function buildFixture() {
     plugins: [{
       name: "paper-account-browser-test-aliases",
       setup(buildApi) {
-        buildApi.onResolve({ filter: /^react-native$/ }, () => ({ path: reactNativeWebEntry }));
+        buildApi.onResolve({ filter: /^react-native$/ }, () => ({ path: aliases.get("react-native") }));
         buildApi.onResolve({ filter: /^@\// }, ({ path }) => {
           const alias = aliases.get(path);
           if (alias) return { path: alias };
@@ -637,6 +635,84 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
         "The bottom navigation must stay in the phone's visible layout.");
       return layout;
     };
+
+    await browser.evaluate("window.__setPaperStressScenario(false)");
+    const summaryMetricIds = [
+      ["equity", "paper-account-equity", "paper-account-equity-label", "TOTAL EQUITY"],
+      ["todayPnl", "paper-account-today-pnl", "paper-account-today-pnl-label", "TODAY’S P/L"],
+      ["totalReturn", "paper-account-total-return", "paper-account-total-return-label", "TOTAL RETURN"],
+      ["buyingPower", "paper-account-buying-power", "paper-account-buying-power-label", "BUYING POWER"],
+    ];
+    for (const fontScale of [1.3, 1.5]) {
+      await browser.evaluate(`window.__setPaperFontScale(${fontScale})`);
+      for (const width of [320, 360, 390]) {
+        await browser.send("Emulation.setDeviceMetricsOverride", {
+          width,
+          height: 720,
+          deviceScaleFactor: 1,
+          mobile: true,
+        });
+        await delay(60);
+        const summary = await browser.evaluate(`(() => {
+          const get = (id) => document.querySelector('[data-testid="' + id + '"]');
+          const bounds = (node) => {
+            if (!node) return null;
+            const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+            return { left, right, top, bottom, width, height, clientWidth: node.clientWidth, scrollWidth: node.scrollWidth };
+          };
+          const hero = bounds(get('paper-account-hero'));
+          const switcher = bounds(get('paper-account-switch'));
+          const metrics = ${JSON.stringify(summaryMetricIds)}.map(([name, valueId, labelId, expectedLabel]) => ({
+            name,
+            value: bounds(get(valueId)),
+            label: bounds(get(labelId)),
+            valueText: get(valueId)?.textContent?.trim(),
+            labelText: get(labelId)?.textContent?.trim(),
+            expectedLabel,
+          }));
+          return { width: document.documentElement.scrollWidth, viewport: window.innerWidth, hero, switcher, metrics };
+        })()`);
+        assert.ok(summary.width <= summary.viewport,
+          `The account summary must not scroll horizontally at ${width}px and ${fontScale}x text.`);
+        assert.ok(summary.hero && summary.switcher, "The account card and switch control must remain visible.");
+        assert.ok(summary.switcher.height >= 36, "The account switch control must remain easy to tap.");
+        assert.ok(summary.switcher.left >= summary.hero.left && summary.switcher.right <= summary.hero.right);
+        for (const metric of summary.metrics) {
+          assert.ok(metric.valueText, `${metric.name} value must remain visible at ${width}px and ${fontScale}x text.`);
+          assert.equal(metric.labelText, metric.expectedLabel,
+            `${metric.name} label must remain readable at ${width}px and ${fontScale}x text.`);
+          for (const [part, bounds] of [["value", metric.value], ["label", metric.label]]) {
+            assert.ok(bounds && bounds.width > 0 && bounds.height > 0,
+              `${metric.name} ${part} must have visible dimensions: ${JSON.stringify(summary)}`);
+            assert.ok(bounds.left >= summary.hero.left && bounds.right <= summary.hero.right,
+              `${metric.name} ${part} must stay inside the account card: ${JSON.stringify(summary)}`);
+            assert.ok(bounds.top >= summary.hero.top && bounds.bottom <= summary.hero.bottom,
+              `${metric.name} ${part} must remain visible inside the account card: ${JSON.stringify(summary)}`);
+            assert.ok(bounds.scrollWidth <= bounds.clientWidth + 1,
+              `${metric.name} ${part} must not be clipped at ${width}px and ${fontScale}x text.`);
+          }
+        }
+      }
+    }
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 320,
+      height: 720,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await browser.evaluate("window.__setPaperFontScale(1.3)");
+    await delay(120);
+    await touch(browser, "paper-account-switch");
+    assert.equal(await currentAccount(), "tiger", "Opening account switching must not change the active account.");
+    assert.equal(await browser.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true,
+      "Opening the account selector with large text must not create horizontal clipping.");
+    await touch(browser, "select-paper-account-borg");
+    assert.equal(await currentAccount(), "borg", "Account selection must remain usable with large text.");
+    await touch(browser, "paper-account-switch");
+    await touch(browser, "select-paper-account-tiger");
+    assert.equal(await currentAccount(), "tiger", "Account selection must remain usable with large text.");
+    await browser.evaluate("window.__setPaperStressScenario(true)");
+    await browser.evaluate("window.__setPaperFontScale(1)");
 
     for (const width of [320, 360, 375, 390, 430]) await setViewport(width);
 
