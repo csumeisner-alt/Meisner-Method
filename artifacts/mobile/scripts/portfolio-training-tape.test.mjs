@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const portfolioSource = readFileSync(
-  resolve(scriptDir, "../app/portfolio.tsx"),
+  resolve(scriptDir, "../app/(tabs)/portfolio.tsx"),
   "utf8",
 );
 const trainingTapeSource = readFileSync(

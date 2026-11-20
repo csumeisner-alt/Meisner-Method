@@ -7,7 +7,7 @@ const watchlistSource = readFileSync(
   "utf8",
 );
 const homeSource = readFileSync(
-  new URL("../app/index.tsx", import.meta.url),
+  new URL("../app/(tabs)/index.tsx", import.meta.url),
   "utf8",
 );
 

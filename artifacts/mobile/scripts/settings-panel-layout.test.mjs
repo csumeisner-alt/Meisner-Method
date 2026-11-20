@@ -40,7 +40,7 @@ test("scrolling to the end leaves the final divider above the fixed bottom navig
 test("the rendered settings drawer uses responsive sizing and keeps tab navigation mounted", async () => {
   const [settings, home, tabs] = await Promise.all([
     readFile(join(mobileDir, "components/DonationSidebar.tsx"), "utf8"),
-    readFile(join(mobileDir, "app/index.tsx"), "utf8"),
+    readFile(join(mobileDir, "app/(tabs)/index.tsx"), "utf8"),
     readFile(join(mobileDir, "components/BottomTabBar.tsx"), "utf8"),
   ]);
 

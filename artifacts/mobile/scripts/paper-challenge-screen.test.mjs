@@ -9,7 +9,7 @@ import {
 } from "../lib/lightningRoundInvitation.ts";
 import { getPaperTabNavigationAction } from "../lib/paperTabNavigation.ts";
 
-const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
+const screen = readFileSync(new URL("../app/(tabs)/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
 const paperLayout = readFileSync(new URL("../components/PaperPortfolioLayout.tsx", import.meta.url), "utf8");
 const orderSheet = readFileSync(new URL("../components/OrderSheet.tsx", import.meta.url), "utf8");
@@ -32,6 +32,7 @@ const eventArenaOverview = readFileSync(new URL("../components/EventArenaOvervie
 const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
 const eventArenaTransferLockNotice = readFileSync(new URL("../components/EventArenaTransferLockNotice.tsx", import.meta.url), "utf8");
 const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
+const mobileTabsLayout = readFileSync(new URL("../app/(tabs)/_layout.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaArtworkCatalog = readFileSync(new URL("../lib/eventArenaArtwork.ts", import.meta.url), "utf8");
 const leaderboardMockup = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/leaderboard-story/AllSevenLeaderboards.tsx", import.meta.url), "utf8");
@@ -92,17 +93,19 @@ test("Paper Trading shows the local cache before waiting for Event Arena sync", 
 });
 
 test("main tabs keep their mounted screens and Paper Trading's selected account", () => {
-  assert.equal(getPaperTabNavigationAction("/paper", "/event-arena"), "push");
-  assert.equal(getPaperTabNavigationAction("/event-arena", "/paper"), "push");
+  assert.equal(getPaperTabNavigationAction("/paper", "/event-arena"), "navigate");
+  assert.equal(getPaperTabNavigationAction("/event-arena", "/paper"), "navigate");
   assert.equal(getPaperTabNavigationAction("/paper", "/paper"), "none");
-  assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "push");
-  assert.equal(getPaperTabNavigationAction("/", "/picks"), "push");
+  assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "navigate");
+  assert.equal(getPaperTabNavigationAction("/", "/picks"), "navigate");
 
   assert.match(bottomTabBar, /const plan = getMainTabNavigationPlan\(pathname, path\)/);
-  assert.match(bottomTabBar, /case 'push':\s*router\.push\(plan\.href\)/);
-  assert.match(bottomTabBar, /case 'navigate':\s*router\.navigate\(plan\.href\)/);
+  assert.match(bottomTabBar, /router\.navigate\(plan\.href\)/);
+  assert.doesNotMatch(bottomTabBar, /router\.(push|replace)\(/);
+  assert.match(mobileRootLayout, /<Stack\.Screen name="\(tabs\)"/);
+  assert.doesNotMatch(mobileRootLayout, /dangerouslySingular/);
   for (const route of ["index", "picks", "paper", "portfolio", "event-arena"]) {
-    assert.ok(mobileRootLayout.includes(`<Stack.Screen name="${route}" dangerouslySingular`));
+    assert.ok(mobileTabsLayout.includes(`<Tabs.Screen name="${route}"`));
   }
   assert.match(screen, /const cachedActiveId = cached\.accounts\.some\(\(item\) => item\.id === preferredActiveId\)/);
   assert.match(screen, /didFocusOnceRef\.current && loadedRef\.current/);
@@ -343,7 +346,7 @@ test("Event Arena back always opens Paper Trading positions and selects its save
   const accountRoute = screen.slice(accountRouteStart, accountRouteEnd);
 
   assert.ok(headerStart >= 0 && headerEnd > headerStart);
-  assert.match(header, /accessibilityLabel="Go back"[\s\S]*?router\.replace\(\{\s*pathname: '\/paper'/);
+  assert.match(header, /accessibilityLabel="Go back"[\s\S]*?router\.navigate\(\{\s*pathname: '\/paper'/);
   assert.match(header, /tab: 'positions'/);
   assert.match(header, /\.\.\.\(enrollment \? \{ challengeAccountId: enrollment\.accountId \} : \{\}\)/);
   assert.doesNotMatch(header, /router\.back\(\)/);
@@ -403,7 +406,7 @@ test("Lightning Round requests a display name and joins the shared account", () 
   assert.match(nextEnrollment, /leaderboardAlias: alias\.trim\(\)/);
   assert.match(nextEnrollment, /leaderboardOptedIn: true/);
   assert.doesNotMatch(nextEnrollment, /previousLightningAlias|store\.history/);
-  assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
+  assert.match(lightningRound, /router\.dismissTo\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
 });
 
 test("declining the trade-entry offer cancels it, while enrollment uses the existing join flow", () => {
@@ -439,7 +442,7 @@ test("declining the trade-entry offer cancels it, while enrollment uses the exis
   assert.match(lightningRound, /routeParams\.join !== 'trade'/);
   assert.match(lightningRound, /setJoinOpen\(true\)/);
   assert.match(lightningRound, /leaderboardAlias: alias\.trim\(\)/);
-  assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
+  assert.match(lightningRound, /router\.dismissTo\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
   assert.match(lightningRound, /joiningRef\.current/);
   assert.match(lightningRound, /current\.lightningEnrollment\s*\?\s*current/);
 });

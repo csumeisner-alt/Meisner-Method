@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
-const homeSource = readFileSync(new URL('../app/index.tsx', import.meta.url), 'utf8');
+const homeSource = readFileSync(new URL('../app/(tabs)/index.tsx', import.meta.url), 'utf8');
 const buttonSource = readFileSync(new URL('../components/MarketHeatMapInsightButton.tsx', import.meta.url), 'utf8');
 
 test('Analyze market heat-map button is driven by the total-market move and remains an accessible navigation action', () => {

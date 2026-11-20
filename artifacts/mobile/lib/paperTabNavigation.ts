@@ -1,14 +1,13 @@
-export type PaperTabNavigationAction = 'none' | 'push' | 'navigate' | 'replace';
+export type PaperTabNavigationAction = 'none' | 'navigate';
 
 /**
- * Main tabs use a stable Stack route ID and push to it. Expo Router moves an
- * existing route with that ID to the front instead of replacing or duplicating
- * it, so every visited tab keeps its mounted state.
+ * Main screens belong to a real tab navigator. Selecting a tab changes its
+ * active index without removing, reordering, or replacing mounted screens.
  */
 export function getPaperTabNavigationAction(
   currentTab: string,
   targetTab: string,
 ): PaperTabNavigationAction {
   if (currentTab === targetTab) return 'none';
-  return 'push';
+  return 'navigate';
 }

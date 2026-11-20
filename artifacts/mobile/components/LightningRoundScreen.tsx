@@ -368,7 +368,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     ) return;
     tradeJoinPromptOpenedRef.current = true;
     if (store.lightningEnrollment?.eventId === window.id) {
-      router.replace({ pathname: '/paper', params: { challengeAccountId: store.lightningEnrollment.accountId } });
+      router.dismissTo({ pathname: '/paper', params: { challengeAccountId: store.lightningEnrollment.accountId } });
       return;
     }
     if (
@@ -760,7 +760,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     : [], [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
   const participantFailureReason = lightningOrders.find((order) => order.rejectionReason)?.rejectionReason
     || serverParticipantFailure;
-  const openAccount = () => router.push({
+  const openAccount = () => router.dismissTo({
     pathname: '/paper',
     params: { challengeAccountId: enrollment?.accountId },
   });
@@ -793,7 +793,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       if (latest.lightningEnrollment?.eventId === window.id) {
         setStore(latest);
         setJoinOpen(false);
-        router.replace({
+        router.dismissTo({
           pathname: '/paper',
           params: { challengeAccountId: latest.lightningEnrollment.accountId },
         });
@@ -862,7 +862,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       }
       setJoinOpen(false);
       setAlias('');
-      router.push({ pathname: '/paper', params: { challengeAccountId: accountId } });
+      router.dismissTo({ pathname: '/paper', params: { challengeAccountId: accountId } });
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : 'Could not join Lightning Round.');
     } finally {
@@ -1157,7 +1157,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
             </View>
             <TouchableOpacity
               accessibilityRole="button"
-              onPress={() => router.push({ pathname: '/event-arena', params: { section: 'past' } })}
+              onPress={() => router.dismissTo({ pathname: '/event-arena', params: { section: 'past' } })}
               style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 5 }}
             >
               <Feather name="archive" size={14} color={colors.primary} />

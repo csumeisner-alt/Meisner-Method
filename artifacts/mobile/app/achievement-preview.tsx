@@ -10,7 +10,7 @@ export default function AchievementPreviewScreen() {
     return <Redirect href="/" />;
   }
 
-  const returnToApp = () => router.replace('/');
+  const returnToApp = () => router.dismissTo('/');
 
   return (
     <AchievementSealCelebration

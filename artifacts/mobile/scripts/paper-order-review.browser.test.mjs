@@ -867,7 +867,7 @@ test("stale quotes are reviewable with disclosure, but missing and invalid price
 });
 
 test("the paper screen keeps quote-change and account-position guards in the live submit path", async () => {
-  const screen = await readFile(join(mobileDir, "app/paper.tsx"), "utf8");
+  const screen = await readFile(join(mobileDir, "app/(tabs)/paper.tsx"), "utf8");
   const orderEntry = await readFile(join(mobileDir, "components/ProfessionalOrderEntry.tsx"), "utf8");
   assert.match(screen, /getMarketOrderQuoteError\(currentQuote, args\.quotePrice\)/);
   assert.match(screen, /const accountPositions = currentPositions\.filter\(\(position\) => position\.accountId === accountId\)/);

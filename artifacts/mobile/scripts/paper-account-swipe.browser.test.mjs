@@ -20,7 +20,7 @@ const selector = (testID) => `[data-testid=${JSON.stringify(testID)}]`;
 let nextTouchId = 1;
 
 test("paper total return stays derived from the selected account's equity", async () => {
-  const screen = await readFile(join(mobileDir, "app/paper.tsx"), "utf8");
+  const screen = await readFile(join(mobileDir, "app/(tabs)/paper.tsx"), "utf8");
   const layout = await readFile(join(mobileDir, "components/PaperPortfolioLayout.tsx"), "utf8");
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /const activeAccountStartingBalance = isSelectedEventAccount[\s\S]*?: INITIAL_BALANCE/);

@@ -184,7 +184,7 @@ test('a successful quote refresh replaces only that symbol in the saved cache', 
 });
 
 test('Portfolio screen wires cache-first trades and batched quote updates', () => {
-  const screen = readFileSync('app/portfolio.tsx', 'utf8');
+  const screen = readFileSync('app/(tabs)/portfolio.tsx', 'utf8');
   assert.match(screen, /startPortfolioTradesLoad\(/);
   assert.match(screen, /event\.source === 'cache' && event\.trades\.length === 0/);
   assert.match(screen, /fetchPortfolioQuotes\(/);
@@ -202,7 +202,7 @@ test('Portfolio screen wires cache-first trades and batched quote updates', () =
 });
 
 test('Portfolio keeps the unlocked Bank visible and explains weekday closure on tap', () => {
-  const screen = readFileSync('app/portfolio.tsx', 'utf8');
+  const screen = readFileSync('app/(tabs)/portfolio.tsx', 'utf8');
   assert.match(screen, /BREW_BANK_ENABLED && brewBankUnlocked && \(\s*<Pressable/);
   assert.match(screen, /bankEntryStatus === 'weekday-closed'/);
   assert.match(screen, /setBankClosedInfoVisible\(true\)/);

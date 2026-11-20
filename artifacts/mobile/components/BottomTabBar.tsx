@@ -25,18 +25,7 @@ export function BottomTabBar() {
     const plan = getMainTabNavigationPlan(pathname, path);
     if (!plan) return;
     if (!claimMainTabNavigation()) return;
-    switch (plan.action) {
-      case 'none':
-        return;
-      case 'push':
-        router.push(plan.href);
-        return;
-      case 'navigate':
-        router.navigate(plan.href);
-        return;
-      default:
-        router.replace(plan.href);
-    }
+    router.navigate(plan.href);
   }
 
   return (

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const paper = readFileSync(new URL('../app/paper.tsx', import.meta.url), 'utf8');
+const paper = readFileSync(new URL('../app/(tabs)/paper.tsx', import.meta.url), 'utf8');
 const lightning = readFileSync(new URL('../components/LightningRoundScreen.tsx', import.meta.url), 'utf8');
 const arena = readFileSync(new URL('../components/EventArenaScreen.tsx', import.meta.url), 'utf8');
 const leaderboard = readFileSync(new URL('../components/PaperChallengeLeaderboard.tsx', import.meta.url), 'utf8');

@@ -1,4 +1,5 @@
 - [React Native / Expo gotchas](react-native-gotchas.md) — `Easing.sin` not `Easing.sine` (mount crash); gate expo-audio behind Expo Go check.
+- [Main-tab navigation](main-tab-navigation.md) — use real tabs, not singular native-stack pushes; disabling animation does not prevent unsafe screen reordering.
 - [USDA WASDE report downloads](usda-wasde-direct-download.md) — the historical page can block server fetches; fetch dated official CSVs and validate release metadata.
 - [Expo Router auth gate](expo-router-auth-gate.md) — root layout must always render the navigator; returning `<Redirect>` instead = blank screen. Redirect imperatively via useSegments.
 - [Clerk provider must always be mounted](clerk-provider-dev-bypass.md) — Clerk hooks throw without a provider; a dev "preview without login" bypass must keep ClerkProvider mounted and only skip the redirect.

@@ -1037,7 +1037,7 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   const componentSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
   const cardSource = await readFile(resolve(testDirectory, '../../components/PaperEventShareCard.tsx'), 'utf8');
   const fingerprintSource = await readFile(resolve(testDirectory, '../../components/TradingFingerprintSection.tsx'), 'utf8');
-  const paperScreenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  const paperScreenSource = await readFile(resolve(testDirectory, '../../app/(tabs)/paper.tsx'), 'utf8');
   const badgeSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeMilestoneBadges.tsx'), 'utf8');
   assert.match(componentSource, /accessibilityLabel="Event Arena"/);
   assert.match(componentSource, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
@@ -1725,14 +1725,14 @@ test('each event gets a fresh account without inheriting earlier or orphaned eve
   assert.ok(reopening.positions.some((position) => position.accountId === secondEvent.accountId));
 
   const testDirectory = dirname(fileURLToPath(import.meta.url));
-  const screenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  const screenSource = await readFile(resolve(testDirectory, '../../app/(tabs)/paper.tsx'), 'utf8');
   assert.match(screenSource, /ensurePaperChallengeAccount\(enrollment/);
   assert.match(screenSource, /nextState\.positions/);
 });
 
 test('expired enrollment remains saved until its event summary is finalized', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
-  const source = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  const source = await readFile(resolve(testDirectory, '../../app/(tabs)/paper.tsx'), 'utf8');
   assert.doesNotMatch(source, /savePaperChallenge\(\{ enrollment: null, history: latestStore\.history \}\)/);
   assert.match(source, /await savePaperChallenge\(\(current\) =>\s*finalizePaperChallengeStore\(current, summary, challengeNow\)/);
   assert.match(source, /void pushEventArenaSnapshotRef\.current\(\{/);

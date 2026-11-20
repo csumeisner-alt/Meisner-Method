@@ -7,10 +7,10 @@ import { getAchievementSealLayout } from "../lib/achievementSealLayout.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const readSource = (path) => readFileSync(resolve(scriptDir, path), "utf8");
-const portfolioSource = readSource("../app/portfolio.tsx");
-const paperSource = readSource("../app/paper.tsx");
+const portfolioSource = readSource("../app/(tabs)/portfolio.tsx");
+const paperSource = readSource("../app/(tabs)/paper.tsx");
 const heatMapSource = readSource("../app/heat-map.tsx");
-const homeSource = readSource("../app/index.tsx");
+const homeSource = readSource("../app/(tabs)/index.tsx");
 const settingsSource = readSource("../components/DonationSidebar.tsx");
 const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const paperScreen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
+const paperScreen = readFileSync(new URL("../app/(tabs)/paper.tsx", import.meta.url), "utf8");
 
 test("company result selection looks up the selected symbol and does not submit an order", () => {
   const resultHandler = paperScreen.match(

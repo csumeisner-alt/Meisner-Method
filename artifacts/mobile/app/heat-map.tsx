@@ -1578,7 +1578,7 @@ export default function HeatMapScreen() {
             refreshControl={<RefreshControl refreshing={mapQuery.isRefetching} onRefresh={() => mapQuery.refetch()} tintColor={colors.primary} />}>
           <View style={styles.header}>
             <TouchableOpacity testID="heat-map-back" accessibilityRole="button" accessibilityLabel="Back to Analyze"
-              onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={[styles.iconButton, { borderColor: colors.border }]}>
+              onPress={() => router.canGoBack() ? router.back() : router.dismissTo('/')} style={[styles.iconButton, { borderColor: colors.border }]}>
               <MaterialCommunityIcons name="arrow-left" size={20} color={colors.foreground} />
             </TouchableOpacity>
             <View style={styles.headingCopy}>

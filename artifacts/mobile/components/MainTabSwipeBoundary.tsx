@@ -104,9 +104,7 @@ export function MainTabSwipeBoundary({ children }: React.PropsWithChildren) {
         const plan = getMainTabNavigationPlan(pathname, target);
         if (!plan || plan.action === 'none') return;
         if (!claimMainTabNavigation()) return;
-        if (plan.action === 'push') router.push(plan.href);
-        else if (plan.action === 'navigate') router.navigate(plan.href);
-        else router.replace(plan.href);
+        router.navigate(plan.href);
       }}
     >
       {children}

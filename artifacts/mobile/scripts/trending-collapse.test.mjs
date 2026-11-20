@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const screenSource = readFileSync(
-  fileURLToPath(new URL("../app/index.tsx", import.meta.url)),
+  fileURLToPath(new URL("../app/(tabs)/index.tsx", import.meta.url)),
   "utf8",
 );
 const trendingSection = screenSource.match(

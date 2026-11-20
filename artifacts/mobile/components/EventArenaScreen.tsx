@@ -1265,7 +1265,7 @@ function EventArenaScreenContent() {
         .filter((item) => item.accountId === eventAccountId)
         .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt))
       : [];
-    const openTrading = () => router.push('/paper');
+    const openTrading = () => router.navigate('/paper');
 
     if (!store.enrollment) {
       return (
@@ -1426,7 +1426,7 @@ function EventArenaScreenContent() {
           void readStore();
           void refreshAccountData();
         }}
-        onOpenTrades={() => router.push('/paper')}
+        onOpenTrades={() => router.navigate('/paper')}
       />
       {storeState === 'error' && (
         <View style={{ paddingHorizontal: 18, paddingBottom: 10 }}>
@@ -1447,7 +1447,7 @@ function EventArenaScreenContent() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() => router.replace({
+            onPress={() => router.navigate({
               pathname: '/paper',
               params: {
                 tab: 'positions',

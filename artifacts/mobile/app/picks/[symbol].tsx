@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { StockChart, type Candle } from '@/components/StockChart';
-import type { Pick } from '@/app/picks';
+import type { Pick } from '@/app/(tabs)/picks';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isStockSearchSelectionCurrent } from "../lib/stockSearch.ts";
 
 const homeScreen = readFileSync(
-  fileURLToPath(new URL("../app/index.tsx", import.meta.url)),
+  fileURLToPath(new URL("../app/(tabs)/index.tsx", import.meta.url)),
   "utf8",
 );
 const analysisScreen = readFileSync(

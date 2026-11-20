@@ -5,7 +5,7 @@ description: Reliable programmatic section jumps in the mobile app's browser pre
 
 For a React Native Web section jump, measure the target and the scroll frame in the same window, combine that difference with the current scroll offset, and call `ScrollView.scrollTo` with `animated: false`.
 
-Stable Expo Router Stack routes preserve screen-level React state, but a screen's
+Retained Expo Router routes preserve screen-level React state, but a screen's
 scroll offset can still reset when it blurs and becomes active again. Save each
 scroll view's offset while focused and restore it with nonanimated `scrollTo`
 after focus; use a distinct in-memory key for each screen or section.

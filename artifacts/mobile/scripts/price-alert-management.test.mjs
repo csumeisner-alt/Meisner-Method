@@ -5,7 +5,7 @@ import test from "node:test";
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const watchlistHook = source("../hooks/useWatchlist.ts");
 const settings = source("../components/DonationSidebar.tsx");
-const home = source("../app/index.tsx");
+const home = source("../app/(tabs)/index.tsx");
 const modal = source("../components/PriceAlertModal.tsx");
 const apiRoutes = source("../../api-server/src/routes/user.ts");
 const notificationRoutes = source("../../api-server/src/routes/notificationAlertRoutes.ts");

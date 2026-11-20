@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createPaperOrderFillAlertNotifier } from '../paperOrderFillAlerts.ts';
 
-const screenSource = readFileSync('app/paper.tsx', 'utf8');
+const screenSource = readFileSync('app/(tabs)/paper.tsx', 'utf8');
 
 const transition = (overrides: Partial<Parameters<ReturnType<typeof createPaperOrderFillAlertNotifier>>[0]> = {}) => ({
   orderId: 'order-1',

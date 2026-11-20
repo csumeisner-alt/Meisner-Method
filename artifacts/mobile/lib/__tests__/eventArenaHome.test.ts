@@ -261,8 +261,8 @@ test('Event Arena is a dedicated destination with separate competition sections'
   const screen = await readFile(resolve(testDirectory, '../../components/EventArenaScreen.tsx'), 'utf8');
   const lightningInvitation = await readFile(resolve(testDirectory, '../../components/LightningRoundInvitation.tsx'), 'utf8');
   const overview = await readFile(resolve(testDirectory, '../../components/EventArenaOverview.tsx'), 'utf8');
-  const route = await readFile(resolve(testDirectory, '../../app/event-arena.tsx'), 'utf8');
-  const paper = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  const route = await readFile(resolve(testDirectory, '../../app/(tabs)/event-arena.tsx'), 'utf8');
+  const paper = await readFile(resolve(testDirectory, '../../app/(tabs)/paper.tsx'), 'utf8');
   const tabs = await readFile(resolve(testDirectory, '../../components/BottomTabBar.tsx'), 'utf8');
   const settings = await readFile(resolve(testDirectory, '../../components/DonationSidebar.tsx'), 'utf8');
   const leaderboard = await readFile(resolve(testDirectory, '../../components/PaperChallengeLeaderboard.tsx'), 'utf8');
@@ -294,7 +294,7 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(screen, /embedded/);
   assert.match(leaderboard, /testID="edit-paper-event-leaderboard-alias"/);
   assert.match(leaderboard, /testID="save-paper-event-leaderboard-alias"/);
-  assert.match(screen, /router\.push\('\/paper'\)/);
+  assert.match(screen, /router\.navigate\('\/paper'\)/);
   assert.match(overview, /points=\{chartPoints\}/);
   assert.match(overview, /chartPoints\.length < 2/);
   assert.match(overview, /referenceLine=\{/);

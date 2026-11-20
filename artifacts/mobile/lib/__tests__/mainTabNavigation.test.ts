@@ -44,49 +44,38 @@ test('gesture direction requires horizontal intent, distance, and a dead zone', 
 
 test('bottom taps and swipes preserve Paper and route direction', () => {
   assert.deepEqual(getMainTabNavigationPlan('/paper', '/event-arena'), {
-    action: 'push',
+    action: 'navigate',
     href: { pathname: '/event-arena', params: { transition: 'right' } },
   });
   assert.deepEqual(getMainTabNavigationPlan('/event-arena', '/paper'), {
-    action: 'push',
+    action: 'navigate',
     href: { pathname: '/paper', params: { transition: 'left' } },
   });
   assert.deepEqual(getMainTabNavigationPlan('/portfolio', '/event-arena'), {
-    action: 'push',
+    action: 'navigate',
     href: { pathname: '/event-arena', params: { transition: 'right' } },
   });
   assert.deepEqual(getMainTabNavigationPlan('/', '/picks'), {
-    action: 'push',
+    action: 'navigate',
     href: { pathname: '/picks', params: { transition: 'right' } },
   });
   assert.deepEqual(getMainTabNavigationPlan('/picks', '/'), {
-    action: 'push',
+    action: 'navigate',
     href: { pathname: '/', params: { transition: 'left' } },
   });
   assert.equal(getMainTabNavigationPlan('/paper', '/paper'), null);
 });
 
-test('repeated switching across all five tabs keeps one route instance per tab', () => {
-  const stack: string[] = ['/'];
-  let current = '/';
-  const sequence = ['/picks', '/paper', '/portfolio', '/event-arena', '/', '/paper', '/event-arena', '/picks', '/portfolio'];
-
-  for (const target of sequence) {
-    const plan = getMainTabNavigationPlan(current, target as (typeof MAIN_TAB_ROUTES)[number]);
-    assert.ok(plan);
-    assert.equal(plan.href.pathname, target);
-    const expectedTransition = MAIN_TAB_ROUTES.indexOf(target as (typeof MAIN_TAB_ROUTES)[number])
-      < MAIN_TAB_ROUTES.indexOf(current as (typeof MAIN_TAB_ROUTES)[number])
-      ? 'left'
-      : 'right';
-    assert.equal(plan.href.params.transition, expectedTransition);
-    const existingIndex = stack.indexOf(target);
-    if (existingIndex >= 0) stack.splice(existingIndex, 1);
-    stack.push(target);
-    current = target;
+test('all distinct tab pairs select tabs rather than pushing or replacing', () => {
+  for (const current of MAIN_TAB_ROUTES) {
+    for (const target of MAIN_TAB_ROUTES) {
+      const plan = getMainTabNavigationPlan(current, target);
+      if (current === target) {
+        assert.equal(plan, null);
+      } else {
+        assert.equal(plan?.action, 'navigate');
+        assert.equal(plan?.href.pathname, target);
+      }
+    }
   }
-
-  assert.deepEqual(new Set(stack), new Set(MAIN_TAB_ROUTES));
-  assert.equal(stack.length, MAIN_TAB_ROUTES.length);
-  assert.equal(current, '/portfolio');
 });

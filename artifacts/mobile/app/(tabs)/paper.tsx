@@ -218,7 +218,7 @@ import {
   hasDeviceTransferDestinationChanged,
   replaceDeviceTransferCategoryData,
 } from '@/lib/deviceTransfer';
-import { stableDeviceTransferJson } from '../../../lib/api-zod/src/deviceTransferManifest.ts';
+import { stableDeviceTransferJson } from '../../../../lib/api-zod/src/deviceTransferManifest.ts';
 import { didNetworkReconnect, isNetworkOffline } from '@/lib/networkConnectivity';
 
 /**
@@ -4090,9 +4090,11 @@ export default function PaperScreen() {
               onOpenLightningRound={() => router.push('/lightning-round')}
               onViewLeaderboard={() => {
                 const lightning = (selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType) === 'lightning-round';
-                router.push(lightning
-                  ? { pathname: '/lightning-round', params: { tab: 'leaderboard' } }
-                  : { pathname: '/event-arena', params: { section: 'leaderboard', eventId: selectedEventId } });
+                if (lightning) {
+                  router.push({ pathname: '/lightning-round', params: { tab: 'leaderboard' } });
+                } else {
+                  router.navigate({ pathname: '/event-arena', params: { section: 'leaderboard', eventId: selectedEventId } });
+                }
               }}
             />
           </>

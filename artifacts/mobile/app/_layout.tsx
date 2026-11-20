@@ -11,7 +11,6 @@ import { Platform } from 'react-native';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { MainTabSwipeBoundary } from '@/components/MainTabSwipeBoundary';
 import { installLightningRoundNotificationResponseHandler } from '@/lib/lightningRoundNotificationResponse';
 import { EventArenaRemindersProvider } from '@/lib/eventArenaReminders';
 import {
@@ -42,6 +41,9 @@ const queryClient = new QueryClient({
     mutations: { retry: 0 },
   },
 });
+
+// A direct link to a detail screen still has the main tabs underneath it.
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 function RootLayoutNav() {
   const segments = useSegments();
@@ -95,7 +97,6 @@ function RootLayoutNav() {
   }, []);
 
   return (
-      <MainTabSwipeBoundary>
         <Stack
           screenListeners={{
             transitionStart: () => recordDiagnosticInteraction('navigation_transition', 'started'),
@@ -106,27 +107,20 @@ function RootLayoutNav() {
             const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
             return {
               headerShown: false,
-              // Moving an existing singular route while native-stack is animating
-              // can detach the screen beneath an in-flight Android transition.
-              animation: ['index', 'picks', 'paper', 'portfolio', 'event-arena'].includes(route.name)
+              animation: route.name === '(tabs)'
                 ? 'none'
                 : transition === 'left' ? 'slide_from_left' : 'slide_from_right',
-              gestureEnabled: !['index', 'picks', 'paper', 'portfolio', 'event-arena'].includes(route.name),
+              gestureEnabled: route.name !== '(tabs)',
             };
           }}
         >
-          <Stack.Screen name="index" dangerouslySingular options={{ headerShown: false }} />
-          <Stack.Screen name="portfolio" dangerouslySingular options={{ headerShown: false }} />
-          <Stack.Screen name="paper" dangerouslySingular options={{ headerShown: false }} />
-          <Stack.Screen name="event-arena" dangerouslySingular options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="lightning-round" options={{ headerShown: false }} />
-          <Stack.Screen name="picks" dangerouslySingular options={{ headerShown: false }} />
           <Stack.Screen name="heat-map" options={{ headerShown: false }} />
           <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />
           <Stack.Screen name="picks/[symbol]" options={{ headerShown: false }} />
           <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
         </Stack>
-      </MainTabSwipeBoundary>
   );
 }
 

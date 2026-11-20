@@ -205,16 +205,16 @@ const SPARKLE_EMOJIS = ['✨', '⭐', '💫', '🌟', '🎉', '💎', '🏆', '�
 
 // Celebration woman images — AI-generated, rotated randomly each time
 const CELEBRATION_IMAGES = [
-  require('../assets/celebration/woman1.jpg'),
-  require('../assets/celebration/woman2.jpg'),
-  require('../assets/celebration/woman3.jpg'),
-  require('../assets/celebration/woman4.jpg'),
-  require('../assets/celebration/woman5.jpg'),
-  require('../assets/celebration/woman6.jpg'),
-  require('../assets/celebration/woman7.jpg'),
-  require('../assets/celebration/woman8.jpg'),
-  require('../assets/celebration/woman9.jpg'),
-  require('../assets/celebration/woman10.jpg'),
+  require('../../assets/celebration/woman1.jpg'),
+  require('../../assets/celebration/woman2.jpg'),
+  require('../../assets/celebration/woman3.jpg'),
+  require('../../assets/celebration/woman4.jpg'),
+  require('../../assets/celebration/woman5.jpg'),
+  require('../../assets/celebration/woman6.jpg'),
+  require('../../assets/celebration/woman7.jpg'),
+  require('../../assets/celebration/woman8.jpg'),
+  require('../../assets/celebration/woman9.jpg'),
+  require('../../assets/celebration/woman10.jpg'),
 ];
 
 // Expo Go bundles a fixed set of native modules; expo-audio's native player can
@@ -288,59 +288,59 @@ function stopCelebrationVoice() {
 const CELEBRATION_PHRASES: CelebrationPhrase[] = [
   {
     text: "Mm, congrats, you really are a true crypto bro. Why don't you come see what's inside my special vault?",
-    source: require('../assets/celebration/voice01.m4a'),
+    source: require('../../assets/celebration/voice01.m4a'),
   },
   {
     text: "Nice job, trader. Keep up the good work, and maybe I'll have a little surprise for you later.",
-    source: require('../assets/celebration/voice02.m4a'),
+    source: require('../../assets/celebration/voice02.m4a'),
   },
   {
     text: "You didn't just catch that trend. You seduced it.",
-    source: require('../assets/celebration/voice03.m4a'),
+    source: require('../../assets/celebration/voice03.m4a'),
   },
   {
     text: "That was a spicy little profit. I see you.",
-    source: require('../assets/celebration/voice04.m4a'),
+    source: require('../../assets/celebration/voice04.m4a'),
   },
   {
     text: "You flirted with the market, and it definitely flirted back.",
-    source: require('../assets/celebration/voice05.m4a'),
+    source: require('../../assets/celebration/voice05.m4a'),
   },
   {
     text: "Mmm... that entry was dirty, but it came out clean. Almost too clean.",
-    source: require('../assets/celebration/voice06.m4a'),
+    source: require('../../assets/celebration/voice06.m4a'),
   },
   {
     text: "You handled those candles like someone who knows exactly where they're going.",
-    source: require('../assets/celebration/voice07.m4a'),
+    source: require('../../assets/celebration/voice07.m4a'),
   },
   {
     text: "You really like making the market behave for you, don't you?",
-    source: require('../assets/celebration/voice08.m4a'),
+    source: require('../../assets/celebration/voice08.m4a'),
   },
   {
     text: "That move was bold... and honestly, I'm all about the way you move.",
-    source: require('../assets/celebration/voice09.m4a'),
+    source: require('../../assets/celebration/voice09.m4a'),
   },
   {
     text: "Well, well... look at you moving those charts like you know exactly what you're doing.",
-    source: require('../assets/celebration/voice10.m4a'),
+    source: require('../../assets/celebration/voice10.m4a'),
   },
   {
     text: "You guided those candles exactly where you wanted them. Very assertive of you.",
-    source: require('../assets/celebration/voice11.m4a'),
+    source: require('../../assets/celebration/voice11.m4a'),
   },
   {
     text: "Look at you go. If I helped you catch that move, you can send a little love right back.",
-    source: require('../assets/celebration/voice12.m4a'),
+    source: require('../../assets/celebration/voice12.m4a'),
   },
   {
     text: "You held that trade with confidence... and the payoff was downright attractive.",
-    source: require('../assets/celebration/voice13.m4a'),
+    source: require('../../assets/celebration/voice13.m4a'),
   },
   {
     text: "You are clearly the alpha trader. I'm into that. Real alphas like yourself would consider leaving me a tip.",
-    source: require('../assets/celebration/voice14.m4a'),
+    source: require('../../assets/celebration/voice14.m4a'),
   },
 ];
 

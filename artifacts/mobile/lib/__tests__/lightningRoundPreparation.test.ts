@@ -263,7 +263,7 @@ test('registration chooses an existing Event Arena account and never invents one
 });
 
 test('Paper Trading scopes Lightning Round status to its Event Arena account and supports explicit unenrollment', () => {
-  const source = readFileSync('app/paper.tsx', 'utf8');
+  const source = readFileSync('app/(tabs)/paper.tsx', 'utf8');
   assert.ok(source.includes('const lightningEnrollmentForDisplay = activeLightningEnrollment'));
   assert.ok(source.includes('shouldSyncLightningRoundPreparation({'));
   assert.ok(source.includes('enrollment.accountId !== activeId'));
