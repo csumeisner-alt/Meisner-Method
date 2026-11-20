@@ -29,3 +29,5 @@ jobs:
         run: pnpm --filter @workspace/mobile run smoke:api-routes
         env:
           API_ROUTE_PREFLIGHT_BASE_URL: ${{ vars.API_ROUTE_PREFLIGHT_BASE_URL }}
+          API_ROUTE_PREFLIGHT_MAX_ATTEMPTS: ${{ vars.API_ROUTE_PREFLIGHT_MAX_ATTEMPTS }}
+          API_ROUTE_PREFLIGHT_RETRY_DELAY_MS: ${{ vars.API_ROUTE_PREFLIGHT_RETRY_DELAY_MS }}

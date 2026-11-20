@@ -10,6 +10,7 @@ import {
   getMobileApiRequests,
   getMobileApiPaths,
   getOpenApiGetPaths,
+  getApiRouteRetryConfig,
   getPublishedApiBaseUrl,
   runApiRoutePreflight,
 } from "./smoke-test-api-routes.mjs";
@@ -162,6 +163,45 @@ test("requires a published HTTPS URL and rejects development hosts", () => {
   );
 });
 
+test("uses bounded retry defaults when release settings are omitted", () => {
+  assert.deepEqual(getApiRouteRetryConfig({}), {
+    maxAttempts: 3,
+    retryDelayMs: 500,
+  });
+});
+
+test("accepts retry settings at their configured limits", () => {
+  assert.deepEqual(
+    getApiRouteRetryConfig({
+      API_ROUTE_PREFLIGHT_MAX_ATTEMPTS: "6",
+      API_ROUTE_PREFLIGHT_RETRY_DELAY_MS: "5000",
+    }),
+    { maxAttempts: 6, retryDelayMs: 5000 },
+  );
+  assert.deepEqual(
+    getApiRouteRetryConfig({
+      API_ROUTE_PREFLIGHT_MAX_ATTEMPTS: "1",
+      API_ROUTE_PREFLIGHT_RETRY_DELAY_MS: "0",
+    }),
+    { maxAttempts: 1, retryDelayMs: 0 },
+  );
+});
+
+test("rejects malformed or out-of-range retry settings", () => {
+  for (const value of ["0", "7", "-1", "2.5", "abc"]) {
+    assert.throws(
+      () => getApiRouteRetryConfig({ API_ROUTE_PREFLIGHT_MAX_ATTEMPTS: value }),
+      /API_ROUTE_PREFLIGHT_MAX_ATTEMPTS must be an integer from 1 to 6/,
+    );
+  }
+  for (const value of ["-1", "5001", "2.5", "abc"]) {
+    assert.throws(
+      () => getApiRouteRetryConfig({ API_ROUTE_PREFLIGHT_RETRY_DELAY_MS: value }),
+      /API_ROUTE_PREFLIGHT_RETRY_DELAY_MS must be an integer from 0 to 5000/,
+    );
+  }
+});
+
 test("checks only GET routes and reports missing routes separately", async () => {
   const methods = [];
   const report = await runApiRoutePreflight({
@@ -252,6 +292,25 @@ test("returns a failed result after exhausting network retries", async () => {
   assert.equal(attempts, 3);
   assert.equal(report.results[0].result, "failed");
   assert.equal(report.results[0].attempts, 3);
+});
+
+test("uses configured retry limits when checking a route", async () => {
+  let attempts = 0;
+  const report = await runApiRoutePreflight({
+    baseUrl: "https://published.example",
+    paths: ["/stocks/info/{symbol}"],
+    env: {
+      API_ROUTE_PREFLIGHT_MAX_ATTEMPTS: "4",
+      API_ROUTE_PREFLIGHT_RETRY_DELAY_MS: "0",
+    },
+    fetchImpl: async () => {
+      attempts += 1;
+      return { status: 503, body: null };
+    },
+  });
+
+  assert.equal(attempts, 4);
+  assert.equal(report.results[0].attempts, 4);
 });
 
 test("formats missing route findings with the exact GET path and 404 status", () => {

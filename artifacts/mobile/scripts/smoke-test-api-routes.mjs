@@ -9,6 +9,8 @@ const OPENAPI_PATH = resolve(SCRIPT_DIR, "../../../lib/api-spec/openapi.yaml");
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 500;
+const MAX_RETRY_ATTEMPTS = 6;
+const MAX_RETRY_DELAY_MS = 5_000;
 const REQUEST_CONCURRENCY = 2;
 
 const SAMPLE_QUERY_PARAMETERS = {
@@ -46,6 +48,39 @@ function normalizeBaseUrl(value) {
 
 export function getPublishedApiBaseUrl(env = process.env) {
   return normalizeBaseUrl(env.API_ROUTE_PREFLIGHT_BASE_URL?.trim());
+}
+
+function parseRetrySetting(env, name, fallback, minimum, maximum) {
+  const rawValue = env[name]?.trim();
+  if (!rawValue) return fallback;
+  if (!/^\d+$/.test(rawValue)) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
+  }
+  return value;
+}
+
+export function getApiRouteRetryConfig(env = process.env) {
+  return {
+    maxAttempts: parseRetrySetting(
+      env,
+      "API_ROUTE_PREFLIGHT_MAX_ATTEMPTS",
+      DEFAULT_MAX_ATTEMPTS,
+      1,
+      MAX_RETRY_ATTEMPTS,
+    ),
+    retryDelayMs: parseRetrySetting(
+      env,
+      "API_ROUTE_PREFLIGHT_RETRY_DELAY_MS",
+      DEFAULT_RETRY_DELAY_MS,
+      0,
+      MAX_RETRY_DELAY_MS,
+    ),
+  };
 }
 
 export function getOpenApiPaths(openApiSource) {
@@ -335,20 +370,30 @@ async function checkRoute({
   }
 }
 
-export async function runApiRoutePreflight({
-  baseUrl = getPublishedApiBaseUrl(),
-  paths,
-  openApiSource,
-  fetchImpl = fetch,
-  timeoutMs = Number(process.env.API_ROUTE_PREFLIGHT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
-  maxAttempts = DEFAULT_MAX_ATTEMPTS,
-  retryDelayMs = DEFAULT_RETRY_DELAY_MS,
-} = {}) {
-  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
-    throw new Error("API route preflight maxAttempts must be a positive integer");
+export async function runApiRoutePreflight(options = {}) {
+  const retryConfig = getApiRouteRetryConfig(options.env ?? process.env);
+  const {
+    baseUrl = getPublishedApiBaseUrl(),
+    paths,
+    openApiSource,
+    fetchImpl = fetch,
+    timeoutMs = Number(process.env.API_ROUTE_PREFLIGHT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
+    maxAttempts = retryConfig.maxAttempts,
+    retryDelayMs = retryConfig.retryDelayMs,
+  } = options;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > MAX_RETRY_ATTEMPTS) {
+    throw new Error(
+      `API route preflight maxAttempts must be an integer from 1 to ${MAX_RETRY_ATTEMPTS}`,
+    );
   }
-  if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
-    throw new Error("API route preflight retryDelayMs must be a non-negative number");
+  if (
+    !Number.isInteger(retryDelayMs)
+    || retryDelayMs < 0
+    || retryDelayMs > MAX_RETRY_DELAY_MS
+  ) {
+    throw new Error(
+      `API route preflight retryDelayMs must be an integer from 0 to ${MAX_RETRY_DELAY_MS}`,
+    );
   }
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const routes = paths ?? getExpectedMobileGetPaths(
