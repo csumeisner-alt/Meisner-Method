@@ -70,11 +70,19 @@ export function getPaperEventDashboardProgress(startAtMs: number, endAtMs: numbe
 }
 
 export function getPaperEventDashboardRank(rank: number | null) {
-  if (!Number.isInteger(rank) || (rank ?? 0) < 1) return null;
-  if (rank === 1) return { label: 'CHAMPION · 1ST', medal: 'GOLD' } as const;
-  if (rank === 2) return { label: 'SILVER · 2ND', medal: 'SILVER' } as const;
-  if (rank === 3) return { label: 'BRONZE · 3RD', medal: 'BRONZE' } as const;
-  return { label: `#${rank} PLACE`, medal: null } as const;
+  if (rank === null || !Number.isInteger(rank) || rank < 1) return null;
+  const remainder = rank % 100;
+  const suffix = remainder >= 11 && remainder <= 13
+    ? 'TH'
+    : rank % 10 === 1
+      ? 'ST'
+      : rank % 10 === 2
+        ? 'ND'
+        : rank % 10 === 3
+          ? 'RD'
+          : 'TH';
+  const medal = rank === 1 ? 'GOLD' : rank === 2 ? 'SILVER' : rank === 3 ? 'BRONZE' : null;
+  return { label: `${rank}${suffix}`, medal };
 }
 
 export function getPaperEventDashboardRankText(args: {

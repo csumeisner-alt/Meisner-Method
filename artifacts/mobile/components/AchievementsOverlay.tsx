@@ -616,7 +616,7 @@ export function AchievementsOverlay() {
             <ScrollView
               style={styles.achievementScroll}
               contentContainerStyle={styles.achievementList}
-              showsVerticalScrollIndicator
+              showsVerticalScrollIndicator={false}
               nestedScrollEnabled
               accessibilityLabel="Achievement list"
             >

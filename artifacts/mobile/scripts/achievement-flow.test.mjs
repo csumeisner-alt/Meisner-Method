@@ -49,6 +49,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.doesNotMatch(homeSource, /onPress=\{openGallery\}/);
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
+  assert.match(overlaySource, /showsVerticalScrollIndicator=\{false\}/);
   assert.match(overlaySource, /TITLE FLAG/);
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /DEFAULT_FLAG_ID/);

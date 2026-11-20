@@ -65,10 +65,12 @@ test('dashboard progress clamps at the event boundaries', () => {
 });
 
 test('only actual positive ranks receive a podium or placement label', () => {
-  assert.deepEqual(getPaperEventDashboardRank(1), { label: 'CHAMPION · 1ST', medal: 'GOLD' });
-  assert.deepEqual(getPaperEventDashboardRank(2), { label: 'SILVER · 2ND', medal: 'SILVER' });
-  assert.deepEqual(getPaperEventDashboardRank(3), { label: 'BRONZE · 3RD', medal: 'BRONZE' });
-  assert.deepEqual(getPaperEventDashboardRank(8), { label: '#8 PLACE', medal: null });
+  assert.deepEqual(getPaperEventDashboardRank(1), { label: '1ST', medal: 'GOLD' });
+  assert.deepEqual(getPaperEventDashboardRank(2), { label: '2ND', medal: 'SILVER' });
+  assert.deepEqual(getPaperEventDashboardRank(3), { label: '3RD', medal: 'BRONZE' });
+  assert.deepEqual(getPaperEventDashboardRank(8), { label: '8TH', medal: null });
+  assert.deepEqual(getPaperEventDashboardRank(12), { label: '12TH', medal: null });
+  assert.deepEqual(getPaperEventDashboardRank(21), { label: '21ST', medal: null });
   assert.equal(getPaperEventDashboardRank(null), null);
   assert.equal(getPaperEventDashboardRank(0), null);
 });
@@ -84,7 +86,7 @@ test('rank status resolves loading, no-rank, upcoming, and unavailable states', 
   assert.equal(getPaperEventDashboardRankText(base), 'LOADING RANK');
   assert.equal(getPaperEventDashboardRankText({ ...base, hasResponse: true }), 'NOT RANKED');
   assert.equal(getPaperEventDashboardRankText({ ...base, unavailable: true }), 'UNAVAILABLE');
-  assert.equal(getPaperEventDashboardRankText({ ...base, rank: 4 }), '#4 PLACE');
+  assert.equal(getPaperEventDashboardRankText({ ...base, rank: 4 }), '4TH');
   assert.equal(getPaperEventDashboardRankText({ ...base, phase: 'upcoming' }), 'UPCOMING');
   assert.equal(getPaperEventDashboardRankText({ ...base, optedIn: false }), 'NOT RANKED');
   assert.equal(

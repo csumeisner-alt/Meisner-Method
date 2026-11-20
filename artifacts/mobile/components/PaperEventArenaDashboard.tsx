@@ -48,15 +48,6 @@ const safeMoney = (value: number) => Number.isFinite(value) ? money(value) : '�
 const signedMoney = (value: number) => `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
 const signedPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 
-function eventDateRange(startAtMs: number, endAtMs: number) {
-  const start = new Date(startAtMs);
-  const end = new Date(endAtMs);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 'Event dates unavailable';
-  const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const endLabel = end.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  return `${startLabel} – ${endLabel}`;
-}
-
 export function PaperEventArenaDashboard({
   eventId,
   startAtMs,
@@ -71,8 +62,10 @@ export function PaperEventArenaDashboard({
   isLightningRoundEnrolled = false,
   onOpenLightningRound,
 }: Props) {
-  const { width, fontScale } = useWindowDimensions();
-  const compactMetrics = width <= 360 || fontScale >= 1.3;
+  const { fontScale } = useWindowDimensions();
+  // Keep four small metric tiles on a normal phone; wrap them only when the
+  // user has enlarged system text enough to need more room.
+  const compactMetrics = fontScale >= 1.3;
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -166,13 +159,6 @@ export function PaperEventArenaDashboard({
   const competitionReturn = rawCompetitionReturn !== null && Number.isFinite(rawCompetitionReturn)
     ? rawCompetitionReturn
     : null;
-  const phaseLabel = phase === 'upcoming'
-    ? 'UPCOMING'
-    : phase === 'active'
-      ? 'LIVE NOW'
-      : phase === 'ended'
-        ? 'COMPLETE'
-        : 'SCHEDULE UNAVAILABLE';
   const statusColor = phase === 'active' ? GREEN : GOLD;
   const rankText = getPaperEventDashboardRankText({
     phase,
@@ -193,13 +179,6 @@ export function PaperEventArenaDashboard({
         : GOLD;
   const pnlColor = competitionPnL == null ? MUTED : competitionPnL >= 0 ? GREEN : RED;
   const returnColor = competitionReturn == null ? MUTED : competitionReturn >= 0 ? GREEN : RED;
-  const eventName = eventId
-    ? `${eventType === 'lightning-round'
-      ? 'LIGHTNING ROUND'
-      : eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
-        : eventType === 'mountain-championship' ? 'MOUNTAIN CHAMPIONSHIP' : 'EVENT ARENA'} · ${eventDateRange(startAtMs, endAtMs)}`
-    : 'EVENT ARENA';
-
   const metric = (
     label: string,
     value: string,
@@ -213,11 +192,11 @@ export function PaperEventArenaDashboard({
       accessibilityLabel={accessibilityLabel ?? `${label}: ${value}`}
       style={{
         flexGrow: 1,
-        flexShrink: 0,
+        flexShrink: 1,
         flexBasis: compactMetrics ? '46%' : '22%',
         minWidth: 0,
         paddingHorizontal: 5,
-        paddingVertical: 4,
+        paddingVertical: compactMetrics ? 4 : 2,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: 'rgba(231,198,106,0.18)',
@@ -233,7 +212,7 @@ export function PaperEventArenaDashboard({
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.65}
-        style={{ color, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 2 }}
+        style={{ color, fontFamily: 'Inter_700Bold', fontSize: compactMetrics ? 11 : 10, marginTop: 0 }}
       >
         {value}
       </Text>
@@ -329,34 +308,13 @@ export function PaperEventArenaDashboard({
         </View>
       ) : (
       <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Feather name="award" size={15} color={GOLD} />
-        <Text accessibilityLabel={eventName} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.45 }}>
-          {eventName}
-        </Text>
-        <View
-          testID="paper-event-account-status"
-          style={{
-            paddingHorizontal: 7,
-            paddingVertical: 4,
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: `${statusColor}70`,
-            backgroundColor: `${statusColor}15`,
-          }}
-        >
-          <Text accessibilityLiveRegion="polite" style={{ color: statusColor, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.4 }}>
-            {phaseLabel}
-          </Text>
-        </View>
-      </View>
       {eventType === 'lightning-round' && (
         <Text testID="paper-lightning-round-rules" style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.35, marginTop: 4 }}>
           $100,000 START · 24 HOURS · HIGHEST RETURN WINS
         </Text>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
         <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
           {phase === 'ended' && summary ? 'FINAL EQUITY' : 'ACCOUNT EQUITY'}
         </Text>
@@ -366,13 +324,13 @@ export function PaperEventArenaDashboard({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
-          style={{ flex: 1, color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.7, textAlign: 'right' }}
+          style={{ flex: 1, color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 20, letterSpacing: -0.5, textAlign: 'right' }}
         >
           {displayedEquity == null ? '—' : money(displayedEquity)}
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
         {metric(
           'COMP P/L',
           competitionPnL == null ? '—' : signedMoney(competitionPnL),
@@ -418,43 +376,42 @@ export function PaperEventArenaDashboard({
         </TouchableOpacity>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 }}>
-        <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: compactMetrics ? 'wrap' : 'nowrap', gap: 5 }}>
-            <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.35 }}>
-              {phase === 'upcoming' ? 'STARTS IN' : phase === 'active' ? 'TIME LEFT' : 'STATUS'}
-            </Text>
-            <Text testID="paper-event-account-countdown" accessibilityRole="text" accessibilityLiveRegion="polite" numberOfLines={1} style={{ flex: 1, color: '#fff0c5', fontFamily: 'Inter_700Bold', fontSize: 9, textAlign: 'right' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
+            <Text
+              testID="paper-event-account-countdown"
+              accessibilityRole="text"
+              accessibilityLiveRegion="polite"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={{ flex: 1, color: '#fff0c5', fontFamily: 'Inter_700Bold', fontSize: 9 }}
+            >
               {formatPaperEventCountdown(startAtMs, endAtMs, now)}
             </Text>
             {Array.isArray(leaderboard.data?.entries) && (
               <Text
                 testID="paper-event-account-participant-count"
                 accessibilityRole="text"
-                style={{ color: MUTED, fontFamily: 'Inter_500Medium', fontSize: 8 }}
+                style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_500Medium', fontSize: 8 }}
               >
                 {entries.length} {entries.length === 1 ? 'participant' : 'participants'}
               </Text>
             )}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <View
+            accessibilityRole="progressbar"
+            accessibilityLabel="Event schedule progress"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
+            style={{ height: 2, overflow: 'hidden', borderRadius: 2, marginTop: 3, backgroundColor: 'rgba(255,255,255,0.12)' }}
+          >
             <View
-              accessibilityRole="progressbar"
-              accessibilityLabel="Event schedule progress"
-              accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
-              style={{ flex: 1, height: 4, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
-            >
-              <View
-                testID="paper-event-account-progress"
-                style={{ width: `${progress}%`, height: '100%', borderRadius: 4, backgroundColor: statusColor }}
-              />
-            </View>
-            {compactMetrics && (
-              <LeaderboardButton onPress={onViewLeaderboard} />
-            )}
+              testID="paper-event-account-progress"
+              style={{ width: `${progress}%`, height: '100%', borderRadius: 2, backgroundColor: statusColor }}
+            />
           </View>
         </View>
-        {!compactMetrics && <LeaderboardButton onPress={onViewLeaderboard} />}
+        <LeaderboardButton onPress={onViewLeaderboard} />
       </View>
       </>
       )}
@@ -470,9 +427,10 @@ function LeaderboardButton({ onPress }: { onPress: () => void }) {
       accessibilityLabel="View Event Arena leaderboard"
       onPress={onPress}
       activeOpacity={0.8}
+      hitSlop={8}
       style={{
-        width: 44,
-        height: 44,
+        width: 28,
+        height: 28,
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',

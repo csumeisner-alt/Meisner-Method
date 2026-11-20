@@ -752,6 +752,16 @@ export default function PaperScreen() {
   const selectedEventId = selectedEventEnrollment?.eventId ?? selectedEventSummary?.eventId ?? '';
   const selectedEventStartAtMs = selectedEventEnrollment?.eventStartAtMs ?? selectedEventSummary?.eventStartAtMs ?? Number.NaN;
   const selectedEventEndAtMs = selectedEventEnrollment?.eventEndAtMs ?? selectedEventSummary?.eventEndAtMs ?? Number.NaN;
+  const selectedEventDateRange = (() => {
+    const start = new Date(selectedEventStartAtMs);
+    const end = new Date(selectedEventEndAtMs);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return '';
+    const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+    const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+    return startMonth === endMonth
+      ? `${startMonth} ${start.getDate()}–${end.getDate()}`
+      : `${startMonth} ${start.getDate()}–${endMonth} ${end.getDate()}`;
+  })();
   const activeAccountStartingBalance = isSelectedEventAccount
     ? selectedEventEnrollment?.eventType === 'lightning-round'
       ? selectedEventEnrollment.startEquity ?? portfolioValue
@@ -4029,8 +4039,9 @@ export default function PaperScreen() {
         {isSelectedEventAccount ? (
           <>
             <View style={styles.eventChampionshipTopline}>
-              <Text style={styles.eventHeroLabel}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.eventHeroLabel, { flex: 1, minWidth: 0 }]}>
                 {account?.id.startsWith('paper-lightning:') ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
+                {selectedEventDateRange ? ` · ${selectedEventDateRange}` : ''}
               </Text>
               <TouchableOpacity
                 testID="paper-account-switch"
@@ -4083,6 +4094,7 @@ export default function PaperScreen() {
             accessibilityLabel={`Account ${selectedAccountPosition + 1} of ${visibleAccounts.length}`}
             style={[
               styles.accountPositionIndicators,
+            isSelectedEventAccount && styles.eventChampionshipPositionIndicators,
               !isSelectedEventAccount && screenWidth <= 360 && styles.compactAccountPositionIndicators,
             ]}
           >
@@ -5588,8 +5600,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 6,
     paddingHorizontal: 16,
-    paddingTop: 9,
-    paddingBottom: 7,
+    paddingTop: 7,
+    paddingBottom: 5,
     borderRadius: 13,
     borderWidth: 1,
     borderColor: 'rgba(214,179,91,0.46)',
@@ -5606,17 +5618,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(24,24,25,0.98)',
     borderColor: 'rgba(231,198,106,0.62)',
     paddingHorizontal: 13,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   eventChampionshipTopline: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   eventChampionshipSwitchButton: { minHeight: 30, paddingHorizontal: 9 },
+  eventChampionshipPositionIndicators: { marginTop: 3 },
   eventHeroLabel: { color: BUY_COLOR },
   editAccountsButton: {
     minHeight: 36,
@@ -5630,7 +5643,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,215,0,0.08)',
   },
   editAccountsText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
-  accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },
+  accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 4 },
   compactAccountPositionIndicators: { marginTop: 4 },
   accountPositionIndicator: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(192,192,192,0.3)' },
   accountPositionIndicatorActive: { width: 16, backgroundColor: GOLD },

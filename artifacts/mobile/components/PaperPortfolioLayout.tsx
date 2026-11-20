@@ -61,7 +61,9 @@ export function PaperPortfolioSummary({
   onSwitchAccount: () => void;
 }) {
   const { width, fontScale } = useWindowDimensions();
-  const compactStats = width <= 360 || fontScale >= 1.3;
+  // Keep the three account metrics in columns on narrow phones. Only stack
+  // them when enlarged system text needs the extra width.
+  const compactStats = fontScale >= 1.3;
   const todayText = `${todayPnL >= 0 ? '+' : ''}${paperLayoutCurrency(todayPnL)}`;
   const totalReturnText = paperLayoutPercent(totalReturn);
   const buyingPowerText = paperLayoutCurrency(buyingPower);
@@ -479,9 +481,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     color: '#f4f0e6',
     fontFamily: 'Inter_700Bold' as const,
-    fontSize: 27,
+    fontSize: 24,
     letterSpacing: -0.7,
-    marginTop: 1,
+    marginTop: 0,
   },
   heroEquityLabel: {
     color: DIM,
@@ -493,9 +495,9 @@ const styles = StyleSheet.create({
   heroStats: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 8,
-    marginTop: 6,
-    paddingTop: 6,
+    gap: 6,
+    marginTop: 4,
+    paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: 'rgba(192,192,192,0.16)',
   },

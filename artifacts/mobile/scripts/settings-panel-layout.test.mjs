@@ -49,6 +49,7 @@ test("the rendered settings drawer uses responsive sizing and keeps tab navigati
   assert.match(settings, /height: Platform\.OS === 'web' \? '100%' : screenHeight - panelTopInset/);
   assert.match(settings, /testID="settings-panel"/);
   assert.match(settings, /testID="settings-scroll-view"/);
+  assert.doesNotMatch(settings, /App diagnostics|settings-diagnostics|settings-export-diagnostics/);
   assert.match(settings, /contentContainerStyle=\{\{ padding: 20, paddingBottom: bottomScrollPadding \}\}/);
   assert.match(settings, /testID="settings-bottom-divider"/);
   assert.match(settings, /paddingHorizontal: 20/);

@@ -278,7 +278,7 @@ function EventArenaPodiumShareCard({
                   </Text>
                   <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8, marginTop: 4 }}>
                     {slot.entry
-                      ? event.eventType === 'lightning-round' ? 'SERVER-CALCULATED SCORE' : 'SELF-REPORTED SCORE'
+                      ? `${money(slot.entry.equity)} value`
                       : 'OPEN PODIUM SPOT'}
                   </Text>
                 </View>
@@ -297,16 +297,16 @@ function EventArenaPodiumShareCard({
             );
           })}
         </View>
-        <View style={{ marginTop: 18, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(216,180,90,0.38)', backgroundColor: 'rgba(216,180,90,0.10)' }}>
-          <Text style={{ color: '#F0D88F', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>
-            {event.eventType === 'lightning-round' ? 'SERVER-CALCULATED · EVENT FILLS ONLY' : 'SELF-REPORTED · NOT VERIFIED'}
-          </Text>
-          <Text style={{ color: '#D8D8D4', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
-            {event.eventType === 'lightning-round'
-              ? 'Lightning Round returns use only fills attributed to this event and current market prices.'
-              : 'Scores are self-reported and not independently verified.'}
-          </Text>
-        </View>
+        {event.eventType === 'lightning-round' && (
+          <View style={{ marginTop: 18, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(216,180,90,0.38)', backgroundColor: 'rgba(216,180,90,0.10)' }}>
+            <Text style={{ color: '#F0D88F', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>
+              SERVER-CALCULATED · EVENT FILLS ONLY
+            </Text>
+            <Text style={{ color: '#D8D8D4', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+              Lightning Round returns use only fills attributed to this event and current market prices.
+            </Text>
+          </View>
+        )}
         <Text style={{ color: '#B9BEC5', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 18, textAlign: 'center' }}>
           {event.eventType === 'lightning-round'
             ? 'MEISNER METHOD · LIGHTNING ROUND'

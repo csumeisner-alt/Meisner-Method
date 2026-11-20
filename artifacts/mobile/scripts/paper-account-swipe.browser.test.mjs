@@ -294,16 +294,31 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       };
       return {
         hero: bounds('paper-account-hero'),
+        heroChildren: Array.from(document.querySelector(${JSON.stringify(selector("paper-account-hero"))})?.children ?? []).map((node) => {
+          const { top, bottom, height } = node.getBoundingClientRect();
+          return { testID: node.getAttribute('data-testid'), text: node.textContent.slice(0, 60), top, bottom, height };
+        }),
         dashboard: bounds('paper-event-championship-dashboard'),
         dots: bounds('paper-account-position-indicator'),
         navigation: bounds('paper-tab-group-portfolio'),
         metrics: ['paper-event-competition-pnl', 'paper-event-competition-return',
           'paper-event-buying-power', 'paper-event-account-rank',
           'paper-event-account-countdown', 'paper-event-view-leaderboard'].map(bounds),
+        metricTiles: ['paper-event-competition-pnl', 'paper-event-competition-return',
+          'paper-event-buying-power', 'paper-event-account-rank'].map(bounds),
       };
     })()`);
     assert.ok(eventGeometry.hero && eventGeometry.dashboard && eventGeometry.dots && eventGeometry.navigation);
     assert.ok(eventGeometry.dashboard.height > 0);
+    assert.ok(eventGeometry.hero.height <= 205,
+      `The Event Arena card should leave room for four position rows: ${JSON.stringify(eventGeometry)}`);
+    assert.ok(eventGeometry.dashboard.height <= 100,
+      `The Event Arena summary should stay compact: ${JSON.stringify(eventGeometry)}`);
+    assert.ok(
+      Math.max(...eventGeometry.metricTiles.map((metric) => metric.top))
+        - Math.min(...eventGeometry.metricTiles.map((metric) => metric.top)) <= 1,
+      `All four summary metrics should fit on one row at the standard text size: ${JSON.stringify(eventGeometry)}`,
+    );
     for (const metric of eventGeometry.metrics) {
       assert.ok(metric && metric.height > 0, 'Every event metric and action must have intrinsic height.');
       assert.ok(metric.top >= eventGeometry.dashboard.top && metric.bottom <= eventGeometry.dashboard.bottom + 1,
@@ -318,17 +333,16 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       'The expanded event summary must end before the portfolio navigation.');
     assert.equal(
       await browser.evaluate(`(() => {
-        const title = document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.firstElementChild?.children[1]?.getBoundingClientRect();
-        const status = document.querySelector(${JSON.stringify(selector("paper-event-account-status"))})?.getBoundingClientRect();
+        const countdown = document.querySelector(${JSON.stringify(selector("paper-event-account-countdown"))})?.getBoundingClientRect();
         const action = document.querySelector(${JSON.stringify(selector("paper-event-view-leaderboard"))})?.getBoundingClientRect();
-        return !!title && !!status && !!action && title.right <= status.left && action.left >= 0 && action.right <= window.innerWidth;
+        return !!countdown && !!action && countdown.right <= action.left && action.left >= 0 && action.right <= window.innerWidth;
       })()`),
       true,
-      "Dashboard status and leaderboard action must fit without overlapping at 320 pixels.",
+      "Event countdown and leaderboard action must fit without overlapping at 320 pixels.",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent`),
-      "CHAMPION · 1ST",
+      "1ST",
       "The actual first-place result receives champion treatment.",
     );
     assert.equal(
@@ -361,7 +375,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await browser.evaluate("window.__eventLeaderboardOpened"), true,
       "The leaderboard action must open the existing destination.");
     await browser.evaluate("window.__setEventState('upcoming')");
-    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.textContent.includes("UPCOMING")`,
+    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-account-countdown"))})?.textContent.includes("Starts in")`,
       "The upcoming event state did not update.");
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-competition-pnl-value"))})?.textContent`),
@@ -369,7 +383,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       "Upcoming events must not present a competition P/L before their actual start.",
     );
     await browser.evaluate("window.__setEventState('ended')");
-    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.textContent.includes("COMPLETE")`,
+    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-account-countdown"))})?.textContent.includes("Event complete")`,
       "The completed event state did not update.");
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-competition-pnl-value"))})?.textContent`),
@@ -378,7 +392,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent`),
-      "SILVER · 2ND",
+      "2ND",
       "Archived second place receives silver medal treatment.",
     );
     await browser.evaluate("window.__setLightningPromotion(true)");
@@ -574,8 +588,15 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       assert.equal(layout.documentWidth <= width, true, `${width}px viewport must not scroll horizontally.`);
       assert.ok(layout.hero && layout.equity && layout.switcher, "The portfolio summary and account switcher must render.");
       if (width <= 360) {
-        assert.ok(layout.hero.height <= 200,
-          `The compact phone summary should stay under 200px tall: ${JSON.stringify(layout.hero)}`);
+        assert.ok(layout.hero.height <= 165,
+          `The compact simulated-account summary should stay under 165px tall: ${JSON.stringify(layout.hero)}`);
+        const metricTops = [layout.today.top, layout.total.top, layout.buying.top];
+        assert.ok(Math.max(...metricTops) - Math.min(...metricTops) <= 2,
+          `The three simulated-account metrics should share one row on compact phones: ${JSON.stringify({
+            today: layout.today,
+            total: layout.total,
+            buying: layout.buying,
+          })}`);
       }
       assert.ok(layout.equity.left >= layout.hero.left && layout.equity.right <= layout.hero.right,
         `A very large equity value must stay inside its account card: ${JSON.stringify({

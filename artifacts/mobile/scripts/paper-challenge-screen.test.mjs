@@ -571,7 +571,7 @@ assert.match(leaderboard, /STARTING CAPITAL/);
   assert.match(eventArena, /testID=\{`paper-event-trades-\$\{event\.eventId\}`\}/);
 });
 
-test("Event Arena podium sharing captures only aliases and returns with the self-reported disclosure", () => {
+test("Event Arena podium sharing shows account values without a repeated self-reported box", () => {
   const cardStart = leaderboard.indexOf("function EventArenaPodiumShareCard(");
   const cardEnd = leaderboard.indexOf("\nasync function buildEventSubmission", cardStart);
   const shareCardSource = leaderboard.slice(cardStart, cardEnd);
@@ -596,8 +596,10 @@ test("Event Arena podium sharing captures only aliases and returns with the self
   assert.match(shareCardSource, /MEISNER METHOD · PENNY STOCK MAYHEM/);
   assert.match(shareCardSource, /event\.eventType === 'lightning-round'[\s\S]*?'MEISNER METHOD · LIGHTNING ROUND'/);
   assert.match(shareCardSource, /\{slot\.entry\?\.alias \?\? 'Waiting for competitor'\}/);
+  assert.match(shareCardSource, /\$\{money\(slot\.entry\.equity\)\} value/);
   assert.match(shareCardSource, /\{returnLabel\(slot\.entry\.returnPercent\)\}/);
-  assert.match(shareCardSource, /Scores are self-reported and not independently verified\./);
+  assert.doesNotMatch(shareCardSource, /SELF-REPORTED SCORE|SELF-REPORTED · NOT VERIFIED/);
+  assert.match(shareCardSource, /event\.eventType === 'lightning-round' && \([\s\S]*?SERVER-CALCULATED · EVENT FILLS ONLY/);
   assert.doesNotMatch(shareCardSource, /accountId|participantToken|installationId|holdings|transactions|tradeCount|avgCost|shares/);
 });
 
@@ -1085,9 +1087,9 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /buyingPower=\{account\?\.cash \?\? 0\}/);
   assert.match(screen, /const totalReturn = \(\(portfolioValue - activeAccountStartingBalance\) \/ activeAccountStartingBalance\) \* 100/);
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
-  assert.match(paperLayout, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
+  assert.match(paperLayout, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 6/);
   assert.match(paperLayout, /const \{ width, fontScale \} = useWindowDimensions\(\)/);
-  assert.match(paperLayout, /width <= 360 \|\| fontScale >= 1\.3/);
+  assert.match(paperLayout, /const compactStats = fontScale >= 1\.3/);
   assert.match(paperLayout, /heroStatsCompact: \{[\s\S]*?flexDirection: 'column'[\s\S]*?gap: 2/);
   for (const metric of ["paper-account-today-pnl", "paper-account-total-return", "paper-account-buying-power"]) {
     assert.match(paperLayout, new RegExp(`testID="${metric}"`));
@@ -1234,23 +1236,25 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /useGetEventArenaLeaderboard\(eventId/);
   assert.match(eventAccountDashboard, /entry\.isCurrentUser/);
   assert.match(eventAccountDashboard, /summary\?\.finalRank/);
+  assert.match(screen, /selectedEventDateRange \? ` · \$\{selectedEventDateRange\}` : ''/);
   assert.match(eventAccountDashboard, /entries\.length === 1 \? 'participant' : 'participants'/);
   assert.match(eventAccountDashboard, /COMP P\/L/);
   assert.match(eventAccountDashboard, /'RETURN'/);
   assert.match(eventAccountDashboard, /BUYING POWER/);
-  assert.match(eventAccountDashboard, /'STARTS IN' : phase === 'active' \? 'TIME LEFT'/);
+  assert.match(eventAccountDashboard, /formatPaperEventCountdown\(startAtMs, endAtMs, now\)/);
   assert.match(eventAccountDashboard, /accessibilityLabel="View Event Arena leaderboard"/);
   assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
-  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5/);
+  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3/);
   assert.match(eventAccountDashboard, /flexBasis: compactMetrics \? '46%' : '22%'/);
-  assert.match(eventAccountDashboard, /width: 44,[\s\S]*?height: 44,[\s\S]*?flexShrink: 0/);
+  assert.match(eventAccountDashboard, /width: 28,[\s\S]*?height: 28,[\s\S]*?flexShrink: 0/);
+  assert.match(eventAccountDashboard, /hitSlop=\{8\}/);
   assert.match(eventAccountDashboard, /accessibilityRole="button"[\s\S]*?accessibilityLabel="View Event Arena leaderboard"[\s\S]*?onPress=\{onPress\}/);
-  assert.match(eventAccountDashboard, /accessibilityRole="progressbar"[\s\S]*?testID="paper-event-account-progress"/);
-  assert.match(eventAccountDashboard, /compactMetrics && \([\s\S]*?<LeaderboardButton onPress=\{onViewLeaderboard\}/);
-  assert.match(eventAccountDashboard, /!compactMetrics && <LeaderboardButton onPress=\{onViewLeaderboard\}/);
+  assert.match(eventAccountDashboard, /accessibilityRole="progressbar"[\s\S]*?height: 2[\s\S]*?testID="paper-event-account-progress"/);
+  assert.match(eventAccountDashboard, /const compactMetrics = fontScale >= 1\.3/);
+  assert.match(eventAccountDashboard, /<LeaderboardButton onPress=\{onViewLeaderboard\} \/>/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
   assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);
-  assert.match(screen, /eventChampionshipHero:[\s\S]*?paddingTop: 8,[\s\S]*?paddingBottom: 6/);
+  assert.match(screen, /eventChampionshipHero:[\s\S]*?paddingTop: 4,[\s\S]*?paddingBottom: 4/);
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {

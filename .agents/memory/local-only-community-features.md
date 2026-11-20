@@ -13,7 +13,7 @@ Public holding summaries may include self-reported absolute market exposure as a
 
 **Why:** The user approved a 30-day public retention period while preserving isolated event portfolios and anonymous participation, specified that public holding allocations must not expose raw position details, and required new Green Bull rules without retroactively changing event results.
 
-**How to apply:** Share only opt-in event identity and self-reported results. Holding summaries may show exposure percentage and side; never disclose raw share counts, prices, cost basis, or account identifiers. Keep permanent paper accounts private and separate; do not add sign-in or imply that scores are independently verified. On opt-out, clear public score/holding data while retaining the minimal alias lock until the event passes.
+**How to apply:** Share only opt-in event identity and leaderboard values. In podium images, show each ranked participant's event account value instead of repeating a self-reported score label, and omit the self-reported disclaimer box; keep the self-reported disclosure in the share caption and leaderboard context. Holding summaries may show exposure percentage and side; never disclose raw share counts, prices, cost basis, or account identifiers. Keep permanent paper accounts private and separate; do not add sign-in or imply that scores are independently verified. On opt-out, clear public score/holding data while retaining the minimal alias lock until the event passes.
 
 Lightning Round reuses the existing Event Arena portfolio; it is not a separate portfolio. Do not show a separate Lightning Round account-unavailable card or describe its portfolio as separate.
 
