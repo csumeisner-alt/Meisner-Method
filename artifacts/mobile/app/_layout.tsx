@@ -20,7 +20,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { router, Stack, useSegments } from 'expo-router';
+import { router, Stack, usePathname, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import {
@@ -47,10 +47,11 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 
 function RootLayoutNav() {
   const segments = useSegments();
+  const pathname = usePathname();
 
   useEffect(() => {
-    setDiagnosticRoute(segments);
-  }, [segments]);
+    setDiagnosticRoute(segments, pathname);
+  }, [segments, pathname]);
 
   useEffect(() => {
     void markInterruptedInteractionIfNeeded();

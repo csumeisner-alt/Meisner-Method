@@ -2,7 +2,10 @@ import React, { useMemo, useRef } from 'react';
 import { PanResponder, Platform, View, type ViewStyle } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { claimMainTabNavigation, isInteractionReserved } from '@/lib/interactionOwnership';
-import { recordDiagnosticInteraction } from '@/lib/crashDiagnosticsRuntime';
+import {
+  recordDiagnosticInteraction,
+  recordMainTabNavigationResult,
+} from '@/lib/crashDiagnosticsRuntime';
 import {
   getCommittedMainTabSwipeDirection,
   getMainTabNavigationPlan,
@@ -13,7 +16,7 @@ import {
 
 interface MainTabSwipeSurfaceProps extends React.PropsWithChildren {
   pathname: string;
-  onNavigate: (target: MainTabRoute) => void;
+  onNavigate: (target: MainTabRoute) => boolean;
 }
 
 export function MainTabSwipeSurface({ pathname, onNavigate, children }: MainTabSwipeSurfaceProps) {
@@ -63,8 +66,8 @@ export function MainTabSwipeSurface({ pathname, onNavigate, children }: MainTabS
       }
       const target = getMainTabSwipeTarget(current.pathname, direction);
       if (target) {
-        recordDiagnosticInteraction('main_tab_swipe', 'navigation_requested');
-        current.onNavigate(target);
+        const accepted = current.onNavigate(target);
+        recordMainTabNavigationResult(current.pathname, target, accepted);
       } else {
         recordDiagnosticInteraction('main_tab_swipe', 'cancelled');
       }
@@ -102,9 +105,10 @@ export function MainTabSwipeBoundary({ children }: React.PropsWithChildren) {
       pathname={pathname}
       onNavigate={(target) => {
         const plan = getMainTabNavigationPlan(pathname, target);
-        if (!plan || plan.action === 'none') return;
-        if (!claimMainTabNavigation()) return;
+        if (!plan || plan.action === 'none') return false;
+        if (!claimMainTabNavigation()) return false;
         router.navigate(plan.href);
+        return true;
       }}
     >
       {children}

@@ -6,6 +6,8 @@ export type DiagnosticInteractionStage =
   | 'started'
   | 'cancelled'
   | 'navigation_requested'
+  | 'navigation_accepted'
+  | 'navigation_rejected'
   | 'completed'
   | 'interrupted';
 
@@ -70,6 +72,8 @@ const INTERACTION_STAGES = new Set<DiagnosticInteractionStage>([
   'started',
   'cancelled',
   'navigation_requested',
+  'navigation_accepted',
+  'navigation_rejected',
   'completed',
   'interrupted',
 ]);
@@ -199,19 +203,31 @@ export function findUnfinishedInteraction(
 ): DiagnosticEvent | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.kind !== 'interaction_lifecycle' || !event.interaction) continue;
-    if (event.interaction.stage === 'started' || event.interaction.stage === 'navigation_requested') {
+    if (
+      event.kind !== 'interaction_lifecycle'
+      || event.interaction?.type !== 'main_tab_swipe'
+    ) continue;
+    if (
+      event.interaction.stage === 'started'
+      || event.interaction.stage === 'navigation_accepted'
+    ) {
       return event;
     }
-    if (
-      event.interaction.stage === 'cancelled'
-      || event.interaction.stage === 'completed'
-      || event.interaction.stage === 'interrupted'
-    ) {
-      return null;
-    }
+    // Legacy navigation_requested events are ambiguous: they were recorded
+    // before the navigation guard ran and before tab-path changes were observed.
+    // Treat every other swipe stage as a closed lifecycle.
+    return null;
   }
   return null;
+}
+
+export function getMainTabSwipePathOutcome(
+  currentPath: string,
+  sourcePath: string,
+  destinationPath: string,
+): 'completed' | 'cancelled' | null {
+  if (currentPath === sourcePath) return null;
+  return currentPath === destinationPath ? 'completed' : 'cancelled';
 }
 
 export function makeDiagnosticEvent(

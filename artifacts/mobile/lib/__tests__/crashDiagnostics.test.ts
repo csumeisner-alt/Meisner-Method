@@ -5,6 +5,7 @@ import {
   CRASH_DIAGNOSTICS_LIMIT,
   CRASH_DIAGNOSTICS_STORAGE_KEY,
   findUnfinishedInteraction,
+  getMainTabSwipePathOutcome,
   makeDiagnosticEvent,
   parseDiagnosticEvents,
   readDiagnosticEvents,
@@ -106,4 +107,61 @@ test('unfinished gestures can be reported as interrupted after the next launch',
     { interaction: { type: 'main_tab_swipe', stage: 'cancelled' } },
   );
   assert.equal(findUnfinishedInteraction([event, completed]), null);
+});
+
+test('swipe diagnostics distinguish accepted, rejected, cancelled, and completed navigation', () => {
+  const context = { appVersion: '1.0.2', platform: 'android', route: '/paper' };
+  const swipeEvent = (
+    stage: 'started' | 'cancelled' | 'navigation_requested' | 'navigation_accepted'
+      | 'navigation_rejected' | 'completed' | 'interrupted',
+  ) => makeDiagnosticEvent(context, 'interaction_lifecycle', {
+    interaction: { type: 'main_tab_swipe', stage },
+    timestamp: '2026-01-01T00:00:00.000Z',
+  });
+  const transitionEvent = (stage: 'started' | 'completed' | 'cancelled') =>
+    makeDiagnosticEvent(context, 'interaction_lifecycle', {
+      interaction: { type: 'navigation_transition', stage },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+
+  assert.equal(findUnfinishedInteraction([swipeEvent('started')])?.interaction?.stage, 'started');
+  assert.equal(
+    findUnfinishedInteraction([swipeEvent('started'), swipeEvent('navigation_accepted')])
+      ?.interaction?.stage,
+    'navigation_accepted',
+  );
+  assert.equal(findUnfinishedInteraction([swipeEvent('started'), swipeEvent('navigation_rejected')]), null);
+  assert.equal(findUnfinishedInteraction([swipeEvent('started'), swipeEvent('cancelled')]), null);
+  assert.equal(
+    findUnfinishedInteraction([swipeEvent('started'), swipeEvent('navigation_requested')]),
+    null,
+    'legacy requests are ambiguous because they were logged before the navigation guard',
+  );
+  assert.equal(findUnfinishedInteraction([transitionEvent('started')]), null);
+  assert.equal(
+    findUnfinishedInteraction([
+      swipeEvent('navigation_accepted'),
+      transitionEvent('started'),
+      transitionEvent('completed'),
+      transitionEvent('completed'),
+    ])?.interaction?.stage,
+    'navigation_accepted',
+    'duplicate outer-stack events neither complete nor interrupt a tab swipe',
+  );
+  assert.equal(
+    findUnfinishedInteraction([
+      swipeEvent('navigation_accepted'),
+      swipeEvent('completed'),
+      transitionEvent('started'),
+      transitionEvent('completed'),
+    ]),
+    null,
+  );
+  assert.equal(findUnfinishedInteraction([swipeEvent('interrupted')]), null);
+});
+
+test('accepted swipe requests complete only after the destination path changes', () => {
+  assert.equal(getMainTabSwipePathOutcome('/paper', '/paper', '/portfolio'), null);
+  assert.equal(getMainTabSwipePathOutcome('/portfolio', '/paper', '/portfolio'), 'completed');
+  assert.equal(getMainTabSwipePathOutcome('/event-arena', '/paper', '/portfolio'), 'cancelled');
 });
