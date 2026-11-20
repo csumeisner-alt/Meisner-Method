@@ -21,6 +21,29 @@ test("heat-map routes are registered and reject invalid inputs before provider a
       platform: "node",
       format: "esm",
       logLevel: "silent",
+      plugins: [{
+        name: "failing-heat-map-search-provider",
+        setup(build) {
+          build.onResolve({ filter: /stockSymbolSearch\.js$/ }, (args) => ({
+            path: args.path,
+            namespace: "failing-heat-map-search-provider",
+          }));
+          build.onLoad(
+            { filter: /.*/, namespace: "failing-heat-map-search-provider" },
+            () => ({
+              contents: `
+                export async function searchYahooHeatMapInstruments() {
+                  throw new Error("Market-data provider unavailable");
+                }
+                export async function searchYahooStocks() {
+                  return [];
+                }
+              `,
+              loader: "js",
+            }),
+          );
+        },
+      }],
       external: [
         "@clerk/express",
         "@clerk/shared",
@@ -39,6 +62,12 @@ test("heat-map routes are registered and reject invalid inputs before provider a
 
     const app = express();
     app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as typeof req & { log: { error: (...args: unknown[]) => void } }).log = {
+        error() {},
+      };
+      next();
+    });
     app.use(router);
     server = app.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -96,6 +125,15 @@ test("heat-map routes are registered and reject invalid inputs before provider a
         message: route.message,
       });
     }
+
+    const providerFailureResponse = await fetch(
+      `http://127.0.0.1:${address.port}/stocks/heat-map/search?q=gold&category=commodities`,
+    );
+    assert.equal(providerFailureResponse.status, 502);
+    assert.deepEqual(await providerFailureResponse.json(), {
+      error: "INSTRUMENT_SEARCH_FAILED",
+      message: "Instrument search is temporarily unavailable.",
+    });
 
     const validationResponse = await fetch(
       `http://127.0.0.1:${address.port}/stocks/heat-map/validate`,
