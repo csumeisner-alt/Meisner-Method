@@ -217,7 +217,7 @@ export function PaperEventArenaDashboard({
         flexBasis: compactMetrics ? '46%' : '22%',
         minWidth: 0,
         paddingHorizontal: 5,
-        paddingVertical: 6,
+        paddingVertical: 4,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: 'rgba(231,198,106,0.18)',
@@ -233,7 +233,7 @@ export function PaperEventArenaDashboard({
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.65}
-        style={{ color, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 3 }}
+        style={{ color, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 2 }}
       >
         {value}
       </Text>
@@ -356,7 +356,7 @@ export function PaperEventArenaDashboard({
         </Text>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>
         <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
           {phase === 'ended' && summary ? 'FINAL EQUITY' : 'ACCOUNT EQUITY'}
         </Text>
@@ -372,7 +372,7 @@ export function PaperEventArenaDashboard({
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 }}>
         {metric(
           'COMP P/L',
           competitionPnL == null ? '—' : signedMoney(competitionPnL),
@@ -418,9 +418,9 @@ export function PaperEventArenaDashboard({
         </TouchableOpacity>
       )}
 
-      <View style={{ flexDirection: compactMetrics ? 'column' : 'row', alignItems: 'stretch', gap: 7, marginTop: 6 }}>
-        <View style={{ flex: compactMetrics ? 0 : 1, flexShrink: 0, minWidth: 0, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 }}>
+        <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: compactMetrics ? 'wrap' : 'nowrap', gap: 5 }}>
             <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.35 }}>
               {phase === 'upcoming' ? 'STARTS IN' : phase === 'active' ? 'TIME LEFT' : 'STATUS'}
             </Text>
@@ -437,45 +437,52 @@ export function PaperEventArenaDashboard({
               </Text>
             )}
           </View>
-          <View
-            accessibilityRole="progressbar"
-            accessibilityLabel="Event schedule progress"
-            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
-            style={{ height: 4, marginTop: 5, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
-          >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <View
-              testID="paper-event-account-progress"
-              style={{ width: `${progress}%`, height: '100%', borderRadius: 4, backgroundColor: statusColor }}
-            />
+              accessibilityRole="progressbar"
+              accessibilityLabel="Event schedule progress"
+              accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
+              style={{ flex: 1, height: 4, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
+            >
+              <View
+                testID="paper-event-account-progress"
+                style={{ width: `${progress}%`, height: '100%', borderRadius: 4, backgroundColor: statusColor }}
+              />
+            </View>
+            {compactMetrics && (
+              <LeaderboardButton onPress={onViewLeaderboard} />
+            )}
           </View>
         </View>
-        <TouchableOpacity
-          testID="paper-event-view-leaderboard"
-          accessibilityRole="button"
-          accessibilityLabel="View Event Arena leaderboard"
-          onPress={onViewLeaderboard}
-          activeOpacity={0.8}
-          style={{
-            minHeight: 34,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 5,
-            paddingHorizontal: 9,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: 'rgba(231,198,106,0.52)',
-            backgroundColor: 'rgba(231,198,106,0.12)',
-          }}
-        >
-          <Feather name="bar-chart-2" size={12} color={GOLD} />
-          <Text style={{ color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.5 }}>
-            VIEW LEADERBOARD
-          </Text>
-        </TouchableOpacity>
+        {!compactMetrics && <LeaderboardButton onPress={onViewLeaderboard} />}
       </View>
       </>
       )}
     </View>
+  );
+}
+
+function LeaderboardButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      testID="paper-event-view-leaderboard"
+      accessibilityRole="button"
+      accessibilityLabel="View Event Arena leaderboard"
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        width: 44,
+        height: 44,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(231,198,106,0.52)',
+        backgroundColor: 'rgba(231,198,106,0.12)',
+      }}
+    >
+      <Feather name="bar-chart-2" size={16} color={GOLD} />
+    </TouchableOpacity>
   );
 }

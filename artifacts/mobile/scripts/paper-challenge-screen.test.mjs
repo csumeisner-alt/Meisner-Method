@@ -1227,11 +1227,15 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /'RETURN'/);
   assert.match(eventAccountDashboard, /BUYING POWER/);
   assert.match(eventAccountDashboard, /'STARTS IN' : phase === 'active' \? 'TIME LEFT'/);
-  assert.match(eventAccountDashboard, /VIEW LEADERBOARD/);
+  assert.match(eventAccountDashboard, /accessibilityLabel="View Event Arena leaderboard"/);
   assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
-  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7/);
+  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5/);
   assert.match(eventAccountDashboard, /flexBasis: compactMetrics \? '46%' : '22%'/);
-  assert.match(eventAccountDashboard, /minHeight: 34/);
+  assert.match(eventAccountDashboard, /width: 44,[\s\S]*?height: 44,[\s\S]*?flexShrink: 0/);
+  assert.match(eventAccountDashboard, /accessibilityRole="button"[\s\S]*?accessibilityLabel="View Event Arena leaderboard"[\s\S]*?onPress=\{onPress\}/);
+  assert.match(eventAccountDashboard, /accessibilityRole="progressbar"[\s\S]*?testID="paper-event-account-progress"/);
+  assert.match(eventAccountDashboard, /compactMetrics && \([\s\S]*?<LeaderboardButton onPress=\{onViewLeaderboard\}/);
+  assert.match(eventAccountDashboard, /!compactMetrics && <LeaderboardButton onPress=\{onViewLeaderboard\}/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
   assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);
   assert.match(screen, /eventChampionshipHero:[\s\S]*?paddingTop: 8,[\s\S]*?paddingBottom: 6/);
