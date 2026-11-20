@@ -1443,11 +1443,11 @@ test("Event Arena competition keeps its visual summary and reminders inside the 
   assert.match(eventArenaOverview, /<ScrollView[\s\S]*?testID="event-arena-overview"[\s\S]*?<\/ScrollView>/);
   assert.match(eventArenaOverview, /<EventArenaReminderControls \/>/);
   assert.match(eventArenaReminderControls, /testID="paper-event-notifications-toggle"/);
-  assert.match(eventArenaReminderControls, /Saved preference:/);
-  assert.match(eventArenaReminderControls, /Device permission:/);
-  assert.match(eventArenaReminderControls, /On-device reminders:/);
-  assert.match(eventArenaReminderControls, /Open device settings/);
-  assert.match(eventArenaReminderControls, /Retry remote setup/);
+  assert.doesNotMatch(eventArenaReminderControls, /Saved preference:|Device permission:|On-device reminders:|Remote push:/);
+  assert.match(eventArenaReminderControls, /reminders\.setEnabled\(enabled\)/);
+  assert.match(eventArenaReminderControls, /reminders\.permission === 'settings-required'[\s\S]*?reminders\.openSettings\(\)/);
+  assert.match(eventArenaReminderControls, /Turn notifications on in the mobile app\./);
+  assert.match(eventArenaReminderControls, /event-arena-reminder-error/);
   assert.match(eventArenaReminderControls, /event-arena-reminder-retry/);
   assert.match(events, /<EventArenaReminderControls compact \/>/);
   assert.match(mobileRootLayout, /<EventArenaRemindersProvider>/);
