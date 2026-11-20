@@ -107,12 +107,13 @@ test("builds expected mobile GET routes entirely from OpenAPI", () => {
     "/stocks/quote/{symbol}",
     "/stocks/top-picks",
     "/stocks/trending",
+    "/stocks/crypto/{symbol}/supply-history",
   ]) {
     assert.ok(paths.includes(path), `missing documented mobile route: ${path}`);
   }
   const expectedMobilePaths = getExpectedMobileGetPaths(openApiSource);
   assert.deepEqual(expectedMobilePaths, paths);
-  assert.equal(expectedMobilePaths.length, 18);
+  assert.equal(expectedMobilePaths.length, 19);
 });
 
 test("uses valid sample path and query parameters for read-only probes", () => {

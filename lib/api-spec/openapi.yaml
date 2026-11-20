@@ -1615,6 +1615,203 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /event-arena/lightning-round/{eventId}/participant:
+    delete:
+      operationId: leaveLightningRoundParticipant
+      summary: Remove the current participant from a Lightning Round
+      responses:
+        "200":
+          description: Participant removed
+  /privacy:
+    get:
+      operationId: getPrivacyNotice
+      summary: Get the privacy notice
+      responses:
+        "200":
+          description: Privacy notice page
+  /stocks/crypto/{symbol}/supply-history:
+    get:
+      operationId: getCryptoSupplyHistoryDefaultRange
+      summary: Get cryptocurrency supply history
+      responses:
+        "200":
+          description: Supply history returned
+  /tts:
+    get:
+      operationId: getTextToSpeechAudio
+      summary: Generate text-to-speech audio
+      responses:
+        "200":
+          description: Generated audio returned
+  /user/alerts:
+    get:
+      operationId: getUserAlerts
+      summary: List the user's price alerts
+      responses:
+        "200":
+          description: Price alerts returned
+    post:
+      operationId: createUserAlert
+      summary: Create a price alert for the user
+      responses:
+        "200":
+          description: Price alert created
+  /user/alerts/{id}:
+    delete:
+      operationId: deleteUserAlert
+      summary: Delete a price alert
+      responses:
+        "200":
+          description: Price alert deleted
+  /user/dev/run-alert-check:
+    post:
+      operationId: runUserAlertCheck
+      summary: Run a development alert check
+      responses:
+        "200":
+          description: Alert check completed
+  /user/notification-settings:
+    get:
+      operationId: getUserNotificationSettings
+      summary: Get the user's notification settings
+      responses:
+        "200":
+          description: Notification settings returned
+    put:
+      operationId: updateUserNotificationSettings
+      summary: Update the user's notification settings
+      responses:
+        "200":
+          description: Notification settings updated
+  /user/paper/accounts:
+    get:
+      operationId: getPaperAccounts
+      summary: List the user's paper trading accounts
+      responses:
+        "200":
+          description: Paper trading accounts returned
+    post:
+      operationId: createPaperAccount
+      summary: Create a paper trading account
+      responses:
+        "200":
+          description: Paper trading account created
+  /user/paper/accounts/{id}:
+    put:
+      operationId: updatePaperAccount
+      summary: Update a paper trading account
+      responses:
+        "200":
+          description: Paper trading account updated
+    delete:
+      operationId: deletePaperAccount
+      summary: Delete a paper trading account
+      responses:
+        "200":
+          description: Paper trading account deleted
+  /user/paper/active:
+    get:
+      operationId: getActivePaperAccount
+      summary: Get the active paper trading account
+      responses:
+        "200":
+          description: Active paper trading account returned
+  /user/paper/lots:
+    get:
+      operationId: getPaperPositionLots
+      summary: List the user's paper position lots
+      responses:
+        "200":
+          description: Position lots returned
+  /user/paper/orders:
+    get:
+      operationId: getPaperOrders
+      summary: List the user's paper trading orders
+      responses:
+        "200":
+          description: Paper trading orders returned
+  /user/paper/positions:
+    get:
+      operationId: getPaperPositions
+      summary: List the user's paper trading positions
+      responses:
+        "200":
+          description: Paper trading positions returned
+    post:
+      operationId: createPaperPosition
+      summary: Create or update a paper trading position
+      responses:
+        "200":
+          description: Paper trading position saved
+  /user/paper/positions/{id}:
+    delete:
+      operationId: deletePaperPosition
+      summary: Delete a paper trading position
+      responses:
+        "200":
+          description: Paper trading position deleted
+  /user/paper/sync:
+    post:
+      operationId: syncPaperTradingData
+      summary: Synchronize paper trading data
+      responses:
+        "200":
+          description: Paper trading data synchronized
+  /user/paper/transactions:
+    get:
+      operationId: getPaperTransactions
+      summary: List the user's paper trading transactions
+      responses:
+        "200":
+          description: Paper trading transactions returned
+    post:
+      operationId: createPaperTransaction
+      summary: Create a paper trading transaction
+      responses:
+        "200":
+          description: Paper trading transaction created
+  /user/paper/transactions/{id}:
+    delete:
+      operationId: deletePaperTransaction
+      summary: Delete a paper trading transaction
+      responses:
+        "200":
+          description: Paper trading transaction deleted
+  /user/push-token:
+    post:
+      operationId: registerUserPushToken
+      summary: Register the user's push token
+      responses:
+        "200":
+          description: Push token accepted
+  /user/watchlist:
+    get:
+      operationId: getUserWatchlist
+      summary: Get the user's watchlist
+      responses:
+        "200":
+          description: Watchlist returned
+    post:
+      operationId: addUserWatchlistSymbol
+      summary: Add a symbol to the user's watchlist
+      responses:
+        "200":
+          description: Watchlist updated
+  /user/watchlist/reorder:
+    put:
+      operationId: reorderUserWatchlist
+      summary: Reorder the user's watchlist
+      responses:
+        "200":
+          description: Watchlist reordered
+  /user/watchlist/{symbol}:
+    delete:
+      operationId: deleteUserWatchlistSymbol
+      summary: Remove a symbol from the user's watchlist
+      responses:
+        "200":
+          description: Symbol removed from watchlist
+
 components:
   schemas:
     PriceAlert:
