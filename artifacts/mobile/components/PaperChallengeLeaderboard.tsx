@@ -1402,7 +1402,11 @@ export function PaperChallengeLeaderboard({
           {detail && renderLeaderboardHeader()}
 
           {detail ? (
-            <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 820, alignSelf: 'center', padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+            <ScrollView
+              style={{ flex: 1, minHeight: 0 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ width: '100%', maxWidth: 820, alignSelf: 'center', padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}
+            >
               <View testID="paper-event-leaderboard-detail" style={{ overflow: 'hidden', borderRadius: 22, backgroundColor: '#101720', borderWidth: 1, borderColor: 'rgba(214,177,94,0.52)' }}>
                 <LinearGradient
                   pointerEvents="none"
@@ -1575,7 +1579,11 @@ export function PaperChallengeLeaderboard({
               </View>
             </ScrollView>
           ) : (
-            <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, paddingBottom: embedded ? 28 : Platform.OS === 'web' ? 24 : insets.bottom + 24 }}>
+            <ScrollView
+              style={{ flex: 1, minHeight: 0 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, paddingBottom: embedded ? 28 : Platform.OS === 'web' ? 24 : insets.bottom + 24 }}
+            >
               <View
                 testID={isOneStockChallenge ? 'paper-event-one-stock-hero-art' : undefined}
                 style={{ width: '100%' }}
@@ -1805,7 +1813,7 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   <View testID="paper-event-leaderboard-podium" style={{ marginTop: entries.length === 0 ? 7 : 2 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
                       <Text style={{ color: '#F4F0E7', fontFamily: 'Inter_700Bold', fontSize: 14 }}>The podium</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
                         <Text style={{ color: '#D5C189', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.1 }}>TOP THREE</Text>
@@ -1936,7 +1944,7 @@ export function PaperChallengeLeaderboard({
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}>
             <ViewShot
               ref={podiumImageRef}
               options={{ format: 'png', quality: 1 }}

@@ -916,7 +916,8 @@ test("participant score detail uses selected-entry values without changing leade
 });
 
 test("leaderboard header scrolls with its content and clears the fixed bottom tabs", () => {
-  const mainScrollStart = leaderboard.indexOf("<ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000");
+  const mainContentWidth = leaderboard.indexOf("maxWidth: 1000");
+  const mainScrollStart = leaderboard.lastIndexOf("<ScrollView", mainContentWidth);
   const mainScrollEnd = leaderboard.indexOf("</ScrollView>", mainScrollStart);
   const mainScroll = leaderboard.slice(mainScrollStart, mainScrollEnd);
   const eventContentStart = eventArena.indexOf("{section === 'leaderboard' && (");
@@ -924,9 +925,20 @@ test("leaderboard header scrolls with its content and clears the fixed bottom ta
 
   assert.ok(mainScrollStart >= 0 && mainScrollEnd > mainScrollStart);
   assert.doesNotMatch(mainScroll, /renderLeaderboardHeader\(\)/);
+  assert.match(mainScroll, /showsVerticalScrollIndicator=\{false\}/);
+  assert.doesNotMatch(mainScroll, /scrollEnabled=\{false\}/);
+  const detailContentWidth = leaderboard.indexOf("maxWidth: 820");
+  const detailScrollStart = leaderboard.lastIndexOf("<ScrollView", detailContentWidth);
+  const detailScrollEnd = leaderboard.indexOf("</ScrollView>", detailScrollStart);
+  assert.match(leaderboard.slice(detailScrollStart, detailScrollEnd), /showsVerticalScrollIndicator=\{false\}/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-podium"/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-current-user"/);
   assert.doesNotMatch(mainScroll, /paper-event-rank-history/);
+  const podiumHeadingStart = leaderboard.indexOf('testID="paper-event-leaderboard-podium"');
+  const podiumHeadingEnd = leaderboard.indexOf('<Animated.View', podiumHeadingStart);
+  const podiumHeading = leaderboard.slice(podiumHeadingStart, podiumHeadingEnd);
+  assert.match(podiumHeading, /flexWrap: 'wrap'/);
+  assert.match(podiumHeading, /justifyContent: 'center'/);
   assert.match(mainScroll, /paddingBottom: embedded \? 28/);
   assert.match(leaderboard, /style=\{\{ flex: 1, minHeight: 0, backgroundColor: colors\.background/);
   assert.match(eventArena, /<View style=\{\{ flex: 1, minHeight: 0 \}\}>/);
