@@ -243,7 +243,6 @@ function EventArenaScreenContent() {
   const [quotes, setQuotes] = useState<Record<string, number>>(() => eventArenaQuotePrices(initialPreload.quotes));
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
-  const [quoteRefreshWarning, setQuoteRefreshWarning] = useState(false);
   const [eventConfigurationError, setEventConfigurationError] = useState('');
   const [savedEventConfiguration, setSavedEventConfiguration] = useState<SavedEventConfiguration | null>(null);
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
@@ -455,7 +454,6 @@ function EventArenaScreenContent() {
         forceQuoteRefresh,
       );
       const refreshedQuotes = quoteRefresh.quotes;
-      setQuoteRefreshWarning(quoteRefresh.failedSymbols.length > 0);
       mergePaperPreloadQuotes(refreshedQuotes);
       mergeEventArenaPreloadQuotes(refreshedQuotes);
       setQuotes((current) => {
@@ -469,7 +467,6 @@ function EventArenaScreenContent() {
       void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     } catch {
       setAccountError('Event account data could not be refreshed. Your saved trading data is unchanged.');
-      if (accountData.positions.length > 0) setQuoteRefreshWarning(true);
     } finally {
       accountRefreshInFlightRef.current = false;
       setAccountDataReady(true);
@@ -672,7 +669,6 @@ function EventArenaScreenContent() {
       const offline = isNetworkOffline(state);
       const reconnected = didNetworkReconnect(knownOffline, offline);
       knownOffline = offline;
-      if (offline && accountData.positions.length > 0) setQuoteRefreshWarning(true);
       if (reconnected) refreshInBackground(true);
     };
     let receivedNetworkEvent = false;
@@ -1327,10 +1323,10 @@ function EventArenaScreenContent() {
             <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>OPEN PAPER TRADING</Text>
           </TouchableOpacity>
         </View>
-        {(accountError || quoteRefreshWarning) ? (
+        {accountError ? (
           <View style={{ marginTop: 12 }}>
             <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>
-              {accountError || 'Event Arena prices may be outdated. The last valid quotes remain visible.'}
+              {accountError}
             </Text>
             <TouchableOpacity
               testID="event-arena-trades-retry"
@@ -1436,7 +1432,7 @@ function EventArenaScreenContent() {
           </TouchableOpacity>
         </View>
       )}
-      {accountError || quoteRefreshWarning || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || (quoteRefreshWarning ? 'Event Arena prices may be outdated. The last valid quotes remain visible.' : eventConfigurationError)}</Text> : null}
+      {accountError || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || eventConfigurationError}</Text> : null}
     </View>
   );
 

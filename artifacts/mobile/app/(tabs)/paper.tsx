@@ -435,9 +435,6 @@ export default function PaperScreen() {
     () => getPaperPortfolioPreloadState().quotes,
   );
   const [loadingQuotes, setLoadingQuotes] = useState(false);
-  const [quoteRefreshError, setQuoteRefreshError] = useState(false);
-  const [inactiveQuoteRefreshError, setInactiveQuoteRefreshError] = useState(false);
-  const [quoteRefreshNetworkOffline, setQuoteRefreshNetworkOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => subscribePaperPortfolioPreload((state) => {
@@ -527,12 +524,6 @@ export default function PaperScreen() {
       .filter((order) => order.accountId === activeId && order.status === 'pending')
       .map((order) => order.symbol.trim().toUpperCase()),
   ].sort().join('|');
-  const hasStalePortfolioQuotes = [...new Set([
-    ...positions.map((position) => position.symbol.trim().toUpperCase()),
-    ...orders
-      .filter((order) => order.status === 'pending')
-      .map((order) => order.symbol.trim().toUpperCase()),
-  ])].some((symbol) => !isFreshPaperQuote(quotes[symbol]));
   const buySearchText = buySymbol.trim();
   const buyTicker = buySymbol.trim().toUpperCase();
   const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
@@ -812,7 +803,6 @@ export default function PaperScreen() {
   const orderSubmissionRef = useRef(false);
   const tradeEntryCheckInFlightRef = useRef(false);
   const quoteRefreshCountRef = useRef(0);
-  const quoteRefreshRunRef = useRef(0);
   const quoteRefreshPromisesRef = useRef(new Map<string, Promise<Record<string, LiveQuote>>>());
   const quoteRefreshEvaluateRequestedRef = useRef(new Set<string>());
   const quoteRefreshIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2052,7 +2042,6 @@ export default function PaperScreen() {
     const inFlight = quoteRefreshPromisesRef.current.get(accountId);
     if (inFlight) return inFlight;
 
-    const refreshRun = ++quoteRefreshRunRef.current;
     const refresh = async () => {
       // Fetch quotes for positions of the active account PLUS any pending-order symbols.
       const posSymbols = pos.filter(p => p.accountId === accountId).map(p => p.symbol);
@@ -2061,7 +2050,6 @@ export default function PaperScreen() {
         .map(o => o.symbol);
       const symbols = [...new Set([...posSymbols, ...orderSymbols])];
       if (symbols.length === 0) {
-        if (refreshRun === quoteRefreshRunRef.current) setQuoteRefreshError(false);
         await recordAccountValueSnapshot(accountId, {});
         return {};
       }
@@ -2086,9 +2074,6 @@ export default function PaperScreen() {
           if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
         }
         void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
-        if (refreshRun === quoteRefreshRunRef.current) {
-          setQuoteRefreshError(results.some((result) => result.status === 'rejected'));
-        }
         if (quoteRefreshEvaluateRequestedRef.current.has(accountId)) {
           evaluatePendingOrders(next);
         }
@@ -2127,7 +2112,6 @@ export default function PaperScreen() {
         .map((position) => position.symbol),
     )];
     if (symbols.length === 0) {
-      setInactiveQuoteRefreshError(false);
       for (const inactiveAccount of inactiveAccounts) {
         void recordAccountValueSnapshot(inactiveAccount.id, {});
       }
@@ -2139,7 +2123,6 @@ export default function PaperScreen() {
       setQuotes(shared.quotes);
       return [symbol, quote] as const;
     }));
-    setInactiveQuoteRefreshError(results.some((result) => result.status === 'rejected'));
     void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     const next: Record<string, LiveQuote> = {};
     for (const result of results) {
@@ -2488,7 +2471,7 @@ export default function PaperScreen() {
     ) return;
     autoQuoteRefreshRef.current = { signature: activeQuoteSignature, refreshedAt };
     void fetchQuotes(positionsRef.current, activeIdRef.current)
-      .catch(() => setQuoteRefreshError(true));
+      .catch(() => {});
   }, [activeQuoteSignature, fetchQuotes, isFocused, loaded]);
 
   initRef.current = init;
@@ -2497,7 +2480,7 @@ export default function PaperScreen() {
     if (didFocusOnceRef.current && loadedRef.current) {
       const allowDeviceSync = Date.now() - lastDeviceSyncAtRef.current
         >= PAPER_FOCUS_REFRESH_MIN_INTERVAL_MS;
-      void initRef.current(true, allowDeviceSync).catch(() => setQuoteRefreshError(true));
+      void initRef.current(true, allowDeviceSync).catch(() => {});
     }
     didFocusOnceRef.current = true;
     return () => setIsFocused(false);
@@ -2510,13 +2493,12 @@ export default function PaperScreen() {
     const refresh = (forceRefresh = false) => {
       if (!appIsActive) return;
       void fetchQuotes(positionsRef.current, activeIdRef.current, false, forceRefresh)
-        .catch(() => setQuoteRefreshError(true));
+        .catch(() => {});
     };
     const refreshNetworkState = (state: Network.NetworkState) => {
       const offline = isNetworkOffline(state);
       const reconnected = didNetworkReconnect(knownOffline, offline);
       knownOffline = offline;
-      setQuoteRefreshNetworkOffline(offline);
       if (reconnected && appIsActive) {
         refresh(true);
         void fetchInactiveAccountCardQuotes(true).catch(() => {});
@@ -2548,7 +2530,7 @@ export default function PaperScreen() {
     try {
       await fetchQuotes(positionsRef.current, activeIdRef.current, true, true);
     } catch {
-      setQuoteRefreshError(true);
+      // Keep the last available values; no stale-price disclosure is shown.
     } finally {
       setRefreshing(false);
     }
@@ -4020,22 +4002,6 @@ export default function PaperScreen() {
         )}
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
-
-      {(quoteRefreshError || inactiveQuoteRefreshError || (
-        quoteRefreshNetworkOffline
-        && (positions.length > 0 || orders.some((order) => order.status === 'pending'))
-      ) || hasStalePortfolioQuotes) && (
-        <View
-          testID="paper-quote-refresh-error"
-          accessibilityRole="alert"
-          style={styles.paperRefreshNotice}
-        >
-          <Feather name="alert-circle" size={13} color={DIM} />
-          <Text style={styles.paperRefreshNoticeText}>
-            Some prices may be outdated or unavailable; affected values use the last quote or a cost-basis estimate.
-          </Text>
-        </View>
-      )}
 
       {visiblePaperOrderFillAlert && (
         <View
@@ -5526,24 +5492,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: DIM,
     letterSpacing: 0.25,
-  },
-  paperRefreshNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginHorizontal: 16,
-    marginTop: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: 'rgba(192,192,192,0.08)',
-  },
-  paperRefreshNoticeText: {
-    flex: 1,
-    color: DIM,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 10,
-    lineHeight: 14,
   },
   loadingAccountCard: {
     marginHorizontal: 16,

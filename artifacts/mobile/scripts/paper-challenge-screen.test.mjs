@@ -115,7 +115,7 @@ test("main tabs keep their mounted screens and Paper Trading's selected account"
   assert.match(screen, /testID="paper-loading-account-skeleton"/);
   assert.match(screen, /testID="paper-loading-positions-skeleton"/);
   assert.match(screen, /testID="paper-refresh-indicator"/);
-  assert.match(screen, /testID="paper-quote-refresh-error"/);
+  assert.doesNotMatch(screen, /Some prices may be outdated or unavailable|paper-quote-refresh-error/);
 });
 
 test("Event Arena does not refetch cash history on its one-second clock", () => {
@@ -131,10 +131,10 @@ test("Event Arena does not refetch cash history on its one-second clock", () => 
 });
 
 test("Paper Trading refreshes quotes incrementally without replacing failed values", () => {
-  assert.match(screen, /const refreshRun = \+\+quoteRefreshRunRef\.current;[\s\S]*?if \(symbols\.length === 0\)/);
+  assert.match(screen, /const refresh = async \(\) => \{[\s\S]*?if \(symbols\.length === 0\)/);
   assert.match(screen, /requestPaperPreloadQuote\(sym, forceRefresh\)/);
   assert.match(screen, /const shared = mergePaperPreloadQuotes\(\{ \[sym\]: quote \}\);[\s\S]*?setQuotes\(shared\.quotes\)/);
-  assert.match(screen, /setQuoteRefreshError\(results\.some\(\(result\) => result\.status === 'rejected'\)\)/);
+  assert.match(screen, /const results = await Promise\.allSettled\([\s\S]*?const next: Record<string, LiveQuote> = \{\}[\s\S]*?if \(r\.status === 'fulfilled'\) next\[r\.value\.sym\] = r\.value\.quote/);
   assert.match(screen, /const myPositions = positions\.filter\(p => p\.accountId === activeId\)/);
   assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
 });
@@ -147,8 +147,7 @@ test("offline recovery refreshes prices and order submission requires a fresh pr
   assert.match(screen, /Network\.addNetworkStateListener/);
   assert.match(screen, /didNetworkReconnect\(knownOffline, offline\)/);
   assert.match(screen, /if \(reconnected && appIsActive\) \{[\s\S]*?refresh\(true\);[\s\S]*?fetchInactiveAccountCardQuotes\(true\)/);
-  assert.match(screen, /const hasStalePortfolioQuotes = \[\.\.\.new Set\([\s\S]*?isFreshPaperQuote\(quotes\[symbol\]\)/);
-  assert.match(screen, /Some prices may be outdated or unavailable/);
+  assert.doesNotMatch(screen, /Some prices may be outdated or unavailable|paper-quote-refresh-error/);
   assert.match(orderHandler, /const currentAccounts = accountsRef\.current/);
   assert.match(orderHandler, /const currentPositions = positionsRef\.current/);
   assert.match(orderHandler, /requestPaperPreloadQuote\(sym, true\)/);
@@ -157,11 +156,12 @@ test("offline recovery refreshes prices and order submission requires a fresh pr
   assert.match(screen, /const q = newQuotes\[order\.symbol\];[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'/);
 });
 
-test("Event Arena warns about stale quotes and queues a forced refresh after network recovery", () => {
+test("Event Arena hides stale-price disclosures and refreshes after network recovery", () => {
   assert.match(eventArena, /Network\.addNetworkStateListener/);
   assert.match(eventArena, /didNetworkReconnect\(knownOffline, offline\)/);
   assert.match(eventArena, /if \(accountRefreshForceQueuedRef\.current\)[\s\S]*?refreshAccountDataRef\.current\(true\)/);
-  assert.match(eventArena, /Event Arena prices may be outdated\. The last valid quotes remain visible\./);
+  assert.doesNotMatch(eventArena, /Event Arena prices may be outdated|quoteRefreshWarning/);
+  assert.match(eventArena, /Event account data could not be refreshed/);
   assert.match(eventArena, /store\.lightningEnrollment\]\)/);
 });
 
