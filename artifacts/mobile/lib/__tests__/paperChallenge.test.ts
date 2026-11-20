@@ -725,12 +725,21 @@ test('Lightning invitation follows the prepared event at exact 72-hour and 48-ho
 test('event reminders include eligible Lightning Rounds at their scheduled Denver start', () => {
   const now = Date.parse('2026-11-12T18:00:00.000Z');
   const upcoming = getPaperChallengeReminders(now);
-  assert.equal(upcoming.length, 8);
+  assert.equal(upcoming.length, 12);
   assert.deepEqual(
     [...new Set(upcoming.filter((reminder) => !reminder.eventId.startsWith('lightning-')).map((reminder) => reminder.eventId))],
     ['2026-11-16', '2026-11-30'],
   );
   assert.equal(upcoming.filter((reminder) => reminder.eventId === '2026-11-16').length, 3);
+  for (const eventId of ['lightning-2026-11-27', 'lightning-2026-12-11']) {
+    const round = upcoming.filter((reminder) => reminder.eventId === eventId);
+    assert.equal(round.length, 3);
+    assert.deepEqual(round.map((reminder) => reminder.kind), [
+      'lightning-round-start', 'lightning-round-midpoint', 'lightning-round-final-hour',
+    ]);
+    assert.equal(round[1]!.scheduledAtMs - round[0]!.scheduledAtMs, 12 * 60 * 60 * 1000);
+    assert.equal(round[2]!.scheduledAtMs - round[0]!.scheduledAtMs, 23 * 60 * 60 * 1000);
+  }
   const lightningReminders = upcoming.filter((reminder) => reminder.kind === 'lightning-round-start');
   assert.deepEqual(lightningReminders.map(({ eventId, scheduledAtMs }) => ({
     eventId,
@@ -753,6 +762,18 @@ test('event reminders include eligible Lightning Rounds at their scheduled Denve
   const beforeDstStart = getPaperChallengeReminders(Date.parse('2027-03-19T13:29:59.000Z'))
     .find((reminder) => reminder.eventId === 'lightning-2027-03-19');
   assert.equal(beforeDstStart?.scheduledAtMs, Date.parse('2027-03-19T13:30:00.000Z'));
+});
+
+test('Lightning reminders schedule only remaining updates after a round has started', () => {
+  const start = Date.parse('2026-11-27T14:30:00.000Z');
+  const roundReminders = (at: number) => getPaperChallengeReminders(at)
+    .filter((reminder) => reminder.eventId === 'lightning-2026-11-27');
+  assert.equal(roundReminders(start - 1).length, 3);
+  assert.deepEqual(roundReminders(start).map((r) => r.kind), [
+    'lightning-round-midpoint', 'lightning-round-final-hour',
+  ]);
+  assert.equal(roundReminders(start + 12 * 60 * 60 * 1000).length, 1);
+  assert.equal(roundReminders(start + 24 * 60 * 60 * 1000).length, 0);
 });
 
 test('event history sorts newest by date or strongest by return', () => {

@@ -680,7 +680,8 @@ export type PaperChallengeReminder = {
   scheduledAtMs: number;
   title: string;
   body: string;
-  kind: 'event-start' | 'event-midweek' | 'event-trade-reminder' | 'lightning-round-start';
+  kind: 'event-start' | 'event-midweek' | 'event-trade-reminder'
+    | 'lightning-round-start' | 'lightning-round-midpoint' | 'lightning-round-final-hour';
 };
 
 function dateStringFromSerial(serial: number): string {
@@ -983,6 +984,18 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
       title: 'Lightning Round is open',
       body: 'The eligible off-week Lightning Round has started. Join with a fresh $100,000 paper account.',
       kind: 'lightning-round-start',
+    }, {
+      eventId: lightningRound.id,
+      scheduledAtMs: lightningRound.startAtMs + (lightningRound.endAtMs - lightningRound.startAtMs) / 2,
+      title: 'Lightning Round halfway update',
+      body: 'Your Lightning Round is halfway through. Check your event account and standings.',
+      kind: 'lightning-round-midpoint',
+    }, {
+      eventId: lightningRound.id,
+      scheduledAtMs: lightningRound.endAtMs - 60 * 60 * 1000,
+      title: 'Lightning Round final hour',
+      body: 'One hour remains in this Lightning Round. Check your event standings before the round ends.',
+      kind: 'lightning-round-final-hour',
     });
     lightningRound = findLightningRoundWindow(lightningRound.endAtMs + 1);
   }

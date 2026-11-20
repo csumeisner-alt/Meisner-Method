@@ -47,14 +47,14 @@ export function EventArenaReminderControls({ compact = false }: { compact?: bool
             Event notifications
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
-            Event updates and eligible Lightning Round alerts
+            Three reminders per event and eligible Lightning Round
           </Text>
         </View>
         {reminders.busy ? <ActivityIndicator color={colors.primary} size="small" /> : null}
         <Switch
           testID="paper-event-notifications-toggle"
           accessibilityLabel="Event notifications"
-          accessibilityState={{ checked: reminders.enabled, disabled: !reminders.loaded || reminders.busy || !!reminders.preferenceError || reminders.permission === 'unavailable' }}
+          accessibilityState={{ checked: reminders.enabled, disabled: !reminders.loaded || reminders.busy || reminders.permission === 'unavailable' }}
           value={reminders.enabled}
           onValueChange={(enabled) => {
             if (enabled && reminders.permission === 'settings-required') {
@@ -63,7 +63,7 @@ export function EventArenaReminderControls({ compact = false }: { compact?: bool
             }
             void reminders.setEnabled(enabled);
           }}
-          disabled={!reminders.loaded || reminders.busy || !!reminders.preferenceError || reminders.permission === 'unavailable'}
+          disabled={!reminders.loaded || reminders.busy || reminders.permission === 'unavailable'}
           trackColor={{ false: colors.muted, true: colors.primary }}
           thumbColor={colors.card}
         />

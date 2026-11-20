@@ -13,15 +13,18 @@ import {
   type ExistingEventArenaReminder,
 } from './eventArenaReminderSchedule.ts';
 import { registerEventArenaPushDevice } from './eventArenaPushRegistration.ts';
+import {
+  buildEventArenaNotificationRequest,
+  isEventArenaNotification,
+  readEventArenaNotificationMetadata,
+} from './eventArenaNotificationPayload.ts';
+import {
+  readEventArenaReminderPreference,
+  saveEventArenaReminderPreference,
+} from './eventArenaReminderPreference.ts';
 
 const PREFERENCE_KEY = '@stocksense/paper_events_notifications_v1';
 const SCHEDULED_IDS_KEY = '@stocksense/paper_events_notification_id_v1';
-const EVENT_ARENA_REMINDER_TYPES = new Set([
-  'event-start',
-  'event-midweek',
-  'event-trade-reminder',
-  'lightning-round-start',
-]);
 
 export type EventArenaPermissionStatus =
   | 'checking'
@@ -191,6 +194,7 @@ async function readNotificationPermission(request = false) {
     return { granted: false, canAskAgain: false };
   }
   const Notifications = await import('expo-notifications');
+  if (request) await prepareAndroidReminderChannel();
   let permission = await Notifications.getPermissionsAsync();
   if (request && !permission.granted && permission.canAskAgain) {
     permission = await Notifications.requestPermissionsAsync();
@@ -210,16 +214,8 @@ function eventArenaNotifications(
   notifications: ScheduledNotificationShape[],
 ): ExistingEventArenaReminder[] {
   return notifications.flatMap((notification) => {
-    const data = notification.content?.data;
-    if (
-      typeof notification.identifier !== 'string'
-      || !data
-      || typeof data.type !== 'string'
-      || !EVENT_ARENA_REMINDER_TYPES.has(data.type)
-      || typeof data.eventId !== 'string'
-      || typeof data.scheduledAtMs !== 'number'
-      || !Number.isFinite(data.scheduledAtMs)
-    ) return [];
+    const data = readEventArenaNotificationMetadata(notification);
+    if (!data) return [];
     return [{
       id: notification.identifier,
       eventId: data.eventId,
@@ -233,10 +229,8 @@ function eventArenaNotifications(
 
 function eventArenaNotificationIds(notifications: ScheduledNotificationShape[]): string[] {
   return notifications.flatMap((notification) => {
-    const type = notification.content?.data?.type;
     return typeof notification.identifier === 'string'
-      && typeof type === 'string'
-      && EVENT_ARENA_REMINDER_TYPES.has(type)
+      && isEventArenaNotification(notification)
       ? [notification.identifier]
       : [];
   });
@@ -249,20 +243,24 @@ async function scheduledReminderCount(): Promise<number> {
   return eventArenaNotificationIds(scheduled as ScheduledNotificationShape[]).length;
 }
 
-async function replaceLocalSchedule(): Promise<{ count: number; cleanupFailures: number }> {
-  const Notifications = await import('expo-notifications');
+async function prepareAndroidReminderChannel(): Promise<void> {
   if (Platform.OS === 'android') {
+    const Notifications = await import('expo-notifications');
     try {
       await Notifications.setNotificationChannelAsync('paper-event-reminders', {
         name: 'Paper event reminders',
-        description: 'Reminders when a new paper event starts.',
+        description: 'Opening, progress, and closing reminders for paper events.',
         importance: Notifications.AndroidImportance.DEFAULT,
       });
     } catch (error) {
       throw new Error(`Could not prepare the Android reminder channel: ${errorText(error)}`);
     }
   }
+}
 
+async function replaceLocalSchedule(): Promise<{ count: number; cleanupFailures: number }> {
+  const Notifications = await import('expo-notifications');
+  await prepareAndroidReminderChannel();
   const [scheduled, legacyIds] = await Promise.all([
     Notifications.getAllScheduledNotificationsAsync(),
     getSavedIds(),
@@ -277,22 +275,13 @@ async function replaceLocalSchedule(): Promise<{ count: number; cleanupFailures:
       ...eventArenaNotificationIds(scheduled as ScheduledNotificationShape[]),
     ],
     desired: getPaperChallengeReminders(),
-    schedule: async (reminder) => Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: reminder.body,
-        data: {
-          type: reminder.kind,
-          eventId: reminder.eventId,
-          scheduledAtMs: reminder.scheduledAtMs,
-        },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(reminder.scheduledAtMs),
-        ...(Platform.OS === 'android' ? { channelId: 'paper-event-reminders' } : {}),
-      },
-    }),
+    schedule: async (reminder) => {
+      const request = buildEventArenaNotificationRequest(reminder, Platform.OS === 'android');
+      return Notifications.scheduleNotificationAsync({
+        ...request,
+        trigger: { ...request.trigger, type: Notifications.SchedulableTriggerInputTypes.DATE },
+      });
+    },
     persistIds: (ids) => AsyncStorage.setItem(SCHEDULED_IDS_KEY, JSON.stringify(ids)),
     cancel: (id) => Notifications.cancelScheduledNotificationAsync(id),
   });
@@ -403,8 +392,9 @@ async function initialize(queryClient: QueryClient): Promise<void> {
     let localPreference: string | null = null;
     try {
       localPreference = await AsyncStorage.getItem(PREFERENCE_KEY);
+      const local = readEventArenaReminderPreference(localPreference);
       publish({
-        enabled: localPreference === 'true',
+        enabled: local.enabled,
         loaded: false,
         error: '',
         preferenceError: '',
@@ -421,16 +411,26 @@ async function initialize(queryClient: QueryClient): Promise<void> {
 
       const initialRevision = mutationRevision;
       try {
-        const remote = await getServerPreference(queryClient);
-        if (initialRevision !== mutationRevision) return;
-        publish({ preferenceError: '' });
-        if (remote.configured) {
-          if (localPreference !== String(remote.enabled)) {
-            await AsyncStorage.setItem(PREFERENCE_KEY, String(remote.enabled));
+        // A local choice awaiting sync is newer than the server's saved choice.
+        if (local.needsSync) {
+          const preferenceError = await saveEventArenaReminderPreference({
+            enabled: local.enabled,
+            save: (value) => AsyncStorage.setItem(PREFERENCE_KEY, value),
+            sync: syncServerPreference,
+          });
+          publish({ preferenceError });
+        } else {
+          const remote = await getServerPreference(queryClient);
+          if (initialRevision !== mutationRevision) return;
+          publish({ preferenceError: '' });
+          if (remote.configured) {
+            if (localPreference !== String(remote.enabled)) {
+              await AsyncStorage.setItem(PREFERENCE_KEY, String(remote.enabled));
+            }
+            publish({ enabled: remote.enabled });
+          } else if (local.configured) {
+            await syncServerPreference(local.enabled);
           }
-          publish({ enabled: remote.enabled });
-        } else if (localPreference !== null) {
-          await syncServerPreference(localPreference === 'true');
         }
       } catch (error) {
         if (initialRevision === mutationRevision) {
@@ -475,7 +475,7 @@ async function initialize(queryClient: QueryClient): Promise<void> {
 }
 
 export async function setEventArenaRemindersEnabled(enabled: boolean): Promise<void> {
-  if (!state.loaded || state.preferenceError || mutationPromise || state.busy) return;
+  if (!state.loaded || mutationPromise || state.busy) return;
   if (refreshPromise) await refreshPromise;
   if (mutationPromise || state.busy || state.enabled === enabled) return;
   mutationRevision += 1;
@@ -513,11 +513,14 @@ export async function setEventArenaRemindersEnabled(enabled: boolean): Promise<v
         }
 
         const schedule = await replaceLocalSchedule();
-        await syncServerPreference(true);
+        let preferenceError: string;
         try {
-          await AsyncStorage.setItem(PREFERENCE_KEY, 'true');
+          preferenceError = await saveEventArenaReminderPreference({
+            enabled: true,
+            save: (value) => AsyncStorage.setItem(PREFERENCE_KEY, value),
+            sync: syncServerPreference,
+          });
         } catch (error) {
-          await syncServerPreference(false).catch(() => {});
           await cancelLocalSchedule().catch(() => {});
           throw new Error(`The reminder preference could not be saved on this phone: ${errorText(error)}`);
         }
@@ -525,22 +528,25 @@ export async function setEventArenaRemindersEnabled(enabled: boolean): Promise<v
         publish({
           enabled: true,
           scheduledCount: schedule.count,
-          preferenceError: '',
+          preferenceError,
           error: schedule.cleanupFailures > 0
             ? `Enabled and scheduled ${schedule.count} reminders, but ${schedule.cleanupFailures} outdated reminder(s) could not be removed.`
             : '',
           retryMode: schedule.cleanupFailures > 0 ? 'refresh' : null,
         });
       } else {
-        await syncServerPreference(false);
+        let preferenceError: string;
         try {
-          await AsyncStorage.setItem(PREFERENCE_KEY, 'false');
+          preferenceError = await saveEventArenaReminderPreference({
+            enabled: false,
+            save: (value) => AsyncStorage.setItem(PREFERENCE_KEY, value),
+            sync: syncServerPreference,
+          });
         } catch (error) {
-          await syncServerPreference(true).catch(() => {});
           throw new Error(`The reminder preference could not be saved on this phone: ${errorText(error)}`);
         }
         if (revision !== mutationRevision) return;
-        publish({ enabled: false, preferenceError: '' });
+        publish({ enabled: false, preferenceError });
         const cancellation = await cancelLocalSchedule();
         publish({
           scheduledCount: cancellation.count,
@@ -553,11 +559,7 @@ export async function setEventArenaRemindersEnabled(enabled: boolean): Promise<v
     } catch (error) {
       if (revision === mutationRevision) {
         if (enabled) {
-          await syncServerPreference(false).catch(() => {});
-          await AsyncStorage.setItem(PREFERENCE_KEY, 'false').catch(() => {});
           await cancelLocalSchedule().catch(() => {});
-        } else if (state.enabled) {
-          await syncServerPreference(true).catch(() => {});
         }
         publish({
           error: `Could not ${enabled ? 'enable' : 'disable'} Event Arena reminders: ${errorText(error)}`,

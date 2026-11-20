@@ -211,7 +211,7 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(lightningRound, /TIME LEFT IN THIS ROUND/);
   assert.match(lightningRound, /Event notifications in Event Arena settings can remind you when an eligible round opens/);
   assert.match(events, /<EventArenaReminderControls compact \/>/);
-  assert.match(eventArenaReminderControls, /eligible Lightning Round alerts/);
+  assert.match(eventArenaReminderControls, /Three reminders per event and eligible Lightning Round/);
   assert.match(lightningRound, /ACCOUNT EQUITY/);
   assert.match(lightningRound, /DOLLAR P\/L/);
   assert.match(lightningRound, /PARTICIPANT/);
@@ -1470,13 +1470,15 @@ test("Event Arena competition keeps its visual summary and reminders inside the 
   assert.match(events, /<EventArenaReminderControls compact \/>/);
   assert.match(mobileRootLayout, /<EventArenaRemindersProvider>/);
   assert.match(eventArenaReminders, /getGetEventArenaReminderPreferenceQueryOptions/);
-  assert.match(eventArenaReminders, /if \(!state\.loaded \|\| state\.preferenceError \|\| mutationPromise \|\| state\.busy\) return/);
+  assert.match(eventArenaReminders, /if \(!state\.loaded \|\| mutationPromise \|\| state\.busy\) return/);
+  assert.doesNotMatch(eventArenaReminderControls, /disabled:[^\n]*preferenceError|disabled=\{[^\n]*preferenceError/);
   assert.match(eventArenaReminders, /Could not refresh Event Arena reminders: \$\{errorText\(error\)\}/);
   const enableStart = eventArenaReminders.indexOf('export async function setEventArenaRemindersEnabled');
   const scheduleBeforeSave = eventArenaReminders.indexOf('const schedule = await replaceLocalSchedule()', enableStart);
-  const serverSave = eventArenaReminders.indexOf('await syncServerPreference(true)', enableStart);
-  const localSave = eventArenaReminders.indexOf("await AsyncStorage.setItem(PREFERENCE_KEY, 'true')", enableStart);
-  assert.ok(enableStart >= 0 && scheduleBeforeSave < serverSave && serverSave < localSave);
+  const localSave = eventArenaReminders.indexOf('await saveEventArenaReminderPreference', enableStart);
+  assert.ok(enableStart >= 0 && scheduleBeforeSave > enableStart && scheduleBeforeSave < localSave);
+  assert.match(eventArenaReminders, /if \(local\.needsSync\)[\s\S]*?saveEventArenaReminderPreference/);
+  assert.match(eventArenaReminders, /buildEventArenaNotificationRequest\(reminder, Platform\.OS === 'android'\)/);
 
   for (const label of [
     "STARTING BALANCE",
