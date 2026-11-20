@@ -4028,7 +4028,7 @@ export default function PaperScreen() {
       <PaperAccountSwipeArea
         style={[
           styles.accountHero,
-          !isSelectedEventAccount && screenWidth <= 360 && styles.compactAccountHero,
+          screenWidth <= 360 && styles.compactAccountHero,
           isSelectedEventAccount && styles.eventChampionshipHero,
         ]}
         testID="paper-account-hero"
@@ -5617,9 +5617,6 @@ const styles = StyleSheet.create({
   eventChampionshipHero: {
     backgroundColor: 'rgba(24,24,25,0.98)',
     borderColor: 'rgba(231,198,106,0.62)',
-    paddingHorizontal: 13,
-    paddingTop: 4,
-    paddingBottom: 4,
   },
   eventChampionshipTopline: {
     flexDirection: 'row',

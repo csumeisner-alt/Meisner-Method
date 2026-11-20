@@ -255,6 +255,9 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await currentAccount(), "tiger");
     assert.equal(await currentReturn(), "+6.25%");
     assert.equal(await hapticCount(), 0);
+    const simulatedCardHeight = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
+    );
     assert.equal(await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true,
       "The paper screen must not create horizontal overflow at 320 pixels.");
     await touch(browser, "paper-account-switch");
@@ -309,6 +312,8 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       };
     })()`);
     assert.ok(eventGeometry.hero && eventGeometry.dashboard && eventGeometry.dots && eventGeometry.navigation);
+    assert.ok(Math.abs(eventGeometry.hero.height - simulatedCardHeight) <= 1,
+      `The Event Arena outer card must match the simulated portfolio cards: event=${eventGeometry.hero.height}, simulated=${simulatedCardHeight}`);
     assert.ok(eventGeometry.dashboard.height > 0);
     assert.ok(eventGeometry.hero.height <= 205,
       `The Event Arena card should leave room for four position rows: ${JSON.stringify(eventGeometry)}`);

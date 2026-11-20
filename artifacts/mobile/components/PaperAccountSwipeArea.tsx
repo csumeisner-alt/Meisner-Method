@@ -66,7 +66,7 @@ export function PaperAccountSwipeArea({
       testID={testID}
       collapsable={false}
       style={[
-        { flexShrink: 0 },
+        { flexShrink: 0, minHeight: 150 },
         style,
         Platform.OS === 'web' && ({ touchAction: 'pan-y' } as ViewStyle),
       ]}

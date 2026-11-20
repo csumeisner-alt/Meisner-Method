@@ -184,14 +184,14 @@ function PaperAccountInteractionFixture() {
             marginTop: 6,
             marginBottom: 6,
             paddingHorizontal: 16,
-            paddingTop: 9,
-            paddingBottom: 7,
+            paddingTop: 7,
+            paddingBottom: 5,
             borderRadius: 13,
             borderWidth: 1,
             borderColor: '#c5a552',
             backgroundColor: 'rgba(28,27,23,0.96)',
           },
-          activeId !== 'paper-event:arena' && viewportWidth <= 360 && {
+          viewportWidth <= 360 && {
             marginTop: 4,
             marginBottom: 3,
             paddingHorizontal: 12,
@@ -202,20 +202,23 @@ function PaperAccountInteractionFixture() {
       >
         {activeId === 'paper-event:arena' ? (
           <>
-            <Text testID="paper-current-account" style={{ color: '#fff', fontSize: 24 }}>
+            <Text testID="paper-current-account" style={{ height: 0, color: '#fff' }}>
               {activeId}
             </Text>
             <Text testID="paper-account-total-return" style={{ height: 0, color: '#fff' }}>
               {`${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%`}
             </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+            <Text style={{ color: '#00e5a0' }}>EVENT ARENA</Text>
             <TouchableOpacity
               testID="paper-account-switch"
               accessibilityRole="button"
               onPress={() => setSelectorOpen(true)}
-              style={{ minHeight: 44, justifyContent: 'center' }}
+              style={{ minHeight: 30, justifyContent: 'center' }}
             >
               <Text style={{ color: '#ffd700' }}>SWITCH</Text>
             </TouchableOpacity>
+            </View>
           <PaperEventArenaDashboard
             eventId="arena"
             startAtMs={eventTimes.startAtMs}

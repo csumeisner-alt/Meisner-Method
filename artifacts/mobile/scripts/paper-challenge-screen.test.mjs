@@ -1254,7 +1254,9 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /<LeaderboardButton onPress=\{onViewLeaderboard\} \/>/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
   assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);
-  assert.match(screen, /eventChampionshipHero:[\s\S]*?paddingTop: 4,[\s\S]*?paddingBottom: 4/);
+  assert.match(screen, /screenWidth <= 360 && styles\.compactAccountHero/);
+  const eventHeroStyle = screen.slice(screen.indexOf('  eventChampionshipHero: {'), screen.indexOf('  eventChampionshipTopline: {'));
+  assert.doesNotMatch(eventHeroStyle, /padding/);
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {
