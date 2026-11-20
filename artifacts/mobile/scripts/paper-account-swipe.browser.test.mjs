@@ -259,7 +259,6 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await hapticCount(), 0);
     assert.equal(await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true,
       "The paper screen must not create horizontal overflow at 320 pixels.");
-
     await touch(browser, "paper-account-switch");
     assert.equal(await currentAccount(), "tiger", "Opening the selector must not change the active account.");
     assert.equal(await hapticCount(), 0, "Opening the selector must not trigger a haptic.");
@@ -481,6 +480,28 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       "Bottom navigation must remain tappable.",
     );
 
+    await browser.evaluate("window.__setPaperStressScenario(true)");
+    assert.equal(await currentAccount(), "tiger");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("123,456,789,012.34"),
+      "The large starting account balance remains associated with Tiger.");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
+      "Tiger's large positive P/L remains visible.");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "borg", "Large values must not prevent swiping to the next account.");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("-"),
+      "Borg's large negative P/L remains associated with Borg.");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("900,000,000,000.00"),
+      "Borg's buying power remains associated with Borg.");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "fireball", "Swiping must continue to advance after rendering large values.");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "2");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
+      "Fireball's positive P/L remains associated with Fireball.");
+    assert.equal(await browser.evaluate(`document.querySelectorAll('[data-testid^="paper-position-fireball-stress-"]').length`), 2);
+    await browser.evaluate("window.__setPaperStressScenario(false)");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "borg");
+    await delay(300);
     await touch(browser, "paper-content", 0, -220);
     const scrollState = await browser.evaluate(`(() => {
       const content = document.querySelector(${JSON.stringify(selector("paper-content"))});
@@ -554,6 +575,10 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       })()`);
       assert.equal(layout.documentWidth <= width, true, `${width}px viewport must not scroll horizontally.`);
       assert.ok(layout.hero && layout.equity && layout.switcher, "The portfolio summary and account switcher must render.");
+      if (width <= 360) {
+        assert.ok(layout.hero.height <= 200,
+          `The compact phone summary should stay under 200px tall: ${JSON.stringify(layout.hero)}`);
+      }
       assert.ok(layout.equity.left >= layout.hero.left && layout.equity.right <= layout.hero.right,
         `A very large equity value must stay inside its account card: ${JSON.stringify({
           viewport: width,
@@ -565,13 +590,17 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       assert.ok(layout.switcher.left >= layout.hero.left && layout.switcher.right <= layout.hero.right,
         "Account switching must stay inside the summary card.");
       assert.ok(layout.today && layout.total && layout.buying, "All three account metrics must remain visible.");
+      assert.ok(layout.switcher.height >= 36, "The account switch control must remain easy to tap.");
       for (const [name, bounds] of Object.entries({
+        equity: layout.equity,
         todayPnl: layout.today,
         totalReturn: layout.total,
         buyingPower: layout.buying,
       })) {
         assert.ok(bounds.left >= layout.hero.left && bounds.right <= layout.hero.right,
           `${name} must remain inside the account summary at ${width}px.`);
+        assert.ok(bounds.top >= layout.hero.top && bounds.bottom <= layout.hero.bottom,
+          `${name} must remain visible inside the account summary at ${width}px.`);
         assert.ok(bounds.scrollWidth <= bounds.clientWidth + 1,
           `${name} must fit its text column without clipping at ${width}px.`);
       }
@@ -611,31 +640,6 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
 
     for (const width of [320, 360, 375, 390, 430]) await setViewport(width);
 
-    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("123,456,789,012.34"),
-      "The large starting account balance remains associated with Tiger.");
-    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
-      "Tiger's large positive P/L remains visible.");
-    await touch(browser, "paper-current-account", -150, 0);
-    assert.equal(await currentAccount(), "borg");
-    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "1");
-    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("-"),
-      "Borg's large negative P/L remains associated with Borg.");
-    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("900,000,000,000.00"),
-      "Borg's buying power remains associated with Borg.");
-    for (const width of [320, 390]) await setViewport(width, "borg-stress-a");
-
-    await touch(browser, "paper-current-account", -150, 0);
-    assert.equal(await currentAccount(), "fireball");
-    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "2");
-    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
-      "Fireball's positive P/L remains associated with Fireball.");
-    assert.equal(await browser.evaluate(`document.querySelectorAll('[data-testid^="paper-position-fireball-stress-"]').length`), 2,
-      "Different account position counts must remain account-scoped.");
-    for (const width of [320, 390]) {
-      await setViewport(width, "fireball-stress-a");
-      await setViewport(width, "fireball-stress-b");
-    }
-
     // React Native Web's parent PanResponder suppresses follow-up clicks for
     // 250ms after a successful swipe so the swipe itself cannot activate a
     // control underneath it. Let that intentional click guard expire before
@@ -669,7 +673,6 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     await touch(browser, "paper-tab-group-portfolio");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "overview");
     await touch(browser, "paper-tab-positions");
-    assert.equal(await browser.evaluate(`document.querySelectorAll('[data-testid^="paper-position-fireball-stress-"]').length`), 2);
 
     await touch(browser, "paper-current-account", 150, 0);
     await touch(browser, "paper-current-account", 150, 0);

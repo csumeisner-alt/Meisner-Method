@@ -4081,7 +4081,10 @@ export default function PaperScreen() {
             testID="paper-account-position-indicator"
             accessibilityRole="text"
             accessibilityLabel={`Account ${selectedAccountPosition + 1} of ${visibleAccounts.length}`}
-            style={styles.accountPositionIndicators}
+            style={[
+              styles.accountPositionIndicators,
+              !isSelectedEventAccount && screenWidth <= 360 && styles.compactAccountPositionIndicators,
+            ]}
           >
             {visibleAccounts.map((item, index) => (
               <View
@@ -5582,22 +5585,22 @@ const styles = StyleSheet.create({
   accountHero: {
     flexShrink: 0,
     marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 6,
+    marginBottom: 6,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
-    borderRadius: 15,
+    paddingTop: 9,
+    paddingBottom: 7,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: 'rgba(214,179,91,0.46)',
     backgroundColor: 'rgba(28,27,23,0.96)',
   },
   compactAccountHero: {
-    marginTop: 6,
-    marginBottom: 4,
+    marginTop: 4,
+    marginBottom: 3,
     paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   eventChampionshipHero: {
     backgroundColor: 'rgba(24,24,25,0.98)',
@@ -5628,6 +5631,7 @@ const styles = StyleSheet.create({
   },
   editAccountsText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
   accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },
+  compactAccountPositionIndicators: { marginTop: 4 },
   accountPositionIndicator: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(192,192,192,0.3)' },
   accountPositionIndicatorActive: { width: 16, backgroundColor: GOLD },
   eventPositionIndicator: { backgroundColor: BUY_COLOR },

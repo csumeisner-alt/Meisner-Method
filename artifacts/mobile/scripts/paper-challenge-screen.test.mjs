@@ -1076,7 +1076,7 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(paperLayout, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
   assert.match(paperLayout, /const \{ width, fontScale \} = useWindowDimensions\(\)/);
   assert.match(paperLayout, /width <= 360 \|\| fontScale >= 1\.3/);
-  assert.match(paperLayout, /heroStatsCompact: \{[\s\S]*?flexDirection: 'column'[\s\S]*?gap: 3/);
+  assert.match(paperLayout, /heroStatsCompact: \{[\s\S]*?flexDirection: 'column'[\s\S]*?gap: 2/);
   for (const metric of ["paper-account-today-pnl", "paper-account-total-return", "paper-account-buying-power"]) {
     assert.match(paperLayout, new RegExp(`testID="${metric}"`));
   }

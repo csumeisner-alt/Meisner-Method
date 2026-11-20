@@ -175,22 +175,22 @@ function PaperAccountInteractionFixture() {
         style={[
           {
             marginHorizontal: 16,
-            marginTop: 8,
-            marginBottom: 8,
+            marginTop: 6,
+            marginBottom: 6,
             paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: 10,
-            borderRadius: 15,
+            paddingTop: 9,
+            paddingBottom: 7,
+            borderRadius: 13,
             borderWidth: 1,
             borderColor: '#c5a552',
             backgroundColor: 'rgba(28,27,23,0.96)',
           },
           activeId !== 'paper-event:arena' && viewportWidth <= 360 && {
-            marginTop: 6,
-            marginBottom: 4,
+            marginTop: 4,
+            marginBottom: 3,
             paddingHorizontal: 12,
-            paddingTop: 6,
-            paddingBottom: 6,
+            paddingTop: 4,
+            paddingBottom: 4,
           },
         ]}
       >
@@ -249,7 +249,13 @@ function PaperAccountInteractionFixture() {
             testID="paper-account-position-indicator"
             accessibilityRole="text"
             accessibilityLabel={`Account ${accounts.findIndex((account) => account.id === activeId) + 1} of ${accounts.length}`}
-            style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 }}
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 5,
+              marginTop: activeId !== 'paper-event:arena' && viewportWidth <= 360 ? 4 : 7,
+            }}
           >
             {accounts.map((item, index) => (
               <View

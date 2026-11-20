@@ -3,12 +3,12 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/biden-vault-progress/Current.tsx": () => import("../components/mockups/biden-vault-progress/Current.tsx"),
   "./components/mockups/biden-vault-progress/VaultProgressStory.tsx": () => import("../components/mockups/biden-vault-progress/VaultProgressStory.tsx"),
-  "./components/mockups/bottle-gallery/BottleGallery.tsx": () => import("../components/mockups/bottle-gallery/BottleGallery.tsx"),
   "./components/mockups/central-bank-drink-states/DrinkStateLab.tsx": () => import("../components/mockups/central-bank-drink-states/DrinkStateLab.tsx"),
   "./components/mockups/central-bank-shop/Current.tsx": () => import("../components/mockups/central-bank-shop/Current.tsx"),
   "./components/mockups/central-bank-shop/SodasUnlocked.tsx": () => import("../components/mockups/central-bank-shop/SodasUnlocked.tsx"),
   "./components/mockups/central-bank-shop/TokenInsert.tsx": () => import("../components/mockups/central-bank-shop/TokenInsert.tsx"),
   "./components/mockups/central-bank-shop/Unlocked.tsx": () => import("../components/mockups/central-bank-shop/Unlocked.tsx"),
+  "./components/mockups/bottle-gallery/BottleGallery.tsx": () => import("../components/mockups/bottle-gallery/BottleGallery.tsx"),
   "./components/mockups/daiquiri-redesign/Current.tsx": () => import("../components/mockups/daiquiri-redesign/Current.tsx"),
   "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx"),
   "./components/mockups/event-arena-end-story/EndOfEventStory.tsx": () => import("../components/mockups/event-arena-end-story/EndOfEventStory.tsx"),
@@ -20,8 +20,8 @@ export const modules: ModuleMap = {
   "./components/mockups/one-stock-leaderboard/Current.tsx": () => import("../components/mockups/one-stock-leaderboard/Current.tsx"),
   "./components/mockups/one-stock-leaderboard/FullCard.tsx": () => import("../components/mockups/one-stock-leaderboard/FullCard.tsx"),
   "./components/mockups/premium-flag-collection/Current.tsx": () => import("../components/mockups/premium-flag-collection/Current.tsx"),
-  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx"),
+  "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),
   "./components/mockups/smart-pro-bottle/Current.tsx": () => import("../components/mockups/smart-pro-bottle/Current.tsx"),
   "./components/mockups/smart-pro-bottle/Interactive.tsx": () => import("../components/mockups/smart-pro-bottle/Interactive.tsx"),
-  "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx")
+  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx")
 };
