@@ -195,10 +195,10 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  border: 1px solid #cda749;
+  border: 0;
   border-radius: 6px;
   background: #10151d;
-  box-shadow: 0 0 8px rgba(226, 190, 111, 0.2);
+  box-shadow: none;
   transform-origin: left center;
   animation: title-story-breeze 5.6s ease-in-out infinite;
 }

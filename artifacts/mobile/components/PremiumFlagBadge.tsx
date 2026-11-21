@@ -70,9 +70,7 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
         {
           width,
           height,
-          borderColor: colors.gold,
           backgroundColor: colors.steelShadow,
-          shadowColor: colors.gold,
         },
         motionStyle,
       ]}
@@ -93,11 +91,6 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
     borderRadius: 8,
-    borderWidth: 1,
-    shadowOpacity: 0.38,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
   },
   flagSurface: {
     flex: 1,

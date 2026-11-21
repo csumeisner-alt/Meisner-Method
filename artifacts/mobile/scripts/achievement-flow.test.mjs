@@ -180,6 +180,15 @@ test("title flags lead completed achievements and fit the scrollable narrow-phon
     "the two-column title-flag choices fit at a 320px phone width");
 });
 
+test("premium title flags stay animated without a gold frame", () => {
+  assert.match(premiumFlagBadgeSource, /const motionStyle = useAnimatedStyle/);
+  assert.match(premiumFlagBadgeSource, /duration:\s*5_600/);
+  assert.match(premiumFlagBadgeSource, /styles\.frame,[\s\S]*?motionStyle/,
+    "the cloth motion should remain applied to the flag badge");
+  assert.doesNotMatch(premiumFlagBadgeSource, /borderColor:\s*colors\.gold|borderWidth:\s*1|shadowColor:\s*colors\.gold/,
+    "the flag artwork should not have a gold outline or glow");
+});
+
 test("premium flag artwork preserves its full image inside the animated frame", () => {
   const badgeSource = readSource("../components/PremiumFlagBadge.tsx");
   assert.match(badgeSource, /resizeMode="contain"/,
