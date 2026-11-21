@@ -116,6 +116,8 @@ test('production layouts use real tabs and never singular native stack tab route
   assert.match(tabs, /tabBar=\{\(\) => null\}/);
   assert.doesNotMatch(tabs, /MainTabSwipeBoundary|PanResponder/);
   assert.match(tabs, /sceneStyleInterpolator/);
+  assert.match(tabs, /<View style=\{\{ flex: 1, backgroundColor: colors\.background \}\}>/);
+  assert.match(tabs, /sceneStyle:\s*\{\s*backgroundColor: colors\.background/);
   assert.match(tabs, /outputRange: \[-width, 0, width\]/);
   assert.match(tabs, /duration: 300/);
   assert.match(bar, /router\.navigate\(plan\.href\)/);
