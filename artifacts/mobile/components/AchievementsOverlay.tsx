@@ -682,47 +682,14 @@ export function AchievementsOverlay() {
               nestedScrollEnabled
               accessibilityLabel="Achievement list"
             >
-              {ACHIEVEMENTS.map((achievement) => {
-                const earned = earnedIds.includes(achievement.id);
-                return (
-                  <View
-                    key={achievement.id}
-                    style={[
-                      styles.achievementRow,
-                      {
-                        backgroundColor: earned ? colors.card : colors.steelShadow,
-                        borderColor: earned ? colors.goldMuted : colors.border,
-                        opacity: earned ? 1 : 0.65,
-                      },
-                    ]}
-                  >
-                    <View style={[styles.achievementIcon, { backgroundColor: earned ? colors.steelShadow : colors.background }]}>
-                      <Feather
-                        name={earned ? achievement.icon : 'lock'}
-                        size={17}
-                        color={earned ? colors.gold : colors.mutedForeground}
-                      />
-                    </View>
-                    <View style={styles.achievementCopy}>
-                      <Text style={[styles.achievementTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                        {achievement.title}
-                      </Text>
-                      <Text style={[styles.achievementDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                        {achievement.description}
-                      </Text>
-                    </View>
-                    {earned && <Feather name="check" size={16} color={colors.gold} />}
-                  </View>
-                );
-              })}
               {hasCompletedAllAchievements(earnedIds) && (
                 <View style={[styles.flagRewardCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
-                <View style={styles.flagRewardHeading}>
-                  <Feather name="award" size={17} color={colors.gold} />
-                  <Text style={[styles.flagRewardEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                    TITLE FLAG
-                  </Text>
-                </View>
+                  <View style={styles.flagRewardHeading}>
+                    <Feather name="award" size={17} color={colors.gold} />
+                    <Text style={[styles.flagRewardEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                      TITLE FLAG
+                    </Text>
+                  </View>
                   <>
                     <Text
                       ref={titleFlagGalleryHeadingRef}
@@ -826,6 +793,39 @@ export function AchievementsOverlay() {
                   </>
                 </View>
               )}
+              {ACHIEVEMENTS.map((achievement) => {
+                const earned = earnedIds.includes(achievement.id);
+                return (
+                  <View
+                    key={achievement.id}
+                    style={[
+                      styles.achievementRow,
+                      {
+                        backgroundColor: earned ? colors.card : colors.steelShadow,
+                        borderColor: earned ? colors.goldMuted : colors.border,
+                        opacity: earned ? 1 : 0.65,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.achievementIcon, { backgroundColor: earned ? colors.steelShadow : colors.background }]}>
+                      <Feather
+                        name={earned ? achievement.icon : 'lock'}
+                        size={17}
+                        color={earned ? colors.gold : colors.mutedForeground}
+                      />
+                    </View>
+                    <View style={styles.achievementCopy}>
+                      <Text style={[styles.achievementTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                        {achievement.title}
+                      </Text>
+                      <Text style={[styles.achievementDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        {achievement.description}
+                      </Text>
+                    </View>
+                    {earned && <Feather name="check" size={16} color={colors.gold} />}
+                  </View>
+                );
+              })}
             </ScrollView>
           </View>
             {prideConfirmVisible && (

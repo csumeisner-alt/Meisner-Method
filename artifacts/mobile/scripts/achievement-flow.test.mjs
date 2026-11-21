@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { ACHIEVEMENTS, hasCompletedAllAchievements } from "../lib/achievements.ts";
 import { getAchievementSealLayout } from "../lib/achievementSealLayout.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -114,6 +115,49 @@ test("Analyze title stays stable across achievement states on narrow screens", (
 
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\}/);
+});
+
+test("title flags lead completed achievements and fit the scrollable narrow-phone panel", () => {
+  const allAchievementIds = ACHIEVEMENTS.map(({ id }) => id);
+  assert.equal(hasCompletedAllAchievements(allAchievementIds.slice(0, -1)), false,
+    "the title-flag reward stays hidden while any achievement is incomplete");
+  assert.equal(hasCompletedAllAchievements(allAchievementIds), true,
+    "the title-flag reward becomes eligible when all 15 achievements are earned");
+
+  const achievementPanel = overlaySource.match(
+    /<ScrollView\s+style=\{styles\.achievementScroll\}[\s\S]*?accessibilityLabel="Achievement list"[\s\S]*?<\/ScrollView>/,
+  )?.[0];
+
+  assert.ok(achievementPanel, "the achievements and reward should share a scrollable panel");
+  const rewardConditionIndex = achievementPanel.indexOf("{hasCompletedAllAchievements(earnedIds) && (");
+  const achievementRowsIndex = achievementPanel.indexOf("{ACHIEVEMENTS.map((achievement) =>");
+  assert.ok(rewardConditionIndex >= 0, "the title flag reward is guarded by full achievement completion");
+  assert.ok(achievementRowsIndex > rewardConditionIndex, "completed-state title flags appear before achievement rows");
+  assert.match(
+    achievementPanel.slice(rewardConditionIndex, achievementRowsIndex),
+    /<View style=\{\[styles\.flagRewardCard/,
+    "the completion guard encloses the title flag card",
+  );
+  assert.match(achievementPanel, /disabled=\{!premiumFlagReady \|\| !prideUnlocked\}/);
+  assert.match(achievementPanel, /Pride premium flag[\s\S]*?locked until \$\{PRIDE_FLAG_QUOTE_THRESHOLD\} Biden quotes are viewed/);
+  assert.match(achievementPanel, /ACHIEVEMENTS\.map\(\(achievement\) =>[\s\S]*?achievement\.description/);
+  assert.match(overlaySource, /panel: \{[^}]*maxHeight: '88%'/);
+  assert.match(overlaySource, /achievementScroll: \{ flexShrink: 1 \}/);
+  assert.match(overlaySource, /nestedScrollEnabled[\s\S]*?accessibilityLabel="Achievement list"/);
+
+  const narrowViewportWidth = 320;
+  const modalHorizontalPadding = 18;
+  const panelPadding = 18;
+  const rewardCardPadding = 12;
+  const flagChoicePadding = 8;
+  const usableGridWidth = narrowViewportWidth
+    - modalHorizontalPadding * 2
+    - panelPadding * 2
+    - rewardCardPadding * 2
+    - 2;
+  const flagChoiceWidth = usableGridWidth * 0.48;
+  assert.ok(flagChoiceWidth >= 86 + flagChoicePadding * 2 + 2,
+    "the two-column title-flag choices fit at a 320px phone width");
 });
 
 test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
