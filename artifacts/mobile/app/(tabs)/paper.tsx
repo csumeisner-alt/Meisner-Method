@@ -147,6 +147,7 @@ import {
   requestPaperPreloadQuote,
   subscribePaperPortfolioPreload,
 } from '@/lib/paperPortfolioPreload';
+import { runPaperAccountQuoteRefresh } from '@/lib/paperQuoteRefresh';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
@@ -2051,10 +2052,6 @@ export default function PaperScreen() {
     evaluateOrders = true,
     forceRefresh = false,
   ): Promise<Record<string, LiveQuote>> => {
-    if (evaluateOrders) quoteRefreshEvaluateRequestedRef.current.add(accountId);
-    const inFlight = quoteRefreshPromisesRef.current.get(accountId);
-    if (inFlight) return inFlight;
-
     const refresh = async () => {
       // Fetch quotes for positions of the active account PLUS any pending-order symbols.
       const posSymbols = pos.filter(p => p.accountId === accountId).map(p => p.symbol);
@@ -2087,13 +2084,9 @@ export default function PaperScreen() {
           if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
         }
         void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
-        if (quoteRefreshEvaluateRequestedRef.current.has(accountId)) {
-          evaluatePendingOrders(next);
-        }
         await recordAccountValueSnapshot(accountId, next);
         return next;
       } finally {
-        quoteRefreshEvaluateRequestedRef.current.delete(accountId);
         quoteRefreshCountRef.current = Math.max(0, quoteRefreshCountRef.current - 1);
         if (quoteRefreshCountRef.current === 0) {
           if (quoteRefreshIndicatorTimerRef.current) {
@@ -2105,14 +2098,14 @@ export default function PaperScreen() {
       }
     };
 
-    const promise = refresh();
-    quoteRefreshPromisesRef.current.set(accountId, promise);
-    void promise.finally(() => {
-      if (quoteRefreshPromisesRef.current.get(accountId) === promise) {
-        quoteRefreshPromisesRef.current.delete(accountId);
-      }
-    }).catch(() => {});
-    return promise;
+    return runPaperAccountQuoteRefresh(
+      accountId,
+      quoteRefreshPromisesRef.current,
+      quoteRefreshEvaluateRequestedRef.current,
+      evaluateOrders,
+      refresh,
+      evaluatePendingOrders,
+    );
   }, [evaluatePendingOrders, recordAccountValueSnapshot]);
 
   // Keep the selector's equity cards current without evaluating orders from
