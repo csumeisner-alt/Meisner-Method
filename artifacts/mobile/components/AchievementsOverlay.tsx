@@ -13,7 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import type { AudioPlayer } from 'expo-audio';
@@ -647,9 +647,13 @@ export function AchievementsOverlay() {
             <View style={[styles.panel, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <View style={styles.panelHeader}>
               <View style={styles.panelTitleGroup}>
-                <Feather name="award" size={20} color={colors.gold} />
+                <MaterialCommunityIcons name="trophy-outline" size={20} color={colors.gold} accessible={false} />
                 <View>
-                  <Text style={[styles.panelTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  <Text
+                    style={[styles.panelTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}
+                    accessibilityRole="header"
+                    accessibilityLabel="Achievements"
+                  >
                     ACHIEVEMENTS
                   </Text>
                   <Text style={[styles.panelSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>

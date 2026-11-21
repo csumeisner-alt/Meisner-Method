@@ -20,6 +20,17 @@ const overlaySource = readSource("../components/AchievementsOverlay.tsx");
 const premiumFlagBadgeSource = readSource("../components/PremiumFlagBadge.tsx");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
+test("Achievements panel heading uses a gold trophy and keeps its accessible name", () => {
+  const heading = overlaySource.match(
+    /<MaterialCommunityIcons name="trophy-outline"[\s\S]*?<\/Text>/,
+  )?.[0];
+
+  assert.ok(heading, "the panel heading should use the trophy icon");
+  assert.match(heading, /size=\{20\} color=\{colors\.gold\} accessible=\{false\}/);
+  assert.match(heading, /accessibilityRole="header"/);
+  assert.match(heading, /accessibilityLabel="Achievements"/);
+});
+
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
   assert.match(achievementsContextSource, /enqueueAchievementToast\(queue, result\.achievement\)/);
   assert.match(achievementsContextSource, /const toastAchievement = toastQueue\[0\] \?\? null/);
