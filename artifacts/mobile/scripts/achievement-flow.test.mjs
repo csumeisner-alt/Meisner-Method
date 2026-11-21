@@ -82,7 +82,12 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /confirmPrideSelection/);
   assert.match(overlaySource, /RainbowCelebration onDismiss=\{dismissRainbowCelebration\}/);
   assert.match(overlaySource, /Smart choice\. Your current flag stays selected/);
-  assert.match(overlaySource, /!toastAchievement \|\|\s*!shouldPresentAchievementSeal\(achievementSeal, toastAchievement\.id, earnedIds\)/);
+  assert.match(overlaySource, /achievementSealShown[\s\S]*?type: 'restore-shown'/);
+  assert.match(overlaySource, /if \(!achievementsHydrated\) return/);
+  assert.match(overlaySource, /shouldPresentAchievementSealOnHydration\([\s\S]*?type: 'completion-hydrated'/);
+  assert.match(achievementsContextSource, /ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY/);
+  assert.match(achievementsContextSource, /setItem\(ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY, 'true'\)/);
+  assert.match(achievementsContextSource, /Promise\.all\(\[[\s\S]*?ACHIEVEMENT_STORAGE_KEY[\s\S]*?ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY/);
   assert.match(overlaySource, /THE FINAL SEAL/);
   assert.match(overlaySource, /15 of 15 complete/);
   assert.match(overlaySource, /Choose your title flag/);

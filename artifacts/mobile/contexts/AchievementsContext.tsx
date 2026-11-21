@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ACHIEVEMENT_STORAGE_KEY,
+  ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY,
   ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
   ANALYZE_SEARCH_COUNT_STORAGE_KEY,
   TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY,
@@ -14,6 +15,7 @@ import {
   getTrainingTapeAchievementsForOpenCount,
   resolvePremiumFlagSelection,
   parseEarnedAchievementIds,
+  parseAchievementSealShown,
   parseAnalyzeSearchCount,
   parseTrainingTapeOpenCount,
   enqueueAchievementToast,
@@ -26,6 +28,9 @@ import { useAmericanMode } from '@/contexts/AmericanModeContext';
 
 type AchievementsState = {
   earnedIds: AchievementId[];
+  achievementsHydrated: boolean;
+  achievementSealShown: boolean;
+  markAchievementSealShown: () => void;
   awardAchievement: (id: AchievementId) => Promise<void>;
   recordAnalyzeSearch: () => Promise<void>;
   recordTrainingTapeOpen: () => Promise<void>;
@@ -46,12 +51,15 @@ const AchievementsContext = createContext<AchievementsState | null>(null);
 export function AchievementsProvider({ children }: { children: React.ReactNode }) {
   const { brew } = useAmericanMode();
   const [earnedIds, setEarnedIds] = useState<AchievementId[]>([]);
+  const [achievementsHydrated, setAchievementsHydrated] = useState(false);
+  const [achievementSealShown, setAchievementSealShown] = useState(false);
   const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>(DEFAULT_FLAG_ID);
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [toastQueue, setToastQueue] = useState<Achievement[]>([]);
   const idsRef = useRef<AchievementId[]>([]);
   const hydratedRef = useRef(false);
+  const achievementSealShownRef = useRef(false);
   const premiumFlagHydratedRef = useRef(false);
   const pendingAwardsRef = useRef<AchievementId[]>([]);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -63,6 +71,15 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const selectedPremiumFlagId = storedFlagSelection === PRIDE_FLAG.id && !prideUnlocked
     ? 'heritage'
     : storedFlagSelection;
+
+  const markAchievementSealShown = useCallback(() => {
+    if (achievementSealShownRef.current) return;
+    achievementSealShownRef.current = true;
+    setAchievementSealShown(true);
+    void AsyncStorage.setItem(ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY, 'true').catch((error) => {
+      console.warn('[achievements] Could not save completion celebration state:', error);
+    });
+  }, []);
 
   const awardAchievement = useCallback(async (id: AchievementId) => {
     if (!hydratedRef.current) {
@@ -162,13 +179,26 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     let mounted = true;
-    void AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY)
-      .then((raw) => {
+    void Promise.all([
+      AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY).catch((error) => {
+        console.warn('[achievements] Could not load earned achievements:', error);
+        return null;
+      }),
+      AsyncStorage.getItem(ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY).catch((error) => {
+        console.warn('[achievements] Could not load completion celebration state:', error);
+        return null;
+      }),
+    ])
+      .then(([raw, sealShownRaw]) => {
         if (!mounted) return;
         const loadedIds = parseEarnedAchievementIds(raw);
+        const sealShown = parseAchievementSealShown(sealShownRaw);
         idsRef.current = loadedIds;
         hydratedRef.current = true;
+        achievementSealShownRef.current = sealShown;
         setEarnedIds(loadedIds);
+        setAchievementSealShown(sealShown);
+        setAchievementsHydrated(true);
 
         const pending = pendingAwardsRef.current.splice(0);
         for (const id of pending) void awardAchievement(id);
@@ -177,6 +207,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         if (!mounted) return;
         console.warn('[achievements] Could not load earned achievements:', error);
         hydratedRef.current = true;
+        setAchievementsHydrated(true);
         const pending = pendingAwardsRef.current.splice(0);
         for (const id of pending) void awardAchievement(id);
       });
@@ -216,6 +247,9 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     <AchievementsContext.Provider
       value={{
         earnedIds,
+        achievementsHydrated,
+        achievementSealShown,
+        markAchievementSealShown,
         awardAchievement,
         recordAnalyzeSearch,
         recordTrainingTapeOpen,

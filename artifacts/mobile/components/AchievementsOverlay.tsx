@@ -28,6 +28,7 @@ import {
   PRIDE_FLAG,
   PRIDE_FLAG_QUOTE_THRESHOLD,
   shouldPresentAchievementSeal,
+  shouldPresentAchievementSealOnHydration,
 } from '@/lib/achievements';
 import { getAchievementSealLayout } from '@/lib/achievementSealLayout';
 import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
@@ -426,6 +427,9 @@ export function AchievementsOverlay() {
   const hapticsEnabled = brew.hapticsEnabled;
   const {
     earnedIds,
+    achievementsHydrated,
+    achievementSealShown,
+    markAchievementSealShown,
     selectedPremiumFlagId,
     quotesViewed,
     prideUnlocked,
@@ -485,17 +489,46 @@ export function AchievementsOverlay() {
   }, [galleryVisible]);
 
   useEffect(() => {
+    if (achievementSealShown) {
+      dispatchAchievementSeal({ type: 'restore-shown' });
+      return;
+    }
+    if (!achievementsHydrated) return;
+
     if (
-      !toastAchievement ||
-      !shouldPresentAchievementSeal(achievementSeal, toastAchievement.id, earnedIds)
-    ) return;
-    dismissToast();
-    dispatchAchievementSeal({
-      type: 'achievement-toast',
-      achievementId: toastAchievement.id,
-      earnedIds,
-    });
-  }, [achievementSeal, dismissToast, earnedIds, toastAchievement]);
+      toastAchievement &&
+      shouldPresentAchievementSeal(achievementSeal, toastAchievement.id, earnedIds)
+    ) {
+      dismissToast();
+      dispatchAchievementSeal({
+        type: 'achievement-toast',
+        achievementId: toastAchievement.id,
+        earnedIds,
+      });
+      markAchievementSealShown();
+      return;
+    }
+
+    if (
+      shouldPresentAchievementSealOnHydration(
+        achievementSeal,
+        earnedIds,
+        achievementsHydrated,
+        achievementSealShown,
+      )
+    ) {
+      dispatchAchievementSeal({ type: 'completion-hydrated', earnedIds });
+      markAchievementSealShown();
+    }
+  }, [
+    achievementSeal,
+    achievementSealShown,
+    achievementsHydrated,
+    dismissToast,
+    earnedIds,
+    markAchievementSealShown,
+    toastAchievement,
+  ]);
 
   useEffect(() => {
     if (!toastAchievement) {

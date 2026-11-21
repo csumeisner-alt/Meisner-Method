@@ -9,6 +9,8 @@ import {
   claimAchievement,
   hasCompletedAllAchievements,
   shouldPresentAchievementSeal,
+  shouldPresentAchievementSealOnHydration,
+  parseAchievementSealShown,
   ACHIEVEMENT_UNLOCKED_FLAGS,
   ALL_PREMIUM_FLAGS,
   DEFAULT_FLAG_ID,
@@ -136,11 +138,39 @@ test('Final Seal appears only for the newly earned 15th achievement and only onc
   assert.equal(shouldPresentAchievementSeal(sealState, ACHIEVEMENTS[0].id, earnedIds), false);
   assert.equal(claimAchievement(earnedIds, finalAchievement.id), null);
 
-  // Hydration restores completion, but a new app session has no transient unlock toast.
+  // Hydration restores completion, and the one-time marker controls catch-up.
   const reopenedState = INITIAL_ACHIEVEMENT_SEAL_STATE;
   assert.equal(hasCompletedAllAchievements(earnedIds), true);
   assert.equal(reopenedState.visible, false);
   assert.equal(reopenedState.shown, false);
+  assert.equal(shouldPresentAchievementSealOnHydration(reopenedState, earnedIds, false, false), false);
+  assert.equal(shouldPresentAchievementSealOnHydration(reopenedState, earnedIds, true, false), true);
+  assert.equal(shouldPresentAchievementSealOnHydration(reopenedState, earnedIds, true, true), false);
+  const catchUpState = achievementSealReducer(reopenedState, {
+    type: 'completion-hydrated',
+    earnedIds,
+  });
+  assert.deepEqual(catchUpState, { visible: true, shown: true });
+});
+
+test('completion celebration marker parses persisted state and prevents another catch-up', () => {
+  const earnedIds = ACHIEVEMENTS.map(({ id }) => id);
+  assert.equal(parseAchievementSealShown(null), false);
+  assert.equal(parseAchievementSealShown('false'), false);
+  assert.equal(parseAchievementSealShown('true'), true);
+
+  const afterDismissal = achievementSealReducer(
+    achievementSealReducer(
+      INITIAL_ACHIEVEMENT_SEAL_STATE,
+      { type: 'completion-hydrated', earnedIds },
+    ),
+    { type: 'dismiss' },
+  );
+  assert.deepEqual(afterDismissal, { visible: false, shown: true });
+  assert.equal(
+    shouldPresentAchievementSealOnHydration(afterDismissal, earnedIds, true, parseAchievementSealShown('true')),
+    false,
+  );
 });
 
 test('Final Seal dismiss and choose actions close the celebration without resetting its one-time gate', () => {

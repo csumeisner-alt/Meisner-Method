@@ -1,4 +1,5 @@
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
+export const ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY = '@meisnermethod/achievement_seal_shown_v1';
 export const ANALYZE_SEARCH_COUNT_STORAGE_KEY = '@meisnermethod/analyze_search_count_v1';
 export const ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD = 15;
 export const TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY = '@meisnermethod/training_tape_open_count_v1';
@@ -91,6 +92,8 @@ export const INITIAL_ACHIEVEMENT_SEAL_STATE: AchievementSealState = {
 
 export type AchievementSealAction =
   | { type: 'achievement-toast'; achievementId: AchievementId; earnedIds: readonly AchievementId[] }
+  | { type: 'completion-hydrated'; earnedIds: readonly AchievementId[] }
+  | { type: 'restore-shown' }
   | { type: 'dismiss' }
   | { type: 'choose-title-flag' };
 
@@ -105,6 +108,22 @@ export function shouldPresentAchievementSeal(
     && hasCompletedAllAchievements(earnedIds);
 }
 
+export function shouldPresentAchievementSealOnHydration(
+  state: AchievementSealState,
+  earnedIds: readonly AchievementId[],
+  achievementsHydrated: boolean,
+  shownPersisted: boolean,
+): boolean {
+  return achievementsHydrated
+    && !shownPersisted
+    && !state.shown
+    && hasCompletedAllAchievements(earnedIds);
+}
+
+export function parseAchievementSealShown(raw: string | null): boolean {
+  return raw === 'true';
+}
+
 export function achievementSealReducer(
   state: AchievementSealState,
   action: AchievementSealAction,
@@ -113,6 +132,14 @@ export function achievementSealReducer(
     return shouldPresentAchievementSeal(state, action.achievementId, action.earnedIds)
       ? { visible: true, shown: true }
       : state;
+  }
+  if (action.type === 'completion-hydrated') {
+    return hasCompletedAllAchievements(action.earnedIds) && !state.shown
+      ? { visible: true, shown: true }
+      : state;
+  }
+  if (action.type === 'restore-shown') {
+    return state.shown ? state : { visible: false, shown: true };
   }
   if (!state.visible) return state;
   return { ...state, visible: false };
