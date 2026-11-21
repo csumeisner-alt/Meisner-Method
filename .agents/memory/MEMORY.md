@@ -61,6 +61,7 @@
 - [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
 - [Heat-map selected quote retention](heat-map-selected-quote-retention.md) — keep the selected detail quote on omission; only update it from a successful matching batch, and offer retry while unavailable.
 - [Custom heat-map reordering](custom-heat-map-reordering.md) — saved order is local display state; reordering must not refetch quotes or block subsequent drags on persistence.
+- [Curated Watch Map additions](custom-watch-map-additions.md) — catalog items save without quote-provider validation; free-form and live-search tickers remain validated.
 - [Watchlist reorder interaction](watchlist-reorder-interaction.md) — long-press the main ticker card to reorder; ordinary swipes should scroll, and action buttons stay separate.
 - [Watchlist filter preference](watchlist-filter-preference.md) — keep the home-screen watchlist free of an in-list text filter; the user asked to remove it.
 - [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement; stale only during the official session and keep the last session readable after close.

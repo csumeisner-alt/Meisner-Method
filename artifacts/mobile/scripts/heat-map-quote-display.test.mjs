@@ -95,10 +95,11 @@ test("heat-map loading visuals receive the active Patriot or Neon Gucci theme", 
   assert.match(screenSource, /getHeatMapLoadingHexColors\(theme, index, colors\)/);
 });
 
-test("custom tickers stay device-local and are validated before being added", () => {
+test("curated custom tickers save locally while user-entered symbols are validated", () => {
   assert.match(screenSource, /AsyncStorage\.getItem\(STORAGE_KEY\)/);
   assert.match(screenSource, /AsyncStorage\.setItem\(STORAGE_KEY/);
   assert.match(screenSource, /useValidateHeatMapSymbol\(\)/);
+  assert.match(screenSource, /if \(isCuratedCustomHeatMapSymbol\(symbol\)\)/);
   assert.match(screenSource, /validateSymbol\.mutateAsync/);
   assert.match(screenSource, /removeSymbol\(quote\.symbol\)/);
   assert.match(screenSource, /normalizeCustomHeatMapSymbols/);

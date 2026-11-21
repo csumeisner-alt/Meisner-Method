@@ -28,6 +28,14 @@ export const CUSTOM_HEAT_MAP_ASSETS: Record<Exclude<CustomHeatMapAssetType, "sto
   ...supportedInstrumentCatalog,
 };
 
+const curatedCustomHeatMapSymbols = new Set(
+  Object.values(CUSTOM_HEAT_MAP_ASSETS).flat().map(({ symbol }) => symbol),
+);
+
+export function isCuratedCustomHeatMapSymbol(rawSymbol: string): boolean {
+  return curatedCustomHeatMapSymbols.has(rawSymbol.trim().toUpperCase());
+}
+
 export function isSupportedCustomMapCommoditySymbol(rawSymbol: string): boolean {
   const symbol = rawSymbol.trim().toUpperCase();
   return CUSTOM_HEAT_MAP_ASSETS.commodities.some((asset) => asset.symbol === symbol);

@@ -4,6 +4,7 @@ import supportedInstrumentCatalog from "../heatmap-instruments/catalog.json" wit
 import {
   CUSTOM_HEAT_MAP_ASSETS,
   CUSTOM_HEAT_MAP_ASSET_TYPES,
+  isCuratedCustomHeatMapSymbol,
   isSupportedCustomMapCommoditySymbol,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
   appendCustomHeatMapSymbolInSavedOrder,
@@ -136,6 +137,13 @@ test("curated commodity catalog symbols remain addable while quotes are unavaila
   }
   assert.equal(isSupportedCustomMapCommoditySymbol(" unknown=F "), false);
   assert.equal(isSupportedCustomMapCommoditySymbol("SPY"), false);
+});
+
+test("curated catalog symbols can be added without quote validation", () => {
+  for (const symbol of ["SPY", "GLD", "GC=F", "BTC-USD", "ES=F"]) {
+    assert.equal(isCuratedCustomHeatMapSymbol(` ${symbol.toLowerCase()} `), true);
+  }
+  assert.equal(isCuratedCustomHeatMapSymbol("UNKNOWN"), false);
 });
 
 test("custom instrument search matches names across supported asset types", () => {

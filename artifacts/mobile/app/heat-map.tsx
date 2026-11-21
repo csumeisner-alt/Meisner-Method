@@ -63,7 +63,7 @@ import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS, appendCustomHeatMapSymbolInSavedOrder,
   getCustomHeatMapValidationFailureReason,
-  isSupportedCustomMapCommoditySymbol,
+  isCuratedCustomHeatMapSymbol, isSupportedCustomMapCommoditySymbol,
   moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
@@ -1361,7 +1361,7 @@ export default function HeatMapScreen() {
     }
     setFormError('');
     Keyboard.dismiss();
-    if (isSupportedCustomMapCommoditySymbol(symbol)) {
+    if (isCuratedCustomHeatMapSymbol(symbol)) {
       const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, symbol);
       try { await persistSymbols(next); }
       catch { setFormError(`Couldn't save ${symbol} on this device. Try again.`); return; }
@@ -1422,7 +1422,7 @@ export default function HeatMapScreen() {
     try {
       for (const symbol of plan.symbolsToAdd) {
         try {
-          const normalizedSymbol = isSupportedCustomMapCommoditySymbol(symbol)
+          const normalizedSymbol = isCuratedCustomHeatMapSymbol(symbol)
             ? symbol.trim().toUpperCase()
             : (await validateSymbol.mutateAsync({ data: { symbol } })).symbol;
           if (nextSymbols.includes(normalizedSymbol)) {
