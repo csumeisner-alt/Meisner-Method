@@ -181,7 +181,7 @@ function formatPct(p: number) {
 export default function HomeScreen() {
   const colors = useColors();
   const { width: viewportWidth } = useWindowDimensions();
-  const titleFlagSize = viewportWidth < 360 ? 48 : viewportWidth < 400 ? 52 : 56;
+  const titleFlagSize = viewportWidth < 360 ? 56 : viewportWidth < 400 ? 64 : 68;
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -644,13 +644,16 @@ export default function HomeScreen() {
                 >
                   Meisner Method
                 </Text>
-                <TitleFlagBadge
-                  flagId={selectedPremiumFlagId}
-                  ready={premiumFlagReady}
-                  size={titleFlagSize}
-                  style={[styles.titleFlagBadge, { top: -(titleFlagSize * 0.625 - 26) / 2 }]}
-                />
               </View>
+              <TitleFlagBadge
+                flagId={selectedPremiumFlagId}
+                ready={premiumFlagReady}
+                size={titleFlagSize}
+                style={[
+                  styles.titleFlagBadge,
+                  { top: '50%', transform: [{ translateY: -(titleFlagSize * 0.625) / 2 }] },
+                ]}
+              />
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence
               </Text>
@@ -1091,9 +1094,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brandText: { flex: 1, minWidth: 0 },
+  brandText: { flex: 1, minWidth: 0, position: 'relative' },
   brandTitleRow: { position: 'relative', height: 26, justifyContent: 'center' },
-  titleFlagBadge: { position: 'absolute', right: 0 },
+  titleFlagBadge: { position: 'absolute', right: -8, zIndex: 1 },
   brandName: { fontSize: 21, lineHeight: 26, flexShrink: 1 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },

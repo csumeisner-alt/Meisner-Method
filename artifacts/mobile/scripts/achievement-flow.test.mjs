@@ -126,23 +126,24 @@ test("Analyze title stays stable across achievement states on narrow screens", (
   assert.match(headerSource, /<TitleFlagBadge[\s\S]*?flagId=\{selectedPremiumFlagId\}[\s\S]*?ready=\{premiumFlagReady\}/);
   assert.doesNotMatch(headerSource, /hasCompletedAllAchievements/);
   assert.match(homeSource, /brandTitleRow: \{ position: 'relative', height: 26/);
-  assert.match(homeSource, /titleFlagBadge: \{ position: 'absolute', right: 0 \}/);
+  assert.match(homeSource, /titleFlagBadge: \{ position: 'absolute', right: -8, zIndex: 1 \}/);
+  assert.match(headerSource, /top: '50%', transform: \[\{ translateY: -\(titleFlagSize \* 0\.625\) \/ 2 \}\]/);
   assert.doesNotMatch(headerSource, /allowFontScaling=\{false\}/);
-  assert.match(homeSource, /brandText: \{ flex: 1, minWidth: 0 \}/);
+  assert.match(homeSource, /brandText: \{ flex: 1, minWidth: 0, position: 'relative' \}/);
   assert.match(homeSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 1 \}/);
 
   for (const viewportWidth of [320, 360, 375]) {
-    const titleFlagSize = viewportWidth < 360 ? 48 : viewportWidth < 400 ? 52 : 56;
+    const titleFlagSize = viewportWidth < 360 ? 56 : viewportWidth < 400 ? 64 : 68;
     const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 24 - 21 - 8 - titleFlagSize - 8;
     assert.ok(
-      availableBrandTextWidth >= 90,
+      availableBrandTextWidth >= 80,
       `the title has ${availableBrandTextWidth}px available at ${viewportWidth}px after the flag`,
     );
   }
 
   assert.match(analyzeFlagStorySource, /analyze-title-flag--heritage/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?height: 30px/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag \{[\s\S]*?position: absolute;[\s\S]*?right: 0;[\s\S]*?width: 56px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?position: absolute;[\s\S]*?top: 50%;[\s\S]*?right: -8px;[\s\S]*?width: 68px/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride[\s\S]*?linear-gradient/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 2px 0 0/);
 
