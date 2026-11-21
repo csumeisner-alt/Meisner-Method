@@ -178,6 +178,14 @@ export type PaperOrder = {
   filledAt?: string;
 };
 
+/** Format the locally recorded simulated-order execution time for display. */
+export function formatPaperOrderFillTime(filledAt: string | undefined): string | null {
+  if (!filledAt) return null;
+  const timestamp = new Date(filledAt);
+  if (!Number.isFinite(timestamp.getTime())) return null;
+  return timestamp.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 /** A single purchase lot for FIFO cost-basis tracking. */
 export type PaperLot = {
   id: string;

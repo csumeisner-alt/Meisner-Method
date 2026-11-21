@@ -68,6 +68,7 @@ import {
   computeSellWinRate,
   createAccountValueSnapshot,
   fundFee,
+  formatPaperOrderFillTime,
   getCoveredAccountValueHistory,
   isFreshPaperQuote,
   mergeAccountValueHistory,
@@ -3847,6 +3848,7 @@ export default function PaperScreen() {
           const q = quotes[o.symbol];
           const isLightningStaged = isLightningRoundStagedOrder(o);
           const isMarketOpenPending = !isLightningStaged && o.status === 'pending' && o.orderType === 'market';
+          const fillTime = o.status === 'filled' ? formatPaperOrderFillTime(o.filledAt) : null;
           return (
             <View key={o.id} testID={`paper-order-${o.id}`} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
               {isLightningStaged && (
@@ -3939,6 +3941,16 @@ export default function PaperScreen() {
                   </View>
                 )}
               </View>
+              {fillTime && (
+                <View testID={`paper-order-fill-time-${o.id}`} style={{ marginTop: 5 }}>
+                  <Text style={[styles.posLabel, { color: colors.mutedForeground }]}>
+                    EXECUTED {fillTime}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 2 }}>
+                    App execution time; this does not indicate when a market price first crossed your order level.
+                  </Text>
+                </View>
+              )}
               {o.rejectionReason && (
                 <Text testID={`paper-order-rejection-${o.id}`} style={{ color: SELL_COLOR, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
                   {o.rejectionReason}
