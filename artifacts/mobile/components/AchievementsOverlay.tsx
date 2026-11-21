@@ -5,8 +5,8 @@ import {
   Easing,
   findNodeHandle,
   Modal,
-  Pressable,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Haptics from 'expo-haptics';
 import type { AudioPlayer } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -31,6 +32,7 @@ import {
 import { getAchievementSealLayout } from '@/lib/achievementSealLayout';
 import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useAchievements } from '@/contexts/AchievementsContext';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
@@ -135,11 +137,15 @@ function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
 }
 
 export function AchievementSealCelebration({
+  visible,
   reducedMotion,
+  hapticsEnabled,
   onDismiss,
   onChooseFlags,
 }: {
+  visible: boolean;
   reducedMotion: boolean;
+  hapticsEnabled: boolean;
   onDismiss: () => void;
   onChooseFlags: () => void;
 }) {
@@ -149,6 +155,7 @@ export function AchievementSealCelebration({
   const progress = useRef(new Animated.Value(0)).current;
   const soundPlayerRef = useRef<AudioPlayer | null>(null);
   const soundPlayedRef = useRef(false);
+  const hapticsPlayedRef = useRef(false);
   const {
     ringSize,
     buttonWidth,
@@ -184,6 +191,12 @@ export function AchievementSealCelebration({
     animation.start();
     return () => animation.stop();
   }, [progress, reducedMotion]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web' || !hapticsEnabled || hapticsPlayedRef.current) return;
+    hapticsPlayedRef.current = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }, [hapticsEnabled, visible]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || Constants.appOwnership === 'expo' || soundPlayedRef.current) return;
@@ -408,6 +421,8 @@ export function AchievementsOverlay() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
+  const { brew } = useAmericanMode();
+  const hapticsEnabled = brew.hapticsEnabled;
   const {
     earnedIds,
     selectedPremiumFlagId,
@@ -422,6 +437,7 @@ export function AchievementsOverlay() {
     dismissToast,
   } = useAchievements();
   const toastMotion = useRef(new Animated.Value(0)).current;
+  const toastHapticAchievementRef = useRef<string | null>(null);
   const [achievementSeal, dispatchAchievementSeal] = useReducer(
     achievementSealReducer,
     INITIAL_ACHIEVEMENT_SEAL_STATE,
@@ -479,6 +495,33 @@ export function AchievementsOverlay() {
       earnedIds,
     });
   }, [achievementSeal, dismissToast, earnedIds, toastAchievement]);
+
+  useEffect(() => {
+    if (!toastAchievement) {
+      toastHapticAchievementRef.current = null;
+      return;
+    }
+    if (
+      toastHapticAchievementRef.current === toastAchievement.id ||
+      galleryVisible ||
+      prideConfirmVisible ||
+      rainbowCelebrationVisible ||
+      achievementSeal.visible ||
+      shouldPresentAchievementSeal(achievementSeal, toastAchievement.id, earnedIds)
+    ) return;
+
+    toastHapticAchievementRef.current = toastAchievement.id;
+    if (Platform.OS === 'web' || !hapticsEnabled) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [
+    achievementSeal,
+    earnedIds,
+    galleryVisible,
+    hapticsEnabled,
+    prideConfirmVisible,
+    rainbowCelebrationVisible,
+    toastAchievement,
+  ]);
 
   useEffect(() => {
     if (
@@ -837,7 +880,9 @@ export function AchievementsOverlay() {
         onRequestClose={() => dispatchAchievementSeal({ type: 'dismiss' })}
       >
         <AchievementSealCelebration
+          visible={achievementSeal.visible}
           reducedMotion={reduceMotion}
+          hapticsEnabled={hapticsEnabled}
           onDismiss={() => dispatchAchievementSeal({ type: 'dismiss' })}
           onChooseFlags={chooseTitleFlagFromSeal}
         />

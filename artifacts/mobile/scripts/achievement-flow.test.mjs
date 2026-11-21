@@ -94,6 +94,16 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /maxHeight: '88%'/);
 });
 
+test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
+  assert.match(overlaySource, /const hapticsEnabled = brew\.hapticsEnabled/);
+  assert.match(overlaySource, /Haptics\.notificationAsync\(Haptics\.NotificationFeedbackType\.Success\)/);
+  assert.match(overlaySource, /Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\)/);
+  assert.match(overlaySource, /toastHapticAchievementRef\.current === toastAchievement\.id/);
+  assert.match(overlaySource, /Platform\.OS === 'web' \|\| !hapticsEnabled/);
+  assert.match(overlaySource, /!visible \|\| Platform\.OS === 'web' \|\| !hapticsEnabled/);
+  assert.match(overlaySource, /shouldPresentAchievementSeal\(achievementSeal, toastAchievement\.id, earnedIds\)/);
+});
+
 test("Final Seal moves Android screen-reader focus to the title flag gallery", () => {
   assert.match(
     overlaySource,
