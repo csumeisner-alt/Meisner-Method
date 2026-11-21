@@ -218,6 +218,51 @@ test("premium flag artwork stays complete in consistent gallery previews", () =>
   }
 });
 
+test("title-flag choices wrap enlarged labels and remain selectable in the scrollable gallery", () => {
+  const flagChoiceStyles = overlaySource.match(/flagChoice: \{[^}]+\}/)?.[0];
+  const flagChoiceNameStyles = overlaySource.match(/flagChoiceName: \{[^}]+\}/)?.[0];
+
+  assert.ok(flagChoiceStyles, "flag choices should retain a minimum tap target");
+  assert.match(flagChoiceStyles, /minHeight: 132/,
+    "the choice remains easy to tap at normal text sizes");
+  assert.doesNotMatch(flagChoiceStyles, /height:/,
+    "choices can grow vertically as enlarged names wrap");
+  assert.match(flagChoiceNameStyles ?? "", /maxWidth: '100%'/,
+    "the flag name stays within its card");
+  assert.match(flagChoiceNameStyles ?? "", /flexShrink: 1/,
+    "long names can wrap rather than push the selected marker outside the card");
+  assert.match(flagChoiceNameStyles ?? "", /textAlign: 'center'/);
+  const prideProgressStyles = overlaySource.match(/prideProgress: \{[^}]+\}/)?.[0] ?? "";
+  assert.match(prideProgressStyles, /maxWidth: '100%'/,
+    "the Pride unlock progress stays within its card at enlarged text sizes");
+  assert.match(prideProgressStyles, /flexShrink: 1/,
+    "the Pride unlock progress can wrap on compact phones");
+  assert.doesNotMatch(prideProgressStyles, /lineHeight:/,
+    "enlarged Pride progress text is not constrained by a fixed line height");
+
+  const gallery = overlaySource.match(
+    /<ScrollView\s+style=\{styles\.achievementScroll\}[\s\S]*?accessibilityLabel="Achievement list"[\s\S]*?<\/ScrollView>/,
+  )?.[0];
+  assert.ok(gallery, "the title-flag choices remain inside the scrollable panel");
+  assert.match(gallery, /<Text allowFontScaling[\s\S]*?styles\.flagChoiceName/,
+    "flag names honor enlarged system text");
+  assert.match(gallery, /accessibilityState=\{\{ selected, disabled: !premiumFlagReady \}\}/,
+    "selected state remains available to assistive technology");
+  assert.match(gallery, /\{selected && <Feather name="check-circle"/,
+    "selected choices keep a visible check marker after the wrapping label");
+  assert.match(gallery, /onPress=\{\(\) => selectPremiumFlag\(flag\.id\)\}/,
+    "wrapping text does not remove the flag selection action");
+
+  for (const viewportWidth of [320, 360]) {
+    for (const fontScale of [1, 1.5, 2]) {
+      const usableGridWidth = viewportWidth - 18 * 2 - 18 * 2 - 12 * 2 - 2;
+      const flagChoiceWidth = usableGridWidth * 0.48;
+      assert.ok(flagChoiceWidth >= 96 + 2,
+        `the preview and border fit at ${viewportWidth}px with ${fontScale}x text`);
+    }
+  }
+});
+
 test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
   assert.match(overlaySource, /const hapticsEnabled = brew\.hapticsEnabled/);
   assert.match(overlaySource, /Haptics\.notificationAsync\(Haptics\.NotificationFeedbackType\.Success\)/);

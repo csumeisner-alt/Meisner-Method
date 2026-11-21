@@ -733,11 +733,12 @@ export function AchievementsOverlay() {
                       ref={titleFlagGalleryHeadingRef}
                       accessibilityRole="header"
                       accessibilityLabel={`Title flag gallery. Choose the default U.S. flag, one of five designs, or Pride after ${PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.`}
+                      allowFontScaling
                       style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}
                     >
                       Choose your title flag
                     </Text>
-                    <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    <Text allowFontScaling style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                       Choose the default U.S. flag or one of five designs. Pride unlocks after {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.
                     </Text>
                     <View style={styles.flagGrid}>
@@ -760,7 +761,7 @@ export function AchievementsOverlay() {
                         <View style={styles.defaultFlagPreview}>
                           <Text style={{ fontSize: 42 }}>🇺🇸</Text>
                         </View>
-                        <Text style={[styles.flagChoiceName, { color: selectedPremiumFlagId === DEFAULT_FLAG_ID ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                        <Text allowFontScaling style={[styles.flagChoiceName, { color: selectedPremiumFlagId === DEFAULT_FLAG_ID ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                           Default
                         </Text>
                         {selectedPremiumFlagId === DEFAULT_FLAG_ID && <Feather name="check-circle" size={14} color={colors.gold} />}
@@ -786,7 +787,7 @@ export function AchievementsOverlay() {
                             ]}
                           >
                             <PremiumFlagBadge flagId={flag.id} size={TITLE_FLAG_PREVIEW_SIZE} />
-                            <Text style={[styles.flagChoiceName, { color: selected ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                            <Text allowFontScaling style={[styles.flagChoiceName, { color: selected ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                               {flag.name}
                             </Text>
                             {selected && <Feather name="check-circle" size={14} color={colors.gold} />}
@@ -817,11 +818,11 @@ export function AchievementsOverlay() {
                             </View>
                           )}
                         </View>
-                        <Text style={[styles.flagChoiceName, { color: selectedPremiumFlagId === PRIDE_FLAG.id ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                        <Text allowFontScaling style={[styles.flagChoiceName, { color: selectedPremiumFlagId === PRIDE_FLAG.id ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                           Pride
                         </Text>
                         {!prideUnlocked && (
-                          <Text style={[styles.prideProgress, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                          <Text allowFontScaling style={[styles.prideProgress, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                             {Math.min(quotesViewed, PRIDE_FLAG_QUOTE_THRESHOLD)} / {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quotes
                           </Text>
                         )}
@@ -983,12 +984,12 @@ const styles = StyleSheet.create({
   flagLockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   flagLockedIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   flagGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginTop: 4 },
-  flagChoice: { width: '48%', minHeight: 132, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8 },
-  flagChoiceName: { fontSize: 11, textAlign: 'center' },
+  flagChoice: { width: '48%', minHeight: 132, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4, paddingVertical: 8 },
+  flagChoiceName: { maxWidth: '100%', flexShrink: 1, paddingHorizontal: 2, fontSize: 11, textAlign: 'center' },
   defaultFlagPreview: { width: TITLE_FLAG_PREVIEW_SIZE, height: 60, alignItems: 'center', justifyContent: 'center' },
   pridePreview: { width: TITLE_FLAG_PREVIEW_SIZE, height: 60, position: 'relative', alignItems: 'center', justifyContent: 'center' },
   lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.52)' },
-  prideProgress: { fontSize: 9, lineHeight: 12, textAlign: 'center' },
+  prideProgress: { maxWidth: '100%', flexShrink: 1, fontSize: 9, textAlign: 'center' },
   iconKeptNotice: { minHeight: 36, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
   iconKeptText: { fontSize: 10 },
   confirmLayer: { ...StyleSheet.absoluteFillObject, zIndex: 5, alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.74)' },
