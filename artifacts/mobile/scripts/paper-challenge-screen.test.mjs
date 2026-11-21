@@ -1149,6 +1149,14 @@ test("Positions count sits in its accessible Portfolio tab and fits compact phon
   assert.match(paperLayout, /allowFontScaling\s+style=\{styles\.sectionCount\}/);
 });
 
+test("Portfolio navigation uses a smaller footprint while keeping usable touch targets", () => {
+  assert.match(paperLayout, /primaryTab: \{[\s\S]*?minHeight: 40,[\s\S]*?justifyContent: 'center' as const/);
+  assert.match(paperLayout, /portfolioTabBtn: \{[\s\S]*?minWidth: 0/);
+  assert.match(paperLayout, /subTabBar: \{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 6 \}/);
+  assert.match(paperLayout, /minHeight: 34,[\s\S]*?paddingVertical: 5/);
+  assert.match(paperLayout, /hitSlop=\{\{ top: 3, bottom: 3 \}\}/);
+});
+
 test("paper dashboard switches accounts from the summary or selector and keeps account management", () => {
   assert.match(screen, /testID="paper-account-hero"/);
   assert.match(paperLayout, /testID="paper-account-switch"/);
@@ -1253,7 +1261,7 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /const compactMetrics = fontScale >= 1\.3/);
   assert.match(eventAccountDashboard, /<LeaderboardButton onPress=\{onViewLeaderboard\} \/>/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
-  assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);
+  assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 36/);
   assert.match(screen, /screenWidth <= 360 && styles\.compactAccountHero/);
   const eventHeroStyle = screen.slice(screen.indexOf('  eventChampionshipHero: {'), screen.indexOf('  eventChampionshipTopline: {'));
   assert.doesNotMatch(eventHeroStyle, /padding/);

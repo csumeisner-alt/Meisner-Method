@@ -5693,8 +5693,8 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 2,
   },
-  eventChampionshipSwitchButton: { minHeight: 30, paddingHorizontal: 9 },
-  eventChampionshipPositionIndicators: { marginTop: 3 },
+  eventChampionshipSwitchButton: { minHeight: 36, paddingHorizontal: 9 },
+  eventChampionshipPositionIndicators: { marginTop: 4 },
   eventHeroLabel: { color: BUY_COLOR },
   editAccountsButton: {
     minHeight: 36,

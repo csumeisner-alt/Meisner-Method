@@ -202,12 +202,13 @@ export function PaperPortfolioNavigation({
               accessibilityRole="tab"
               accessibilityState={{ selected }}
               style={[styles.primaryTab, selected && styles.primaryTabActive]}
+              hitSlop={{ top: 2, bottom: 2 }}
               onPress={() => {
                 if (!group.tabs.includes(activeTabId)) onSelectGroup(group.tabs[0]);
               }}
               activeOpacity={0.7}
             >
-              <Feather name={group.icon as any} size={15} color={selected ? GOLD : DIM} />
+              <Feather name={group.icon as any} size={14} color={selected ? GOLD : DIM} />
               <Text style={[styles.primaryTabLabel, selected && styles.primaryTabLabelActive]}>
                 {group.label}
               </Text>
@@ -227,6 +228,7 @@ export function PaperPortfolioNavigation({
                 accessibilityLabel={tab.id === 'positions' ? `Positions, ${positionsCount} open` : tab.label}
                 accessibilityState={{ selected }}
                 style={[styles.tabBtn, styles.portfolioTabBtn, selected && styles.tabBtnActive]}
+                hitSlop={{ top: 3, bottom: 3 }}
                 onPress={() => onSelectTab(tab.id)}
                 activeOpacity={0.7}
               >
@@ -265,6 +267,7 @@ export function PaperPortfolioNavigation({
               accessibilityRole="tab"
               accessibilityState={{ selected: activeTabId === tab.id }}
               style={[styles.tabBtn, activeTabId === tab.id && styles.tabBtnActive]}
+              hitSlop={{ top: 3, bottom: 3 }}
               onPress={() => onSelectTab(tab.id)}
               activeOpacity={0.7}
             >
@@ -552,8 +555,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     marginHorizontal: 16,
     marginTop: 2,
-    padding: 4,
-    gap: 4,
+    padding: 3,
+    gap: 3,
     borderRadius: 13,
     borderWidth: 1,
     borderColor: BORDER,
@@ -562,11 +565,11 @@ const styles = StyleSheet.create({
   primaryTab: {
     flex: 1,
     minWidth: 0,
-    minHeight: 44,
+    minHeight: 40,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: 6,
+    gap: 5,
     paddingHorizontal: 4,
     borderRadius: 10,
   },
@@ -577,19 +580,19 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     color: DIM,
     fontFamily: 'Inter_600SemiBold' as const,
-    fontSize: 11,
+    fontSize: 10,
   },
   primaryTabLabelActive: { color: GOLD },
   tabScroll: { flexGrow: 0 },
-  subTabBar: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8, gap: 8 },
+  subTabBar: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 6 },
   portfolioSubTabBar: { flexDirection: 'row' as const, alignItems: 'stretch' as const },
   tabBtn: {
-    minHeight: 38,
+    minHeight: 34,
     minWidth: 78,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: BORDER,
@@ -607,7 +610,7 @@ const styles = StyleSheet.create({
   portfolioTabLabel: { flexShrink: 1, minWidth: 0, textAlign: 'center' as const },
   overviewTabLabel: { flex: 1 },
   tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
-  tabLabel: { fontFamily: 'Inter_600SemiBold' as const, fontSize: 12, color: DIM },
+  tabLabel: { fontFamily: 'Inter_600SemiBold' as const, fontSize: 11, color: DIM },
   tabLabelActive: { color: GOLD },
   positionsTabLabelActive: { color: '#fff' },
   sectionCount: {
@@ -615,9 +618,9 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     color: GOLD,
     fontFamily: 'Inter_700Bold' as const,
-    fontSize: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    fontSize: 11,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 9,
     backgroundColor: 'rgba(255,215,0,0.1)',
   },

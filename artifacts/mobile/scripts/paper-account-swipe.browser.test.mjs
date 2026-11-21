@@ -336,6 +336,36 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       'Account indicators must remain inside the summary card.');
     assert.ok(eventGeometry.hero.bottom <= eventGeometry.navigation.top + 1,
       'The expanded event summary must end before the portfolio navigation.');
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 402,
+      height: 720,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await waitFor(browser, "window.innerWidth === 402", "The standard phone viewport did not resize.");
+    const standardEventCardHeight = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
+    );
+    await touch(browser, "paper-current-account", 150, 0);
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "fireball"`,
+      "The account did not switch to Fireball at the standard phone width.");
+    const standardSimulatedCardHeight = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
+    );
+    await touch(browser, "paper-current-account", -150, 0);
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "paper-event:arena"`,
+      "The account did not return to Event Arena at the standard phone width.");
+    assert.ok(Math.abs(standardEventCardHeight - standardSimulatedCardHeight) <= 1,
+      `The Event Arena card must match simulated accounts at standard phone width: event=${standardEventCardHeight}, simulated=${standardSimulatedCardHeight}`);
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 320,
+      height: 568,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await waitFor(browser, "window.innerWidth === 320", "The compact phone viewport did not restore.");
     assert.equal(
       await browser.evaluate(`(() => {
         const countdown = document.querySelector(${JSON.stringify(selector("paper-event-account-countdown"))})?.getBoundingClientRect();
