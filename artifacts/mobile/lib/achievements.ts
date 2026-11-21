@@ -41,6 +41,19 @@ export const ACHIEVEMENTS = [
 export type AchievementId = (typeof ACHIEVEMENTS)[number]['id'];
 export type Achievement = (typeof ACHIEVEMENTS)[number];
 
+export function enqueueAchievementToast(
+  queue: readonly Achievement[],
+  achievement: Achievement,
+): Achievement[] {
+  return [...queue, achievement];
+}
+
+export function dismissAchievementToast(
+  queue: readonly Achievement[],
+): Achievement[] {
+  return queue.length > 0 ? queue.slice(1) : [...queue];
+}
+
 export function parseAnalyzeSearchCount(raw: string | null): number {
   if (raw === null) return 0;
   const count = Number(raw);

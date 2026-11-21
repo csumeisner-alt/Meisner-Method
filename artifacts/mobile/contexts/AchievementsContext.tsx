@@ -16,6 +16,8 @@ import {
   parseEarnedAchievementIds,
   parseAnalyzeSearchCount,
   parseTrainingTapeOpenCount,
+  enqueueAchievementToast,
+  dismissAchievementToast,
   type Achievement,
   type AchievementId,
   type FlagSelectionId,
@@ -47,7 +49,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>(DEFAULT_FLAG_ID);
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
-  const [toastAchievement, setToastAchievement] = useState<Achievement | null>(null);
+  const [toastQueue, setToastQueue] = useState<Achievement[]>([]);
   const idsRef = useRef<AchievementId[]>([]);
   const hydratedRef = useRef(false);
   const premiumFlagHydratedRef = useRef(false);
@@ -73,7 +75,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
 
     idsRef.current = result.earnedIds;
     setEarnedIds(result.earnedIds);
-    setToastAchievement(result.achievement);
+    setToastQueue((queue) => enqueueAchievementToast(queue, result.achievement));
     writeQueueRef.current = writeQueueRef.current
       .then(() => AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(result.earnedIds)))
       .catch((error) => {
@@ -203,15 +205,12 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
-  useEffect(() => {
-    if (!toastAchievement) return;
-    const timeout = setTimeout(() => setToastAchievement(null), 2_700);
-    return () => clearTimeout(timeout);
-  }, [toastAchievement]);
-
   const openGallery = useCallback(() => setGalleryVisible(true), []);
   const closeGallery = useCallback(() => setGalleryVisible(false), []);
-  const dismissToast = useCallback(() => setToastAchievement(null), []);
+  const dismissToast = useCallback(() => {
+    setToastQueue((queue) => dismissAchievementToast(queue));
+  }, []);
+  const toastAchievement = toastQueue[0] ?? null;
 
   return (
     <AchievementsContext.Provider

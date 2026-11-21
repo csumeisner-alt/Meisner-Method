@@ -19,6 +19,9 @@ const overlaySource = readSource("../components/AchievementsOverlay.tsx");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
+  assert.match(achievementsContextSource, /enqueueAchievementToast\(queue, result\.achievement\)/);
+  assert.match(achievementsContextSource, /const toastAchievement = toastQueue\[0\] \?\? null/);
+  assert.match(overlaySource, /galleryVisible \|\|[\s\S]*?rainbowCelebrationVisible \|\|[\s\S]*?achievementSeal\.visible/);
   assert.match(achievementsContextSource, /getTrainingTapeAchievementsForOpenCount\(nextCount\)/);
   assert.match(achievementsContextSource, /AsyncStorage\.setItem\(TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY, String\(nextCount\)\)/);
   assert.doesNotMatch(portfolioSource, /quotesViewed >= (50|100)/);

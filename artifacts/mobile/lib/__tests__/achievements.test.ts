@@ -19,7 +19,26 @@ import {
   parseAnalyzeSearchCount,
   parseTrainingTapeOpenCount,
   resolvePremiumFlagSelection,
+  enqueueAchievementToast,
+  dismissAchievementToast,
 } from '../achievements.ts';
+
+test('achievement toast queue preserves every unlock in order', () => {
+  const unlocked = ACHIEVEMENTS.slice(0, 3);
+  let queue: (typeof ACHIEVEMENTS)[number][] = [];
+
+  for (const achievement of unlocked) {
+    queue = enqueueAchievementToast(queue, achievement);
+  }
+
+  assert.deepEqual(queue.map(({ id }) => id), unlocked.map(({ id }) => id));
+  queue = dismissAchievementToast(queue);
+  assert.deepEqual(queue.map(({ id }) => id), ['quote-10', 'quote-25']);
+  queue = dismissAchievementToast(queue);
+  queue = dismissAchievementToast(queue);
+  assert.deepEqual(queue, []);
+  assert.deepEqual(dismissAchievementToast(queue), []);
+});
 
 test('claiming an achievement is one-time and returns its reward metadata', () => {
   const result = claimAchievement([], 'first-quote');

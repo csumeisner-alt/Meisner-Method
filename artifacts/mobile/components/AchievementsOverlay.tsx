@@ -481,6 +481,25 @@ export function AchievementsOverlay() {
   }, [achievementSeal, dismissToast, earnedIds, toastAchievement]);
 
   useEffect(() => {
+    if (
+      !toastAchievement ||
+      galleryVisible ||
+      prideConfirmVisible ||
+      rainbowCelebrationVisible ||
+      achievementSeal.visible
+    ) return;
+    const timeout = setTimeout(dismissToast, 2_700);
+    return () => clearTimeout(timeout);
+  }, [
+    achievementSeal.visible,
+    dismissToast,
+    galleryVisible,
+    prideConfirmVisible,
+    rainbowCelebrationVisible,
+    toastAchievement,
+  ]);
+
+  useEffect(() => {
     if (!iconUnchangedNotice) return;
     const timeout = setTimeout(() => setIconUnchangedNotice(false), 2_500);
     return () => clearTimeout(timeout);
