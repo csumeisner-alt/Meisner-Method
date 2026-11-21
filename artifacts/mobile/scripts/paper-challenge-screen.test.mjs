@@ -1305,6 +1305,7 @@ test("position and order cards are compact without removing their essential valu
   assert.match(screen, /testID=\{`paper-order-\$\{o\.id\}`\}/);
   assert.match(screen, /o\.status\.toUpperCase\(\)/);
   assert.match(screen, /testID=\{`edit-order-\$\{o\.id\}`\}/);
+  assert.doesNotMatch(screen, /!isMarketOpenPending\s*&&\s*\(/);
   assert.match(screen, /testID=\{`delete-order-\$\{o\.id\}`\}/);
   assert.match(screen, /o\.status === 'pending'/);
   assert.match(screen, /\(o\.orderType === 'limit' \|\| o\.orderType === 'stop_limit'\) && o\.limitPrice != null/);

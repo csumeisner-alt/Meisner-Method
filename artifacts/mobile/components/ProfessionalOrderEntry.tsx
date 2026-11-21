@@ -614,7 +614,12 @@ export default function ProfessionalOrderEntry({
                       orderType === item.type && { borderColor: accent, backgroundColor: `${accent}16` },
                     ]}
                     onPress={() => { setOrderType(item.type); setReview(null); }}
-                    disabled={!!existingOrder && item.type === 'market' && !marketOnly}
+                    disabled={
+                      !!existingOrder
+                      && item.type === 'market'
+                      && !marketOnly
+                      && existingOrder.orderType !== 'market'
+                    }
                   >
                     <Text style={[styles.typeChipText, orderType === item.type && { color: accent }]}>{item.label}</Text>
                   </TouchableOpacity>

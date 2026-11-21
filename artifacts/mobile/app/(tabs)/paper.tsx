@@ -2760,6 +2760,14 @@ export default function PaperScreen() {
       if (!currentAccount) {
         return { status: 'rejected', message: 'The reviewed paper account is no longer available.' };
       }
+      const priorOrder = args.orderId
+        ? currentOrders.find((order) => order.id === args.orderId
+          && order.accountId === accountId
+          && order.status === 'pending')
+        : undefined;
+      if (args.orderId && !priorOrder) {
+        return { status: 'rejected', message: 'That order is no longer pending and cannot be edited.' };
+      }
       if (!sym) return { status: 'rejected', message: 'Choose a stock before submitting the order.' };
       if (enrollment?.eventType === 'one-stock-challenge') {
         if (intent) {
@@ -2822,8 +2830,13 @@ export default function PaperScreen() {
         ? currentOrders.find((order) => order.id === args.orderId
           && isLightningRoundStagedOrder(order, lightningEnrollment?.eventId))
         : undefined;
-      if (args.orderType === 'market' && args.orderId && !existingLightningOrder) {
-        return { status: 'rejected', message: 'Market orders cannot be edited. Cancel the pending order and place a new market order.' };
+      if (
+        args.orderType === 'market'
+        && priorOrder
+        && isLightningRoundStagedOrder(priorOrder)
+        && !existingLightningOrder
+      ) {
+        return { status: 'rejected', message: 'Only a queued Lightning Round order can be edited.' };
       }
       if (preparingLightningOrder && args.orderId && !existingLightningOrder) {
         return { status: 'rejected', message: 'Only this Lightning Round’s queued orders can be edited.' };
@@ -2948,7 +2961,8 @@ export default function PaperScreen() {
         );
         const metadata = args.stockInfo ?? existingPosition;
         const syntheticOrder: PaperOrder = {
-          id: uid(),
+          ...(priorOrder ?? {}),
+          id: priorOrder?.id ?? uid(),
           accountId,
           symbol: sym,
           companyName,
@@ -2963,7 +2977,10 @@ export default function PaperScreen() {
           expenseRatio: metadata?.expenseRatio ?? 0,
           sector: metadata?.sector ?? '',
           status: 'pending',
-          placedAt: nowISO,
+          placedAt: priorOrder?.placedAt ?? nowISO,
+          rejectionReason: undefined,
+          filledPrice: undefined,
+          filledAt: undefined,
         };
         const fillResult = fillOrder({
           order: syntheticOrder,
@@ -2980,19 +2997,35 @@ export default function PaperScreen() {
         if (!fillResult.ok) return { status: 'rejected', message: fillResult.reason };
 
         const { updatedAccount, updatedPositions, updatedLots, newTransaction } = fillResult;
+        const updatedOrders = priorOrder
+          ? currentOrders.map((order) => order.id === priorOrder.id
+            ? { ...syntheticOrder, status: 'filled' as const, filledPrice: fillPrice, filledAt: nowISO }
+            : order)
+          : currentOrders;
         await saveAll(
           currentAccounts.map((item) => item.id === accountId ? updatedAccount : item),
           updatedPositions,
           [...currentTransactions, newTransaction],
-          currentOrders,
+          updatedOrders,
           updatedLots,
           activeIdRef.current,
         );
         if (!isPaperChallengeAccountId(accountId)) {
           paperOrderFillHapticNotifierRef.current?.({
-            orderId: `market-${syntheticOrder.id}`,
+            orderId: priorOrder?.id ?? `market-${syntheticOrder.id}`,
             previousStatus: syntheticOrder.status,
             status: 'filled',
+          });
+        }
+        if (priorOrder) {
+          paperOrderFillAlertNotifierRef.current?.({
+            orderId: priorOrder.id,
+            symbol: sym,
+            shares: args.shares,
+            previousStatus: priorOrder.status,
+            status: 'filled',
+            isEventAccount: isPaperChallengeAccountId(accountId),
+            isLightningRoundOrder: false,
           });
         }
         if (!args.orderId) {
@@ -3009,14 +3042,6 @@ export default function PaperScreen() {
         };
       }
 
-      const priorOrder = args.orderId
-        ? currentOrders.find((order) => order.id === args.orderId
-          && order.accountId === accountId
-          && order.status === 'pending')
-        : undefined;
-      if (args.orderId && !priorOrder) {
-        return { status: 'rejected', message: 'That order is no longer pending and cannot be edited.' };
-      }
       const metadata = args.stockInfo
         ?? priorOrder
         ?? accountPositions.find((position) => position.symbol === sym
@@ -3911,17 +3936,16 @@ export default function PaperScreen() {
                 <View style={{ flex: 1 }} />
                 {o.status === 'pending' && (
                   <View style={styles.orderActions}>
-                    {!isMarketOpenPending && (
-                      <TouchableOpacity
-                        testID={`edit-order-${o.id}`}
-                        accessibilityLabel={`Edit ${o.symbol} order`}
-                        onPress={() => editOrder(o)}
-                        style={styles.orderAction}
-                      >
-                        <Feather name="edit-2" size={14} color={BUY_COLOR} />
-                        <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      testID={`edit-order-${o.id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${o.symbol} order`}
+                      onPress={() => editOrder(o)}
+                      style={styles.orderAction}
+                    >
+                      <Feather name="edit-2" size={14} color={BUY_COLOR} />
+                      <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       testID={`delete-order-${o.id}`}
                       accessibilityLabel={`Delete ${o.symbol} order`}

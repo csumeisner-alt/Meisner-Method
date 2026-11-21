@@ -643,6 +643,35 @@ test("editing a pending order keeps its saved details and review identity", asyn
   }
 });
 
+test("editing a pending market order keeps its quantity and order identity", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    await click(browser, "scenario-edit-market-order");
+    assert.equal(await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-order-shares"))})?.value`,
+    ), "10");
+    assert.notEqual(await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-order-type-market"))})?.getAttribute("aria-disabled")`,
+    ), "true");
+
+    await click(browser, "paper-order-review-button");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+      "The pending market order should be reviewable.");
+    await click(browser, "paper-order-submit");
+    await waitFor(browser, "window.__orderFills.length === 1", "The edited market order should submit.");
+    assert.deepEqual(await browser.evaluate(
+      "(({ orderId, orderType, shares }) => ({ orderId, orderType, shares }))(window.__orderFills[0])",
+    ), {
+      orderId: "editable-market-order",
+      orderType: "market",
+      shares: 10,
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("order-entry cards, metrics, side controls, and inputs fit narrow phone widths", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;

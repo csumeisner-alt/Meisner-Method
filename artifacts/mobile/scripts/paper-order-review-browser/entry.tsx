@@ -10,6 +10,7 @@ type Scenario = {
   side: OrderIntent;
   accountId: 'alpha' | 'beta';
   editing?: boolean;
+  market?: boolean;
   penny?: boolean;
   assetType?: 'stock' | 'etf';
 };
@@ -28,6 +29,17 @@ const editableOrder: PaperOrder = {
   side: 'buy',
   shares: 2,
   limitPrice: 95,
+  status: 'pending',
+  placedAt: '2025-01-01T00:00:00.000Z',
+};
+const editableMarketOrder: PaperOrder = {
+  id: 'editable-market-order',
+  accountId: 'alpha',
+  symbol: 'ACME',
+  companyName: 'Acme Corp',
+  orderType: 'market',
+  side: 'buy',
+  shares: 10,
   status: 'pending',
   placedAt: '2025-01-01T00:00:00.000Z',
 };
@@ -149,6 +161,7 @@ export default function Entry() {
         <button data-testid="scenario-penny-etf" onClick={() => selectPennyScenario('etf', 19.5)}>Penny ETF</button>
         <button data-testid="scenario-penny-at-limit" onClick={() => selectPennyScenario('stock', 20)}>Penny at limit</button>
         <button data-testid="scenario-edit-order" onClick={() => setScenario({ side: 'buy', accountId: 'alpha', editing: true })}>Edit pending order</button>
+        <button data-testid="scenario-edit-market-order" onClick={() => setScenario({ side: 'buy', accountId: 'alpha', editing: true, market: true })}>Edit pending market order</button>
         <button data-testid="quote-fresh" onClick={() => setQuoteMode('fresh')}>Fresh quote</button>
         <button data-testid="quote-stale" onClick={() => setQuoteMode('stale')}>Stale quote</button>
         <button data-testid="quote-closed" onClick={() => setQuoteMode('closed')}>Closed market</button>
@@ -179,7 +192,7 @@ export default function Entry() {
         } : undefined}
         purchaseLimit={scenario.penny ? 20 : undefined}
         selectedPos={selectedPos}
-        existingOrder={scenario.editing ? editableOrder : null}
+        existingOrder={scenario.editing ? scenario.market ? editableMarketOrder : editableOrder : null}
         pendingOrders={[]}
         onClose={() => undefined}
         onRefreshQuote={async () => new Promise((resolve) => setTimeout(resolve, 300))}
