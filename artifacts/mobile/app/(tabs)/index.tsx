@@ -1030,7 +1030,10 @@ export default function HomeScreen() {
                         shadowOpacity: isActive ? 0.18 : 0,
                         shadowRadius: isActive ? 8 : 0,
                       }]}
-                      onPress={() => navigateTo(t.symbol)}
+                      onPress={() => {
+                        void recordAnalyzeSearch();
+                        navigateTo(t.symbol);
+                      }}
                       activeOpacity={0.75}
                     >
                       <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>

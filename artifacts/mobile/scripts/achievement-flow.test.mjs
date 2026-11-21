@@ -35,6 +35,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(portfolioSource, /sellTradeCount = trades\.filter\(trade => trade\.type === 'sell'\)\.length/);
   assert.match(portfolioSource, /sellTradeCount >= 5\) void awardAchievement\('quote-50'\)/);
   assert.match(homeSource, /if \(!resolvedSymbol\) return;\s*void recordAnalyzeSearch\(\);\s*navigateTo\(resolvedSymbol\);/);
+  assert.match(homeSource, /onPress=\{\(\) => \{\s*void recordAnalyzeSearch\(\);\s*navigateTo\(t\.symbol\);\s*\}\}/);
   assert.match(achievementsContextSource, /nextCount >= ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD[\s\S]*?void awardAchievement\('quote-100'\)/);
   assert.match(achievementsContextSource, /AsyncStorage\.setItem\(ANALYZE_SEARCH_COUNT_STORAGE_KEY, String\(nextCount\)\)/);
   assert.match(watchlistSource, /awardAchievement\('first-watchlist'\)/);
