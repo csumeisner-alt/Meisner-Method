@@ -38,7 +38,6 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
     return {
       transform: [
         { perspective: 900 },
-        { scale: 1.045 },
         { rotateY: `${breeze * 2}deg` },
         { rotateZ: `${breeze * 0.35}deg` },
         { translateY: breeze * height * 0.012 },
@@ -75,13 +74,14 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
           backgroundColor: colors.steelShadow,
           shadowColor: colors.gold,
         },
+        motionStyle,
       ]}
     >
       <View style={styles.flagSurface}>
         <Animated.Image
           source={FLAG_ARTWORK[flag.artwork]}
           resizeMode="contain"
-          style={[styles.flagArtwork, motionStyle]}
+          style={styles.flagArtwork}
         />
       </View>
     </Animated.View>

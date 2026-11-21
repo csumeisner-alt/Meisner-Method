@@ -37,6 +37,7 @@ import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 const RAINBOW_ARC_COLORS = ['#E54B4B', '#F28C38', '#F1C84B', '#47B879', '#3A9ED9', '#4E69C8', '#8556B3'];
+const TITLE_FLAG_PREVIEW_SIZE = 96;
 
 function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
   const colors = useColors();
@@ -747,7 +748,7 @@ export function AchievementsOverlay() {
                               },
                             ]}
                           >
-                            <PremiumFlagBadge flagId={flag.id} size={86} />
+                            <PremiumFlagBadge flagId={flag.id} size={TITLE_FLAG_PREVIEW_SIZE} />
                             <Text style={[styles.flagChoiceName, { color: selected ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                               {flag.name}
                             </Text>
@@ -772,7 +773,7 @@ export function AchievementsOverlay() {
                         ]}
                       >
                         <View style={styles.pridePreview}>
-                          <PremiumFlagBadge flagId={PRIDE_FLAG.id} size={86} />
+                          <PremiumFlagBadge flagId={PRIDE_FLAG.id} size={TITLE_FLAG_PREVIEW_SIZE} />
                           {!prideUnlocked && (
                             <View style={styles.lockOverlay}>
                               <Feather name="lock" size={18} color={colors.foreground} />
@@ -945,10 +946,10 @@ const styles = StyleSheet.create({
   flagLockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   flagLockedIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   flagGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginTop: 4 },
-  flagChoice: { width: '48%', minHeight: 102, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8 },
-  flagChoiceName: { fontSize: 11 },
-  defaultFlagPreview: { width: 86, height: 54, alignItems: 'center', justifyContent: 'center' },
-  pridePreview: { width: 86, height: 54, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  flagChoice: { width: '48%', minHeight: 132, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8 },
+  flagChoiceName: { fontSize: 11, textAlign: 'center' },
+  defaultFlagPreview: { width: TITLE_FLAG_PREVIEW_SIZE, height: 60, alignItems: 'center', justifyContent: 'center' },
+  pridePreview: { width: TITLE_FLAG_PREVIEW_SIZE, height: 60, position: 'relative', alignItems: 'center', justifyContent: 'center' },
   lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.52)' },
   prideProgress: { fontSize: 9, lineHeight: 12, textAlign: 'center' },
   iconKeptNotice: { minHeight: 36, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },

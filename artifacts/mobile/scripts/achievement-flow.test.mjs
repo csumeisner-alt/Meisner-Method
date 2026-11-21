@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { ACHIEVEMENTS, hasCompletedAllAchievements } from "../lib/achievements.ts";
+import { ACHIEVEMENTS, ALL_PREMIUM_FLAGS, hasCompletedAllAchievements } from "../lib/achievements.ts";
 import { getAchievementSealLayout } from "../lib/achievementSealLayout.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,7 @@ const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 const overlaySource = readSource("../components/AchievementsOverlay.tsx");
+const premiumFlagBadgeSource = readSource("../components/PremiumFlagBadge.tsx");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
@@ -168,6 +169,37 @@ test("premium flag artwork preserves its full image inside the animated frame", 
     "the animated image should leave enough room for motion inside the clipping frame");
   assert.match(badgeSource, /alignItems:\s*'center',\s*justifyContent:\s*'center'/,
     "the full flag artwork should remain centered within its frame");
+});
+
+test("premium flag artwork stays complete in consistent gallery previews", () => {
+  for (const flag of ALL_PREMIUM_FLAGS) {
+    assert.match(
+      premiumFlagBadgeSource,
+      new RegExp(`['"]?${flag.artwork}['"]?\\s*:\\s*require\\(`),
+      `${flag.name} artwork is available to the shared badge`,
+    );
+  }
+
+  assert.match(premiumFlagBadgeSource, /resizeMode="contain"/,
+    "the badge preserves each artwork's natural proportions");
+  assert.doesNotMatch(premiumFlagBadgeSource, /scale:\s*1\.045/,
+    "the flag is not persistently enlarged past its frame");
+  assert.match(premiumFlagBadgeSource, /backgroundColor: colors\.steelShadow,[\s\S]*?motionStyle/,
+    "subtle badge motion applies to the complete frame, not an enlarged image");
+
+  assert.match(overlaySource, /const TITLE_FLAG_PREVIEW_SIZE = 96/);
+  assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\} size=\{TITLE_FLAG_PREVIEW_SIZE\}/);
+  assert.match(overlaySource, /<PremiumFlagBadge flagId=\{PRIDE_FLAG\.id\} size=\{TITLE_FLAG_PREVIEW_SIZE\}/);
+  assert.match(overlaySource, /flagChoice: \{ width: '48%', minHeight: 132/);
+  assert.match(overlaySource, /defaultFlagPreview: \{ width: TITLE_FLAG_PREVIEW_SIZE, height: 60/);
+  assert.match(overlaySource, /pridePreview: \{ width: TITLE_FLAG_PREVIEW_SIZE, height: 60/);
+
+  for (const viewportWidth of [320, 360, 375, 390]) {
+    const usableGridWidth = viewportWidth - 18 * 2 - 18 * 2 - 12 * 2 - 2;
+    const flagChoiceWidth = usableGridWidth * 0.48;
+    assert.ok(flagChoiceWidth >= 96 + 2,
+      `the 96px flag preview plus card border fits at ${viewportWidth}px`);
+  }
 });
 
 test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
