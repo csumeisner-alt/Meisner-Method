@@ -19,7 +19,8 @@ const overlaySource = readSource("../components/AchievementsOverlay.tsx");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
-  assert.match(portfolioSource, /void awardAchievement\('first-quote'\)/);
+  assert.match(achievementsContextSource, /getTrainingTapeAchievementsForOpenCount\(nextCount\)/);
+  assert.match(achievementsContextSource, /AsyncStorage\.setItem\(TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY, String\(nextCount\)\)/);
   assert.doesNotMatch(portfolioSource, /quotesViewed >= (50|100)/);
   assert.match(paperSource, /awardAchievement\('first-paper-order'\)/);
   assert.match(paperSource, /awardAchievement\('first-paper-limit'\)/);

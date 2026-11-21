@@ -26,7 +26,8 @@ test("training tape opens by click in web preview and remains available by long 
   assert.match(portfolioSource, /<TrainingTapeModal\s+visible=\{trainingTapeVisible\}/);
 });
 
-test("web preview can open a Biden quote on demand without counting repeat taps", () => {
+test("each Tape session counts toward its achievements, while Biden quote views remain once per session", () => {
+  assert.match(trainingTapeSource, /if \(!visibleSessionRef\.current\) \{[\s\S]*?onTapeOpenedRef\.current\?\.\(\)/);
   assert.match(
     trainingTapeSource,
     /Platform\.OS === 'web' && !quoteMode/,
@@ -38,6 +39,9 @@ test("web preview can open a Biden quote on demand without counting repeat taps"
   assert.match(trainingTapeSource, /onPress=\{showBidenQuote\}/);
   assert.match(trainingTapeSource, /quoteViewedInSessionRef\.current\) return/);
   assert.match(trainingTapeSource, /onQuoteViewedRef\.current\?\.\(quoteViewId\)/);
+  assert.match(portfolioSource, /onTapeOpened=\{recordTrainingTapeOpen\}/);
+  assert.match(portfolioSource, /return await incrementQuoteViewed\(quoteViewId\)/);
+  assert.doesNotMatch(portfolioSource, /update\.quotesViewed >= (10|25)/);
 });
 
 test("training tape prefetches and reuses a recent market snapshot on open", () => {

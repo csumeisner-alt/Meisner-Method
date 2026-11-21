@@ -379,6 +379,7 @@ export function TrainingTapeModal({
   colors,
   soundEnabled,
   onClose,
+  onTapeOpened,
   onQuoteViewed,
   isBankUnlocked,
 }: {
@@ -386,6 +387,7 @@ export function TrainingTapeModal({
   colors: ColorScheme;
   soundEnabled: boolean;
   onClose: () => void;
+  onTapeOpened?: () => Promise<void>;
   onQuoteViewed?: (quoteViewId: string) => Promise<{
     earnedToken: boolean;
     halfway: boolean;
@@ -409,9 +411,11 @@ export function TrainingTapeModal({
   const quoteViewIdRef = useRef('');
   const quoteViewedInSessionRef = useRef(false);
   const soundEnabledRef = useRef(soundEnabled);
+  const onTapeOpenedRef = useRef(onTapeOpened);
   const onQuoteViewedRef = useRef(onQuoteViewed);
   const quoteSoundSessionRef = useRef(0);
   soundEnabledRef.current = soundEnabled;
+  onTapeOpenedRef.current = onTapeOpened;
   onQuoteViewedRef.current = onQuoteViewed;
   const quotesRemaining = Math.max(
     0,
@@ -473,6 +477,7 @@ export function TrainingTapeModal({
         Math.random().toString(36).slice(2, 8),
         quoteSessionRef.current,
       ].join('-');
+      void onTapeOpenedRef.current?.();
     }
   }, [visible]);
 

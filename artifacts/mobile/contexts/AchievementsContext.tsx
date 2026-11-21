@@ -4,15 +4,18 @@ import {
   ACHIEVEMENT_STORAGE_KEY,
   ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
   ANALYZE_SEARCH_COUNT_STORAGE_KEY,
+  TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY,
   DEFAULT_FLAG_ID,
   PRIDE_FLAG,
   PREMIUM_FLAG_STORAGE_KEY,
   claimAchievement,
   hasUnlockedPrideFlag,
   hasCompletedAllAchievements,
+  getTrainingTapeAchievementsForOpenCount,
   resolvePremiumFlagSelection,
   parseEarnedAchievementIds,
   parseAnalyzeSearchCount,
+  parseTrainingTapeOpenCount,
   type Achievement,
   type AchievementId,
   type FlagSelectionId,
@@ -23,6 +26,7 @@ type AchievementsState = {
   earnedIds: AchievementId[];
   awardAchievement: (id: AchievementId) => Promise<void>;
   recordAnalyzeSearch: () => Promise<void>;
+  recordTrainingTapeOpen: () => Promise<void>;
   selectedPremiumFlagId: FlagSelectionId;
   quotesViewed: number;
   prideUnlocked: boolean;
@@ -51,6 +55,8 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const analyzeSearchCountRef = useRef<number | null>(null);
   const analyzeSearchWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const trainingTapeOpenCountRef = useRef<number | null>(null);
+  const trainingTapeWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const prideUnlocked = hasUnlockedPrideFlag(brew.quotesViewed);
   const selectedPremiumFlagId = storedFlagSelection === PRIDE_FLAG.id && !prideUnlocked
     ? 'heritage'
@@ -105,6 +111,39 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     analyzeSearchWriteQueueRef.current = nextWrite;
     return nextWrite;
   }, [awardAchievement]);
+
+  const recordTrainingTapeOpen = useCallback(() => {
+    const nextWrite = trainingTapeWriteQueueRef.current.catch(() => {}).then(async () => {
+      let previousCount = trainingTapeOpenCountRef.current;
+      if (previousCount === null) {
+        try {
+          previousCount = parseTrainingTapeOpenCount(
+            await AsyncStorage.getItem(TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY),
+          );
+        } catch (error) {
+          previousCount = 0;
+          console.warn('[achievements] Could not load Training Tape opening progress:', error);
+        }
+        // Older versions only persisted displayed Biden quotes. Each of those
+        // was also a Tape opening, so preserve that progress as a lower bound.
+        previousCount = Math.max(previousCount, brew.quotesViewed);
+      }
+
+      const nextCount = previousCount + 1;
+      trainingTapeOpenCountRef.current = nextCount;
+      for (const id of getTrainingTapeAchievementsForOpenCount(nextCount)) {
+        void awardAchievement(id);
+      }
+
+      try {
+        await AsyncStorage.setItem(TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY, String(nextCount));
+      } catch (error) {
+        console.warn('[achievements] Could not save Training Tape opening progress:', error);
+      }
+    });
+    trainingTapeWriteQueueRef.current = nextWrite;
+    return nextWrite;
+  }, [awardAchievement, brew.quotesViewed]);
 
   const selectPremiumFlag = useCallback((id: FlagSelectionId) => {
     if (
@@ -180,6 +219,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         earnedIds,
         awardAchievement,
         recordAnalyzeSearch,
+        recordTrainingTapeOpen,
         selectedPremiumFlagId,
         quotesViewed: brew.quotesViewed,
         prideUnlocked,

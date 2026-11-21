@@ -1902,7 +1902,7 @@ function GradeHistoryModal({
   const chartWidth = Math.max(width - 48, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
-  const { awardAchievement } = useAchievements();
+  const { awardAchievement, recordTrainingTapeOpen } = useAchievements();
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [bankClosedInfoVisible, setBankClosedInfoVisible] = useState(false);
@@ -2057,19 +2057,13 @@ function GradeHistoryModal({
   }, [visible]);
 
   const handleQuoteViewed = useCallback(async (quoteViewId: string) => {
-    // Award locally as soon as a quote is shown. Brew progress can fail in a
-    // signed-out preview, but that must not suppress a cosmetic achievement.
-    void awardAchievement('first-quote');
     try {
-      const update = await incrementQuoteViewed(quoteViewId);
-      if (update.quotesViewed >= 10) void awardAchievement('quote-10');
-      if (update.quotesViewed >= 25) void awardAchievement('quote-25');
-      return update;
+      return await incrementQuoteViewed(quoteViewId);
     } catch (error) {
       console.warn('[achievements] Could not record Training Tape progress:', error);
       return { earnedToken: false, halfway: false, quotesViewed, firstQuoteView: false };
     }
-  }, [awardAchievement, incrementQuoteViewed, quotesViewed]);
+  }, [incrementQuoteViewed, quotesViewed]);
 
   useEffect(() => {
     if (!justUnlocked) return;
@@ -2364,6 +2358,7 @@ function GradeHistoryModal({
             colors={colors}
             soundEnabled={soundEnabled}
             onClose={() => setTrainingTapeVisible(false)}
+            onTapeOpened={recordTrainingTapeOpen}
             onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
             isBankUnlocked={brewBankUnlocked}
           />

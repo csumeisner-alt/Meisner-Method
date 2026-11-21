@@ -1,6 +1,7 @@
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
 export const ANALYZE_SEARCH_COUNT_STORAGE_KEY = '@meisnermethod/analyze_search_count_v1';
 export const ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD = 15;
+export const TRAINING_TAPE_OPEN_COUNT_STORAGE_KEY = '@meisnermethod/training_tape_open_count_v1';
 export const PREMIUM_FLAG_STORAGE_KEY = '@meisnermethod/premium_flag_badge_v1';
 export const DEFAULT_FLAG_ID = 'default' as const;
 
@@ -8,11 +9,11 @@ export const ACHIEVEMENTS = [
   {
     id: 'first-quote',
     title: 'Signal Seeker',
-    description: 'Viewed your first Training Tape quote.',
+    description: 'Opened Training Tape for the first time.',
     icon: 'radio',
   },
-  { id: 'quote-10', title: 'Tape Collector', description: 'Viewed 10 Training Tape quotes.', icon: 'bookmark' },
-  { id: 'quote-25', title: 'Signal Tracker', description: 'Viewed 25 Training Tape quotes.', icon: 'activity' },
+  { id: 'quote-10', title: 'Tape Collector', description: 'Opened Training Tape 10 times.', icon: 'bookmark' },
+  { id: 'quote-25', title: 'Signal Tracker', description: 'Opened Training Tape 25 times.', icon: 'activity' },
   { id: 'quote-50', title: 'Market Scholar', description: 'Completed five sell trades in Portfolio.', icon: 'book-open' },
   { id: 'quote-100', title: 'Oracle', description: 'Completed 15 Analyze searches.', icon: 'eye' },
   {
@@ -44,6 +45,20 @@ export function parseAnalyzeSearchCount(raw: string | null): number {
   if (raw === null) return 0;
   const count = Number(raw);
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function parseTrainingTapeOpenCount(raw: string | null): number {
+  if (raw === null) return 0;
+  const count = Number(raw);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function getTrainingTapeAchievementsForOpenCount(count: number): AchievementId[] {
+  const ids: AchievementId[] = [];
+  if (count >= 1) ids.push('first-quote');
+  if (count >= 10) ids.push('quote-10');
+  if (count >= 25) ids.push('quote-25');
+  return ids;
 }
 
 export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[]): boolean {

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
   ACHIEVEMENTS,
+  getTrainingTapeAchievementsForOpenCount,
   INITIAL_ACHIEVEMENT_SEAL_STATE,
   achievementSealReducer,
   claimAchievement,
@@ -16,6 +17,7 @@ import {
   parsePremiumFlagId,
   parseEarnedAchievementIds,
   parseAnalyzeSearchCount,
+  parseTrainingTapeOpenCount,
   resolvePremiumFlagSelection,
 } from '../achievements.ts';
 
@@ -47,6 +49,22 @@ test('Market Scholar and Oracle use the replacement milestones', () => {
   assert.equal(parseAnalyzeSearchCount('-1'), 0);
   assert.equal(parseAnalyzeSearchCount('1.5'), 0);
   assert.equal(parseAnalyzeSearchCount('invalid'), 0);
+});
+
+test('Training Tape achievements count openings independently of displayed Biden quotes', () => {
+  assert.equal(parseTrainingTapeOpenCount(null), 0);
+  assert.equal(parseTrainingTapeOpenCount('24'), 24);
+  assert.equal(parseTrainingTapeOpenCount('-1'), 0);
+  assert.deepEqual(getTrainingTapeAchievementsForOpenCount(0), []);
+  assert.deepEqual(getTrainingTapeAchievementsForOpenCount(1), ['first-quote']);
+  assert.deepEqual(getTrainingTapeAchievementsForOpenCount(9), ['first-quote']);
+  assert.deepEqual(getTrainingTapeAchievementsForOpenCount(10), ['first-quote', 'quote-10']);
+  assert.deepEqual(
+    getTrainingTapeAchievementsForOpenCount(25),
+    ['first-quote', 'quote-10', 'quote-25'],
+  );
+  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-10')?.description, 'Opened Training Tape 10 times.');
+  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-25')?.description, 'Opened Training Tape 25 times.');
 });
 
 test('premium flag badge unlock requires all 15 unique achievements', () => {
