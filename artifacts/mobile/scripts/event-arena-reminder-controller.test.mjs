@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
 const result = await build({
-  entryPoints: ['artifacts/mobile/lib/eventArenaReminders.ts'],
+  entryPoints: [fileURLToPath(new URL('../lib/eventArenaReminders.ts', import.meta.url))],
   bundle: true, write: false, format: 'esm', platform: 'node',
   plugins: [{
     name: 'reminder-device-fixture',

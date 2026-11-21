@@ -221,15 +221,6 @@ export function findUnfinishedInteraction(
   return null;
 }
 
-export function getMainTabSwipePathOutcome(
-  currentPath: string,
-  sourcePath: string,
-  destinationPath: string,
-): 'completed' | 'cancelled' | null {
-  if (currentPath === sourcePath) return null;
-  return currentPath === destinationPath ? 'completed' : 'cancelled';
-}
-
 export function makeDiagnosticEvent(
   context: DiagnosticContext,
   kind: DiagnosticEvent['kind'],

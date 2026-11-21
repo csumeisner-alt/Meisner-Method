@@ -5,7 +5,6 @@ import {
   CRASH_DIAGNOSTICS_LIMIT,
   CRASH_DIAGNOSTICS_STORAGE_KEY,
   findUnfinishedInteraction,
-  getMainTabSwipePathOutcome,
   makeDiagnosticEvent,
   parseDiagnosticEvents,
   readDiagnosticEvents,
@@ -158,10 +157,4 @@ test('swipe diagnostics distinguish accepted, rejected, cancelled, and completed
     null,
   );
   assert.equal(findUnfinishedInteraction([swipeEvent('interrupted')]), null);
-});
-
-test('accepted swipe requests complete only after the destination path changes', () => {
-  assert.equal(getMainTabSwipePathOutcome('/paper', '/paper', '/portfolio'), null);
-  assert.equal(getMainTabSwipePathOutcome('/portfolio', '/paper', '/portfolio'), 'completed');
-  assert.equal(getMainTabSwipePathOutcome('/event-arena', '/paper', '/portfolio'), 'cancelled');
 });

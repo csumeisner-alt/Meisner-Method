@@ -105,7 +105,6 @@ test('production layouts use real tabs and never singular native stack tab route
   const root = source('../app/_layout.tsx');
   const tabs = source('../app/(tabs)/_layout.tsx');
   const bar = source('../components/BottomTabBar.tsx');
-  const swipe = source('../components/MainTabSwipeBoundary.tsx');
   assert.match(root, /<Stack\.Screen name="\(tabs\)"/);
   assert.doesNotMatch(root, /dangerouslySingular|MainTabSwipeBoundary/);
   for (const name of routeNames) {
@@ -115,12 +114,13 @@ test('production layouts use real tabs and never singular native stack tab route
   assert.match(tabs, /detachInactiveScreens=\{false\}/);
   assert.match(tabs, /freezeOnBlur: false/);
   assert.match(tabs, /tabBar=\{\(\) => null\}/);
-  assert.match(tabs, /<MainTabSwipeBoundary>/);
-  for (const control of [bar, swipe]) {
-    assert.match(control, /router\.navigate\(plan\.href\)/);
-    assert.doesNotMatch(control, /router\.(push|replace)\(/);
-    assert.match(control, /claimMainTabNavigation\(/);
-  }
+  assert.doesNotMatch(tabs, /MainTabSwipeBoundary|PanResponder/);
+  assert.match(tabs, /sceneStyleInterpolator/);
+  assert.match(tabs, /outputRange: \[-width, 0, width\]/);
+  assert.match(tabs, /duration: 300/);
+  assert.match(bar, /router\.navigate\(plan\.href\)/);
+  assert.doesNotMatch(bar, /router\.(push|replace)\(/);
+  assert.match(bar, /claimMainTabNavigation\(/);
 });
 
 test('detail-to-tab links dismiss the detail stack and keep account parameters', () => {

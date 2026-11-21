@@ -2,11 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   MAIN_TAB_ROUTES,
-  getCommittedMainTabSwipeDirection,
   getCurrentMainTabPath,
   getMainTabNavigationPlan,
-  getMainTabSwipeIntent,
-  getMainTabSwipeTarget,
 } from '../mainTabNavigation.ts';
 
 test('main tabs keep the established Analyze to Event Arena order', () => {
@@ -18,31 +15,7 @@ test('main tabs keep the established Analyze to Event Arena order', () => {
   assert.equal(getCurrentMainTabPath('/event-arena'), '/event-arena');
 });
 
-test('left and right swipes move exactly one tab and stop at both ends', () => {
-  assert.equal(getMainTabSwipeTarget('/', 'left'), '/picks');
-  assert.equal(getMainTabSwipeTarget('/picks', 'left'), '/paper');
-  assert.equal(getMainTabSwipeTarget('/paper', 'left'), '/portfolio');
-  assert.equal(getMainTabSwipeTarget('/portfolio', 'left'), '/event-arena');
-  assert.equal(getMainTabSwipeTarget('/event-arena', 'left'), null);
-  assert.equal(getMainTabSwipeTarget('/event-arena', 'right'), '/portfolio');
-  assert.equal(getMainTabSwipeTarget('/portfolio', 'right'), '/paper');
-  assert.equal(getMainTabSwipeTarget('/paper', 'right'), '/picks');
-  assert.equal(getMainTabSwipeTarget('/picks', 'right'), '/');
-  assert.equal(getMainTabSwipeTarget('/', 'right'), null);
-  assert.equal(getMainTabSwipeTarget('/heat-map', 'left'), null);
-});
-
-test('gesture direction requires horizontal intent, distance, and a dead zone', () => {
-  assert.equal(getMainTabSwipeIntent(10, 0), null);
-  assert.equal(getMainTabSwipeIntent(-22, 30), null);
-  assert.equal(getMainTabSwipeIntent(-25, 10), 'left');
-  assert.equal(getMainTabSwipeIntent(25, 10), 'right');
-  assert.equal(getCommittedMainTabSwipeDirection(-35, 2, -0.2), null);
-  assert.equal(getCommittedMainTabSwipeDirection(-42, 4, -0.5), 'left');
-  assert.equal(getCommittedMainTabSwipeDirection(70, 8, 0.1), 'right');
-});
-
-test('bottom taps and swipes preserve Paper and route direction', () => {
+test('bottom tab taps preserve Paper and route direction', () => {
   assert.deepEqual(getMainTabNavigationPlan('/paper', '/event-arena'), {
     action: 'navigate',
     href: { pathname: '/event-arena', params: { transition: 'right' } },
