@@ -26,6 +26,7 @@ import {
   getAvailableShortShares,
   getOrderEstimatePrice,
   getOrderQuoteState,
+  isClosedMarketQuote,
   type OrderQuoteState,
 } from '@/lib/paperOrderEntry';
 
@@ -46,7 +47,7 @@ const ORDER_TYPES: { type: OrderType; label: string; short: string }[] = [
 ];
 
 const ORDER_TYPE_HINT: Record<OrderType, string> = {
-  market: 'Executes at the next available paper quote. Final fill may differ slightly.',
+  market: 'During market hours, it fills at the next quote. When closed, it waits for the next regular market open.',
   limit: 'Limit orders are not guaranteed to fill. A buy fills at or below your limit; a sell at or above.',
   stop: 'Triggers at your stop price, then executes at the next paper quote.',
   stop_limit: 'Triggers at your stop price and fills only at your limit or better.',
@@ -81,7 +82,7 @@ export type OrderIntent = 'buy' | 'sell' | 'short' | 'cover';
 
 export type OrderSubmissionResult =
   | { status: 'filled'; message: string; fillPrice: number }
-  | { status: 'pending'; message: string }
+  | { status: 'pending'; message: string; pendingReason?: 'market-open' }
   | { status: 'rejected'; message: string };
 
 export type ReviewSnapshot = {
@@ -96,6 +97,7 @@ export type ReviewSnapshot = {
   collateralRatio: number;
   quoteNote: string;
   lightningPreparation: boolean;
+  marketClosed: boolean;
   purchaseLimit?: number;
 };
 
@@ -343,6 +345,7 @@ export default function ProfessionalOrderEntry({
       collateralRatio: account.shortCollateralRatio ?? 1.5,
       quoteNote: freshnessNote,
       lightningPreparation: marketOnly,
+      marketClosed: isClosedMarketQuote(quote),
       purchaseLimit: activeSide === 'buy' ? purchaseLimit : undefined,
     });
   };

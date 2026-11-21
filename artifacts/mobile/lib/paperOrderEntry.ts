@@ -9,6 +9,7 @@ const QUOTE_RESPONSE_MAX_AGE_MS = 10 * 60_000;
 export function getMarketOrderQuoteError(
   quote: Pick<LiveQuote, 'price'> | undefined,
   reviewedPrice: number,
+  allowPriceChange = false,
 ): string | null {
   if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) {
     return 'A provider quote is unavailable. No order was submitted.';
@@ -16,7 +17,7 @@ export function getMarketOrderQuoteError(
   if (!Number.isFinite(reviewedPrice) || reviewedPrice <= 0) {
     return 'A valid reviewed provider price is required.';
   }
-  if (Math.abs(quote.price - reviewedPrice) > 1e-8) {
+  if (!allowPriceChange && Math.abs(quote.price - reviewedPrice) > 1e-8) {
     return 'The quote changed after review. Refresh it and review the updated estimate before confirming.';
   }
   return null;
@@ -37,6 +38,63 @@ export function getOrderQuoteState(
   const responseAgeMs = nowMs - quote.fetchedAtMs;
   if (responseAgeMs < -60_000 || responseAgeMs > QUOTE_RESPONSE_MAX_AGE_MS) return 'stale';
   return 'fresh';
+}
+
+const REGULAR_MARKET_SESSIONS = new Set(['REGULAR', 'CORE']);
+const CLOSED_MARKET_SESSIONS = new Set([
+  'CLOSED',
+  'PRE',
+  'PREPRE',
+  'PRE_MARKET',
+  'EARLY',
+  'POST',
+  'POSTPOST',
+  'AFTER_HOURS',
+  'POST_MARKET',
+  'LATE',
+  'EXTENDED',
+  'OVERNIGHT',
+  'OVN',
+]);
+
+function hasValidOrderPrice(quote: LiveQuote | undefined): quote is LiveQuote {
+  return !!quote && Number.isFinite(quote.price) && quote.price > 0;
+}
+
+export function isClosedMarketQuote(quote: LiveQuote | undefined): boolean {
+  if (!hasValidOrderPrice(quote)) return false;
+  const session = quote.marketSession?.trim().toUpperCase();
+  if (session && REGULAR_MARKET_SESSIONS.has(session)) return false;
+  if (session && CLOSED_MARKET_SESSIONS.has(session)) return true;
+  const source = (quote.priceSource ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  return source.includes('previous_close')
+    || source.includes('prev_close')
+    || source.includes('pre_market')
+    || source.includes('premarket')
+    || source.includes('after_hours')
+    || source.includes('afterhours')
+    || source.includes('post_market')
+    || source.includes('overnight');
+}
+
+export function isRegularMarketQuote(quote: LiveQuote | undefined): boolean {
+  return hasValidOrderPrice(quote)
+    && REGULAR_MARKET_SESSIONS.has(quote.marketSession?.trim().toUpperCase() ?? '');
+}
+
+/** Pending market orders wait for a fresh regular-session quote; closed-market
+ * limit orders may use a valid last quote to evaluate their limit condition. */
+export function canEvaluatePendingOrderQuote(
+  order: Pick<PaperOrder, 'orderType'>,
+  quote: LiveQuote | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (!hasValidOrderPrice(quote)) return false;
+  if (order.orderType === 'market') {
+    return isRegularMarketQuote(quote) && getOrderQuoteState(quote, nowMs) === 'fresh';
+  }
+  if (order.orderType === 'limit' && isClosedMarketQuote(quote)) return true;
+  return getOrderQuoteState(quote, nowMs) === 'fresh';
 }
 
 export function getPennyQuoteStatus(
@@ -144,11 +202,15 @@ export function formatProviderMarketSession(session: string | undefined): string
   const normalized = session.toUpperCase();
   const labels: Record<string, string> = {
     REGULAR: 'Regular session',
+    CORE: 'Regular session',
     PRE: 'Pre-market',
     PREPRE: 'Pre-market',
+    PRE_MARKET: 'Pre-market',
     EARLY: 'Pre-market',
     POST: 'After-hours',
     POSTPOST: 'After-hours',
+    AFTER_HOURS: 'After-hours',
+    POST_MARKET: 'After-hours',
     LATE: 'After-hours',
     OVERNIGHT: 'Overnight',
     OVN: 'Overnight',

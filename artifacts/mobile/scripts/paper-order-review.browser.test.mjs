@@ -866,10 +866,41 @@ test("stale quotes are reviewable with disclosure, but missing and invalid price
   }
 });
 
+test("closed-market market orders remain pending at open after the stale quote changes", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    const text = (testID) => browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector(testID))})?.textContent ?? ""`,
+    );
+    await click(browser, "quote-closed");
+    await click(browser, "paper-order-quick-shares-1");
+    await click(browser, "paper-order-review-button");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+      "A closed-market market order should reach review.");
+    assert.match(await text("paper-order-market-open-note"), /pending until a fresh regular-session quote arrives after the next open/i);
+
+    await click(browser, "quote-closed-move");
+    await click(browser, "paper-order-submit");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-result"))})`,
+      "A closed-market market order should be accepted into the pending queue.");
+    const result = await text("paper-order-result");
+    assert.match(result, /Pending market open/i);
+    assert.match(result, /next regular market open/i);
+    assert.equal(await browser.evaluate("window.__orderAttempts.length"), 1);
+    assert.equal(await browser.evaluate("window.__orderFills.length"), 0,
+      "A queued market order must not fill against the closed-market quote.");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("the paper screen keeps quote-change and account-position guards in the live submit path", async () => {
   const screen = await readFile(join(mobileDir, "app/(tabs)/paper.tsx"), "utf8");
   const orderEntry = await readFile(join(mobileDir, "components/ProfessionalOrderEntry.tsx"), "utf8");
-  assert.match(screen, /getMarketOrderQuoteError\(currentQuote, args\.quotePrice\)/);
+  assert.match(screen, /getMarketOrderQuoteError\(currentQuote, args\.quotePrice, marketClosed\)/);
+  assert.match(screen, /if \(getOrderQuoteState\(currentQuote\) !== 'fresh' && !marketClosed\)/);
+  assert.match(screen, /canEvaluatePendingOrderQuote\(order, q\)/);
   assert.match(screen, /const accountPositions = currentPositions\.filter\(\(position\) => position\.accountId === accountId\)/);
   assert.match(orderEntry, /accountId: account\.id/);
 });

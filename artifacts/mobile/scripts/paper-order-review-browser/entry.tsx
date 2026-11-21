@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { getMarketOrderQuoteError } from '../../lib/paperOrderEntry';
+import { getMarketOrderQuoteError, isClosedMarketQuote } from '../../lib/paperOrderEntry';
 import { applySlippage, getPurchaseLimitRejectionReason } from '../../lib/paperEngine';
 import ProfessionalOrderEntry, { type ConfirmOrderArgs, type OrderIntent } from '../../components/ProfessionalOrderEntry';
 import type { LiveQuote, PaperAccount, PaperOrder, PaperPosition } from '../../lib/paperMath';
@@ -62,7 +62,7 @@ window.__orderFills = [];
 
 export default function Entry() {
   const [scenario, setScenario] = useState<Scenario>({ side: 'buy', accountId: 'alpha' });
-  const [quoteMode, setQuoteMode] = useState<'fresh' | 'stale' | 'missing' | 'invalid'>('fresh');
+  const [quoteMode, setQuoteMode] = useState<'fresh' | 'stale' | 'closed' | 'missing' | 'invalid'>('fresh');
   const [quotePrice, setQuotePrice] = useState(100);
   const quote: LiveQuote | undefined = quoteMode === 'missing'
     ? undefined
@@ -70,8 +70,13 @@ export default function Entry() {
         price: quoteMode === 'invalid' ? 0 : quotePrice,
         change: 0,
         pct: 0,
-        priceTimestamp: quoteMode === 'stale' ? Date.now() / 1000 - 60 * 60 : Date.now() / 1000,
-        fetchedAtMs: quoteMode === 'stale' ? Date.now() - 60 * 60 * 1000 : Date.now(),
+        priceTimestamp: quoteMode === 'stale' || quoteMode === 'closed'
+          ? Date.now() / 1000 - 60 * 60
+          : Date.now() / 1000,
+        fetchedAtMs: quoteMode === 'stale' || quoteMode === 'closed'
+          ? Date.now() - 60 * 60 * 1000
+          : Date.now(),
+        ...(quoteMode === 'closed' ? { marketSession: 'CLOSED', priceSource: 'previous_close' } : {}),
       };
   const account = accounts[scenario.accountId];
   const scenarioPositions = scenario.side === 'buy'
@@ -92,8 +97,19 @@ export default function Entry() {
 
   const confirm = async (args: ConfirmOrderArgs) => {
     window.__orderAttempts.push(args);
-    const quoteError = getMarketOrderQuoteError(quote, args.quotePrice);
+    const quoteError = getMarketOrderQuoteError(
+      quote,
+      args.quotePrice,
+      isClosedMarketQuote(quote),
+    );
     if (quoteError) return { status: 'rejected' as const, message: quoteError };
+    if (args.orderType === 'market' && isClosedMarketQuote(quote)) {
+      return {
+        status: 'pending' as const,
+        pendingReason: 'market-open' as const,
+        message: 'The regular market is closed. Your market order is pending market open and will fill at the next regular market open using the next available quote.',
+      };
+    }
     if (scenario.penny && args.side === 'buy') {
       const purchaseLimitRejection = getPurchaseLimitRejectionReason({
         order: { side: 'buy', assetType: scenario.assetType },
@@ -134,6 +150,8 @@ export default function Entry() {
         <button data-testid="scenario-edit-order" onClick={() => setScenario({ side: 'buy', accountId: 'alpha', editing: true })}>Edit pending order</button>
         <button data-testid="quote-fresh" onClick={() => setQuoteMode('fresh')}>Fresh quote</button>
         <button data-testid="quote-stale" onClick={() => setQuoteMode('stale')}>Stale quote</button>
+        <button data-testid="quote-closed" onClick={() => setQuoteMode('closed')}>Closed market</button>
+        <button data-testid="quote-closed-move" onClick={() => { setQuoteMode('closed'); setQuotePrice(101); }}>Closed-market quote changes</button>
         <button data-testid="quote-missing" onClick={() => setQuoteMode('missing')}>Missing quote</button>
         <button data-testid="quote-invalid" onClick={() => setQuoteMode('invalid')}>Invalid quote</button>
         <button data-testid="quote-change" onClick={() => { setQuoteMode('fresh'); setQuotePrice(101); }}>Change quote</button>

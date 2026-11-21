@@ -139,7 +139,7 @@ test("Paper Trading refreshes quotes incrementally without replacing failed valu
   assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
 });
 
-test("offline recovery refreshes prices and order submission requires a fresh provider quote", () => {
+test("offline recovery refreshes prices and closed-market market orders may use a valid provider quote", () => {
   const orderStart = screen.indexOf("const handleConfirmOrder = async");
   const orderEnd = screen.indexOf("\n  };", orderStart);
   const orderHandler = screen.slice(orderStart, orderEnd);
@@ -151,9 +151,9 @@ test("offline recovery refreshes prices and order submission requires a fresh pr
   assert.match(orderHandler, /const currentAccounts = accountsRef\.current/);
   assert.match(orderHandler, /const currentPositions = positionsRef\.current/);
   assert.match(orderHandler, /requestPaperPreloadQuote\(sym, true\)/);
-  assert.match(orderHandler, /getOrderQuoteState\(currentQuote\) !== 'fresh'/);
+  assert.match(orderHandler, /getOrderQuoteState\(currentQuote\) !== 'fresh' && !marketClosed/);
   assert.doesNotMatch(orderHandler, /getPaperPortfolioPreloadState\(\)\.portfolios/);
-  assert.match(screen, /const q = newQuotes\[order\.symbol\];[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'/);
+  assert.match(screen, /const q = newQuotes\[order\.symbol\];[\s\S]*?canEvaluatePendingOrderQuote\(order, q\)/);
 });
 
 test("Event Arena hides stale-price disclosures and refreshes after network recovery", () => {
@@ -460,7 +460,7 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   assert.match(screen, /isLightningRoundPreparationOpen\(/);
   assert.match(screen, /canExecuteLightningRoundStagedOrder\(/);
   const stagedSubmitStart = screen.indexOf("if (preparingLightningOrder && lightningEnrollment) {");
-  const stagedSubmitEnd = screen.indexOf("if (args.orderType === 'market')", stagedSubmitStart);
+  const stagedSubmitEnd = screen.indexOf("if (args.orderType === 'market' && !marketClosed)", stagedSubmitStart);
   const stagedSubmit = screen.slice(stagedSubmitStart, stagedSubmitEnd);
   assert.ok(stagedSubmitStart >= 0 && stagedSubmitEnd > stagedSubmitStart);
   assert.match(stagedSubmit, /await saveOrders\(updatedOrders\)/);
@@ -486,7 +486,7 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   const evaluator = screen.slice(evaluatorStart, evaluatorEnd);
   assert.match(evaluator, /canExecuteLightningRoundStagedOrder\(order, matchingLightningEnrollment, Date\.now\(\)\)/);
   assert.match(evaluator, /if \(isStagedLightningOrder\) \{[\s\S]*?server worker, not this foreground loop, owns staged fills\.[\s\S]*?Avoid a second foreground fill after the server has started processing\.[\s\S]*?continue;\s*\}/);
-  assert.match(evaluator, /if \(!q\) continue;[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'\) continue;/);
+  assert.match(evaluator, /if \(!q\) continue;[\s\S]*?canEvaluatePendingOrderQuote\(order, q\)/);
   assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: executionRiskError/);
   assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: fillResult\.reason/);
 });

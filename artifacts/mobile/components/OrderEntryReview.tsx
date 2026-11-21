@@ -64,7 +64,11 @@ export default function OrderEntryReview({
           />
         </View>
         <Text style={styles.resultTitle}>
-          {result.status === 'filled' ? 'Order filled' : result.status === 'pending' ? 'Order pending' : 'Order rejected'}
+          {result.status === 'filled'
+            ? 'Order filled'
+            : result.status === 'pending'
+              ? result.pendingReason === 'market-open' ? 'Pending market open' : 'Order pending'
+              : 'Order rejected'}
         </Text>
         <Text style={styles.resultMessage}>{result.message}</Text>
         {result.status === 'filled' && (
@@ -158,7 +162,19 @@ export default function OrderEntryReview({
         {review.args.orderType === 'limit' && (
           <View style={styles.warningLine}>
             <Feather name="info" size={14} color={GOLD} />
-            <Text style={styles.warningText}>A limit order may remain pending and is not guaranteed to fill.</Text>
+            <Text style={styles.warningText}>
+              {review.marketClosed
+                ? 'With the regular market closed, a buy limit can fill against the last available quote at or below your limit; a sell can fill at or above. Otherwise, it stays pending until the app can check another quote.'
+                : 'A limit order may remain pending and is not guaranteed to fill.'}
+            </Text>
+          </View>
+        )}
+        {review.marketClosed && review.args.orderType === 'market' && !review.lightningPreparation && (
+          <View testID="paper-order-market-open-note" style={styles.warningLine}>
+            <Feather name="clock" size={14} color={GOLD} />
+            <Text style={styles.warningText}>
+              The regular market is closed. This market order will stay pending until a fresh regular-session quote arrives after the next open; its final fill price may differ from this estimate.
+            </Text>
           </View>
         )}
         {review.lightningPreparation && (

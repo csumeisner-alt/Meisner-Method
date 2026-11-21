@@ -8,6 +8,9 @@ import {
   getAvailableSellShares,
   getOrderEstimatePrice,
   getOrderQuoteState,
+  isClosedMarketQuote,
+  isRegularMarketQuote,
+  canEvaluatePendingOrderQuote,
   getPennyQuoteStatus,
   isPennyStockMayhemEligible,
 } from '../paperOrderEntry.ts';
@@ -40,6 +43,46 @@ test('quote status distinguishes provider-backed freshness from missing or stale
   assert.equal(getOrderQuoteState({ ...fresh, priceTimestamp: now / 1000 - 60 * 60 }, now), 'stale');
   assert.equal(getOrderQuoteState({ ...fresh, priceTimestamp: null }, now), 'stale');
   assert.equal(getOrderQuoteState(undefined, now), 'unavailable');
+});
+
+test('closed-market quotes queue market orders and allow eligible limit-order evaluation', () => {
+  const now = 1_800_000_000_000;
+  const closedStale = {
+    price: 100,
+    change: 0,
+    pct: 0,
+    priceTimestamp: now / 1000 - 60 * 60,
+    fetchedAtMs: now - 60 * 60 * 1000,
+    marketSession: 'CLOSED',
+    priceSource: 'previous_close',
+  };
+  const premarket = {
+    ...closedStale,
+    priceTimestamp: now / 1000 - 30,
+    fetchedAtMs: now - 1_000,
+    marketSession: 'PRE',
+  };
+  const regular = {
+    ...premarket,
+    marketSession: 'REGULAR',
+  };
+  const closedByPriceSource = {
+    ...closedStale,
+    marketSession: 'UNKNOWN',
+    priceSource: 'after_hours',
+  };
+
+  assert.equal(isClosedMarketQuote(closedStale), true);
+  assert.equal(isClosedMarketQuote(premarket), true);
+  assert.equal(isClosedMarketQuote(closedByPriceSource), true);
+  assert.equal(isClosedMarketQuote(regular), false);
+  assert.equal(isRegularMarketQuote(regular), true);
+  assert.equal(isRegularMarketQuote(premarket), false);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, closedStale, now), false);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, premarket, now), false);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, regular, now), true);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'limit' }, closedStale, now), true);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'stop' }, closedStale, now), false);
 });
 
 test('Penny Stock Mayhem search eligibility requires verified classification, a current quote, and under $20', () => {
@@ -87,6 +130,8 @@ test('market order quote guard accepts valid fresh and stale references, but not
     assert.match(getMarketOrderQuoteError({ price }, 100) ?? '', /quote is unavailable/);
   }
   assert.match(getMarketOrderQuoteError({ price: 101 }, 100) ?? '', /changed after review/);
+  assert.equal(getMarketOrderQuoteError({ price: 101 }, 100, true), null,
+    'A closed-market order does not use the reviewed quote as its execution price.');
   assert.match(getMarketOrderQuoteError({ price: 100 }, Number.NaN) ?? '', /reviewed provider price/);
 });
 

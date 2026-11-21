@@ -103,10 +103,12 @@ import {
   type PaperOrderFillAlert,
 } from '@/lib/paperOrderFillAlerts';
 import {
+  canEvaluatePendingOrderQuote,
   getMarketOrderQuoteError,
   getOrderQuoteState,
   getPennyQuoteStatus,
   formatProviderPriceSource,
+  isClosedMarketQuote,
   isPennyStockMayhemEligible,
 } from '@/lib/paperOrderEntry';
 import {
@@ -1910,7 +1912,7 @@ export default function PaperScreen() {
       }
       const q = newQuotes[order.symbol];
       if (!q) continue;
-      if (getOrderQuoteState(q) !== 'fresh') continue;
+      if (!canEvaluatePendingOrderQuote(order, q)) continue;
       const result = evaluateOrder(order, q.price);
 
       if (!result.shouldFill) {
@@ -2806,14 +2808,16 @@ export default function PaperScreen() {
           message: 'A fresh provider quote is unavailable. No order was submitted.',
         };
       }
+      const marketClosed = isClosedMarketQuote(currentQuote);
+      const marketOrderReferencePrice = marketClosed ? currentQuote.price : args.quotePrice;
       if (args.orderType === 'market') {
-        if (getOrderQuoteState(currentQuote) !== 'fresh') {
+        if (getOrderQuoteState(currentQuote) !== 'fresh' && !marketClosed) {
           return {
             status: 'rejected',
             message: 'The provider quote is stale. Refresh it and review the updated price before confirming.',
           };
         }
-        const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice);
+        const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice, marketClosed);
         if (quoteError) return { status: 'rejected', message: quoteError };
       } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
         return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
@@ -2837,7 +2841,7 @@ export default function PaperScreen() {
         ? { ...currentAccount, shortCollateralRatio: args.shortCollateralRatio ?? currentAccount.shortCollateralRatio }
         : currentAccount;
       const riskQuotes = args.orderType === 'market'
-        ? { ...quotes, [sym]: { ...currentQuote, price: args.quotePrice } }
+        ? { ...quotes, [sym]: { ...currentQuote, price: marketOrderReferencePrice } }
         : quotes;
       if (args.orderType === 'market') {
         const existingLongForType = accountPositions.find((position) =>
@@ -2849,8 +2853,10 @@ export default function PaperScreen() {
             intent,
             assetType: args.stockInfo?.assetType ?? existingLongForType?.assetType,
           },
-          executionQuotePrice: args.quotePrice,
-          fillPrice: applySlippage(args.quotePrice, args.shares, direction),
+          executionQuotePrice: marketOrderReferencePrice,
+          fillPrice: marketClosed
+            ? marketOrderReferencePrice
+            : applySlippage(args.quotePrice, args.shares, direction),
           maxPurchasePrice: purchaseLimit,
         });
         if (purchaseLimitRejection) {
@@ -2868,7 +2874,7 @@ export default function PaperScreen() {
         trailPct: args.trailPct,
         trailAbs: args.trailAbs,
         symbol: sym,
-        currentPrice: args.orderType === 'market' ? args.quotePrice : currentQuote.price,
+        currentPrice: args.orderType === 'market' ? marketOrderReferencePrice : currentQuote.price,
         account: riskAccount,
         accountPositions,
         quotes: riskQuotes,
@@ -2919,7 +2925,7 @@ export default function PaperScreen() {
           message: `${args.shares} ${sym} market buy queued for Lightning Round. It will remain pending until the event starts.`,
         };
       }
-      if (args.orderType === 'market') {
+      if (args.orderType === 'market' && !marketClosed) {
         const fillPrice = applySlippage(args.quotePrice, args.shares, direction);
         const fillRiskError = checkRisk({
           side: direction,
@@ -3047,8 +3053,15 @@ export default function PaperScreen() {
         : [...currentOrders, newOrder]);
       if (!args.orderId) {
         void awardAchievement('first-paper-order');
-        void awardAchievement('first-paper-limit');
+        if (args.orderType !== 'market') void awardAchievement('first-paper-limit');
         if (args.side === 'sell') void awardAchievement('first-paper-sell');
+      }
+      if (args.orderType === 'market' && marketClosed) {
+        return {
+          status: 'pending',
+          pendingReason: 'market-open',
+          message: 'The regular market is closed. Your market order is pending market open and will fill when the app next gets a fresh quote after the next regular market open. The final fill price may differ from this estimate.',
+        };
       }
       return {
         status: 'pending',
@@ -3820,6 +3833,7 @@ export default function PaperScreen() {
         {accountOrders.map(o => {
           const q = quotes[o.symbol];
           const isLightningStaged = isLightningRoundStagedOrder(o);
+          const isMarketOpenPending = !isLightningStaged && o.status === 'pending' && o.orderType === 'market';
           return (
             <View key={o.id} testID={`paper-order-${o.id}`} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
               {isLightningStaged && (
@@ -3832,6 +3846,16 @@ export default function PaperScreen() {
                       Estimated value: {q ? $fmt(o.shares * q.price) : 'unavailable'} · actual execution price may differ.
                     </Text>
                   )}
+                </View>
+              )}
+              {isMarketOpenPending && (
+                <View testID={`paper-order-market-open-${o.id}`} style={{ marginBottom: 7 }}>
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                    PENDING — MARKET OPEN
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                    Fills when the app next gets a fresh quote after the regular market opens; the final price may differ.
+                  </Text>
                 </View>
               )}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
@@ -3879,15 +3903,17 @@ export default function PaperScreen() {
                 <View style={{ flex: 1 }} />
                 {o.status === 'pending' && (
                   <View style={styles.orderActions}>
-                    <TouchableOpacity
-                      testID={`edit-order-${o.id}`}
-                      accessibilityLabel={`Edit ${o.symbol} order`}
-                      onPress={() => editOrder(o)}
-                      style={styles.orderAction}
-                    >
-                      <Feather name="edit-2" size={14} color={BUY_COLOR} />
-                      <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
-                    </TouchableOpacity>
+                    {!isMarketOpenPending && (
+                      <TouchableOpacity
+                        testID={`edit-order-${o.id}`}
+                        accessibilityLabel={`Edit ${o.symbol} order`}
+                        onPress={() => editOrder(o)}
+                        style={styles.orderAction}
+                      >
+                        <Feather name="edit-2" size={14} color={BUY_COLOR} />
+                        <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       testID={`delete-order-${o.id}`}
                       accessibilityLabel={`Delete ${o.symbol} order`}
