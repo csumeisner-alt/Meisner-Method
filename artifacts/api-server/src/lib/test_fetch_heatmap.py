@@ -1639,6 +1639,43 @@ class HeatMapQuoteTests(unittest.TestCase):
 
 
 class HeatMapScreenerTests(unittest.TestCase):
+    def test_old_oversized_breadth_sample_is_capped_at_100(self):
+        quotes = [
+            {"symbol": f"SYM{index}", "priceChangePercent": 1.0}
+            for index in range(250)
+        ]
+        with patch.object(fetch_heatmap, "screener_quotes", return_value=quotes):
+            response = fetch_heatmap.market_breadth_response()
+        self.assertEqual(len(response["quotes"]), 100)
+        self.assertEqual(response["quotes"][-1]["symbol"], "SYM99")
+
+    def test_stock_history_work_is_capped_before_enrichment_for_all_sectors(self):
+        quotes = [{"symbol": f"SYM{index}"} for index in range(250)]
+        for sector in (None, "Technology"):
+            with (
+                patch.object(fetch_heatmap, "screener_quotes", return_value=quotes),
+                patch.object(fetch_heatmap, "enrich_quote_metadata") as metadata,
+                patch.object(fetch_heatmap, "download_history", return_value={}) as history,
+                patch.object(fetch_heatmap, "enrich_quote_with_history"),
+            ):
+                result, requested = fetch_heatmap.fetch_heat_map("stocks", [], sector=sector)
+            self.assertEqual(len(result), 100)
+            self.assertEqual(len(requested), 100)
+            self.assertEqual(len(metadata.call_args.args[0]), 100)
+            self.assertEqual(len(history.call_args.args[0]), 100)
+
+    def test_stock_fallback_download_is_capped_before_requesting_quotes(self):
+        with (
+            patch.object(fetch_heatmap, "get_requested_symbols", return_value=[f"SYM{i}" for i in range(250)]),
+            patch.object(fetch_heatmap, "screener_quotes", return_value=[]),
+            patch.object(fetch_heatmap, "download_quotes", return_value={}) as download,
+            patch.object(fetch_heatmap, "enrich_quote_metadata"),
+            patch.object(fetch_heatmap, "download_history", return_value={}),
+        ):
+            fetch_heatmap.fetch_heat_map("stocks", [])
+        self.assertTrue(download.called)
+        self.assertTrue(all(len(call.args[0]) <= 100 for call in download.call_args_list))
+
     def test_stock_screener_deduplicates_overlapping_ticker_rows_preserving_rank_order(self):
         now = datetime.now(timezone.utc)
         stamp = int(now.timestamp())

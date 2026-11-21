@@ -15,6 +15,8 @@ import {
   sortHeatMapQuotesByReturn,
   summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
+  getHeatMapDisplayQuotes,
+  MAX_STOCK_HEAT_MAP_QUOTES,
 } from "../heatMapMetrics.ts";
 
 test("heat-map return sorting is descending or ascending and leaves missing history at the end", () => {
@@ -206,6 +208,19 @@ test("heat-map keeps the first quote for each repeated ticker in stable order", 
     { symbol: "PURR", price: 4 },
     { symbol: "UUUU", price: 8 },
   ]);
+});
+
+test("old 250-stock snapshots are capped before display while other maps stay unchanged", () => {
+  const quotes = Array.from({ length: 250 }, (_, index) => ({ symbol: `SYM${index}` }));
+  const duplicated = [...quotes.slice(0, 40), ...quotes];
+  const stocks = getHeatMapDisplayQuotes(duplicated, "stocks");
+  assert.equal(MAX_STOCK_HEAT_MAP_QUOTES, 100);
+  assert.deepEqual(stocks, quotes.slice(0, 100));
+  for (const category of ["etfs", "custom", "commodities", "futures", "cryptocurrency"]) {
+    assert.deepEqual(getHeatMapDisplayQuotes(duplicated, category), quotes);
+  }
+  assert.deepEqual(getHeatMapDisplayQuotes([], "stocks"), []);
+  assert.deepEqual(getHeatMapDisplayQuotes(quotes.slice(0, 5), "stocks"), quotes.slice(0, 5));
 });
 
 test("heat-map does not show responses from an earlier category, period, or custom symbol set", () => {

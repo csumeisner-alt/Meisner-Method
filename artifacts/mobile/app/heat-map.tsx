@@ -46,7 +46,7 @@ import {
   getHeatMapLoadingDelays, getHeatMapLoadingHexColors, getHeatMapLoadingTheme,
   getHeatMapRevealDelays, getHeatMapTileWidth, hasUsableHeatMapPerformanceSnapshot,
   heatMapResponseMatchesSelection, layoutHoneycomb, sortHeatMapQuotesByReturn, summarizeHeatMap,
-  uniqueHeatMapQuotesBySymbol,
+  getHeatMapDisplayQuotes,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapLoadingTheme, type HeatMapReturnSort, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
@@ -992,7 +992,7 @@ export default function HeatMapScreen() {
   );
   const responseUpdatedAtRef = useRef(response?.updatedAt);
   responseUpdatedAtRef.current = response?.updatedAt;
-  const sourceQuotes = responseMatches ? uniqueHeatMapQuotesBySymbol(response!.quotes) : [];
+  const sourceQuotes = responseMatches ? getHeatMapDisplayQuotes(response!.quotes, category) : [];
   const scheduledRegularOpenTimestamp = responseMatches
     ? getHeatMapRegularOpenRefreshTimestamp(sourceQuotes)
     : null;

@@ -60,6 +60,18 @@ export function uniqueHeatMapQuotesBySymbol<T extends { symbol: string }>(quotes
   });
 }
 
+// Installed apps can receive older, larger server snapshots. Bound the stock
+// sample before summaries, filtering, layout, and per-tile animation work.
+export const MAX_STOCK_HEAT_MAP_QUOTES = 100;
+
+export function getHeatMapDisplayQuotes<T extends { symbol: string }>(
+  quotes: readonly T[],
+  category: string,
+): T[] {
+  const unique = uniqueHeatMapQuotesBySymbol(quotes);
+  return category === "stocks" ? unique.slice(0, MAX_STOCK_HEAT_MAP_QUOTES) : unique;
+}
+
 export function sortHeatMapQuotesByReturn<T extends { returnPercent: number | null }>(
   quotes: readonly T[],
   sort: HeatMapReturnSort,

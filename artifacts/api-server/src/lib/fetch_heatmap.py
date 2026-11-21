@@ -1611,7 +1611,7 @@ def download_history(symbols, period):
 
 def market_breadth_response(now=None):
     quotes = []
-    for source_quote in deduplicate_quotes_by_symbol(screener_quotes("stocks")):
+    for source_quote in deduplicate_quotes_by_symbol(screener_quotes("stocks"))[:MAX_STOCK_BREADTH_SCREEN_RESULTS]:
         return_percent = finite_number(source_quote.get("priceChangePercent"))
         if return_percent is None:
             continue
@@ -1700,6 +1700,8 @@ def market_pulse_session_response(now=None):
 
 def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
+    if category == "stocks":
+        requested = requested[:MAX_STOCK_BREADTH_SCREEN_RESULTS]
     quotes_by_symbol = {}
     asset_type_overrides = (
         resolve_custom_asset_types(requested, now)
@@ -1708,6 +1710,8 @@ def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     )
     if category in ("stocks", "etfs"):
         screened = screener_quotes(category, sector)
+        if category == "stocks":
+            screened = deduplicate_quotes_by_symbol(screened)[:MAX_STOCK_BREADTH_SCREEN_RESULTS]
         if screened:
             quotes_by_symbol = {quote["symbol"]: quote for quote in screened}
             requested = list(quotes_by_symbol)
