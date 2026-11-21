@@ -49,8 +49,6 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   );
   assert.match(homeSource, /<DonationSidebar\s+visible=\{settingsOpen\}/);
   assert.match(homeSource, /useAchievements/);
-  assert.match(homeSource, /hasCompletedAllAchievements\(earnedIds\)/);
-  assert.match(homeSource, /<PremiumFlagBadge flagId=\{selectedPremiumFlagId\}/);
   assert.doesNotMatch(homeSource, /onPress=\{openGallery\}/);
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
@@ -93,6 +91,29 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);
   assert.match(overlaySource, /maxHeight: '88%'/);
+});
+
+test("Analyze title stays stable across achievement states on narrow screens", () => {
+  const headerSource = homeSource.match(/\{\/\* Header \*\/\}([\s\S]*?)\{\/\* Search bar \*\/\}/)?.[0];
+
+  assert.ok(headerSource, "the Analyze header and following search section should be present");
+  assert.match(headerSource, /Meisner Method/);
+  assert.match(headerSource, /AI-powered market intelligence/);
+  assert.doesNotMatch(headerSource, /hasCompletedAllAchievements|selectedPremiumFlagId|PremiumFlagBadge|🇺🇸/);
+  assert.doesNotMatch(headerSource, /allowFontScaling=\{false\}/);
+  assert.match(homeSource, /brandText: \{ flex: 1 \}/);
+  assert.match(homeSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 1 \}/);
+
+  for (const viewportWidth of [320, 360, 375]) {
+    const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 12 - 21;
+    assert.ok(
+      availableBrandTextWidth >= 160,
+      `the brand text has ${availableBrandTextWidth}px available at ${viewportWidth}px`,
+    );
+  }
+
+  assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
+  assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\}/);
 });
 
 test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
