@@ -1662,9 +1662,10 @@ class HeatMapScreenerTests(unittest.TestCase):
             fetch_heatmap,
             "most_active_screen_rows",
             return_value=[row("HPE", 20.0, "HPE"), row("PURR", 4.0, "PURR"), row("HPE", 99.0, "Duplicate HPE")],
-        ):
+        ) as most_active:
             quotes = fetch_heatmap.screener_quotes("stocks")
 
+        most_active.assert_called_once_with(100)
         self.assertEqual([quote["symbol"] for quote in quotes], ["HPE", "PURR"])
         self.assertEqual(quotes[0]["price"], 20.0)
         self.assertEqual(quotes[0]["name"], "HPE")
@@ -1773,7 +1774,7 @@ class HeatMapScreenerTests(unittest.TestCase):
             {"marketOpen": False},
         )
 
-    def test_stock_breadth_pages_up_to_250_most_active_results(self):
+    def test_stock_breadth_pages_up_to_100_most_active_results(self):
         def page(start, count, total):
             return {
                 "quotes": [{"symbol": f"SYM{index}"} for index in range(start, start + count)],
@@ -1783,14 +1784,19 @@ class HeatMapScreenerTests(unittest.TestCase):
         with patch.object(
             fetch_heatmap.yf,
             "screen",
-            side_effect=[page(0, 25, 54), page(25, 25, 54), page(50, 4, 54)],
+            side_effect=[
+                page(0, 25, 250),
+                page(25, 25, 250),
+                page(50, 25, 250),
+                page(75, 25, 250),
+            ],
         ) as screen:
-            rows = fetch_heatmap.most_active_screen_rows(250)
+            rows = fetch_heatmap.most_active_screen_rows(100)
 
-        self.assertEqual(len(rows), 54)
+        self.assertEqual(len(rows), 100)
         self.assertEqual(
             [call.kwargs["offset"] for call in screen.call_args_list],
-            [0, 25, 50],
+            [0, 25, 50, 75],
         )
         self.assertTrue(all(call.kwargs["count"] == 25 for call in screen.call_args_list))
 
