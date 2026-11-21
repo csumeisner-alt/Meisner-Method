@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getMarketOrderQuoteError, isClosedMarketQuote } from '../../lib/paperOrderEntry';
 import { applySlippage, getPurchaseLimitRejectionReason } from '../../lib/paperEngine';
 import ProfessionalOrderEntry, { type ConfirmOrderArgs, type OrderIntent } from '../../components/ProfessionalOrderEntry';
@@ -190,4 +191,8 @@ export default function Entry() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<Entry />);
+createRoot(document.getElementById('root')!).render(
+  <SafeAreaProvider>
+    <Entry />
+  </SafeAreaProvider>,
+);

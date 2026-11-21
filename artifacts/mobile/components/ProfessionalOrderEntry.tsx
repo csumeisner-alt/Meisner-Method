@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import OrderEntryReview from './OrderEntryReview';
 import type { LiveQuote, OrderType, PaperAccount, PaperOrder, PaperPosition } from '@/lib/paperMath';
@@ -170,6 +170,7 @@ export default function ProfessionalOrderEntry({
   onSetShortCollateralRatio,
   onConfirm,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const { width: screenWidth, fontScale } = useWindowDimensions();
   const compactSideButtons = screenWidth <= 360 || fontScale >= 1.3;
   const [activeSide, setActiveSide] = useState<OrderIntent>(side);
@@ -405,20 +406,19 @@ export default function ProfessionalOrderEntry({
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
+      statusBarTranslucent
       onRequestClose={() => { if (!submitting) onClose(); }}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <View
+        style={[
+          styles.safeArea,
+          {
+            paddingTop: Platform.OS === 'web' ? 67 : insets.top,
+            paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom,
+          },
+        ]}
+      >
         <View testID="paper-order-top-bar" style={styles.topBar}>
-          <TouchableOpacity
-            testID="paper-order-close"
-            accessibilityRole="button"
-            accessibilityLabel="Close order entry"
-            style={styles.iconButton}
-            onPress={onClose}
-            disabled={submitting}
-          >
-            <Feather name="x" size={22} color={SILVER} />
-          </TouchableOpacity>
           <View style={styles.topHeading}>
             <Text style={styles.eyebrow}>{review ? 'ORDER REVIEW' : 'PAPER ORDER'}</Text>
             <Text style={styles.topTitle}>{symbol || 'Select a stock'}</Text>
@@ -439,6 +439,17 @@ export default function ProfessionalOrderEntry({
           <View testID="paper-order-activity-mark" style={styles.orderMark}>
             <Feather name="activity" size={17} color={GOLD} />
           </View>
+          <TouchableOpacity
+            testID="paper-order-close"
+            accessibilityRole="button"
+            accessibilityLabel="Close order entry"
+            accessibilityHint="Closes the order without submitting it"
+            style={styles.closeButton}
+            onPress={onClose}
+            disabled={submitting}
+          >
+            <Feather name="x" size={22} color={SILVER} />
+          </TouchableOpacity>
         </View>
 
         {result || review ? (
@@ -781,7 +792,7 @@ export default function ProfessionalOrderEntry({
             <Text style={styles.footerDisclaimer}>Paper trading only · no real brokerage order is sent</Text>
           </KeyboardAwareScrollViewCompat>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -870,6 +881,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  closeButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: '#15191e',
+  },
   topHeading: { flex: 1, minWidth: 0 },
   eyebrow: { fontFamily: 'Inter_600SemiBold', color: GOLD, fontSize: 9, letterSpacing: 1.7 },
   topTitle: { fontFamily: 'Inter_700Bold', color: '#fff', fontSize: 20, marginTop: 2 },

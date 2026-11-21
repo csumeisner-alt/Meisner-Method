@@ -28,6 +28,7 @@ async function buildFixture() {
   const aliases = new Map([
     ["@expo/vector-icons", join(fixtureDir, "mocks/vector-icons.tsx")],
     ["@/components/KeyboardAwareScrollViewCompat", join(fixtureDir, "mocks/keyboard-scroll.tsx")],
+    ["react-native-safe-area-context", join(fixtureDir, "mocks/safe-area-context.tsx")],
   ]);
   const result = await build({
     entryPoints: [join(fixtureDir, "entry.tsx")],
@@ -427,14 +428,22 @@ test("entry keeps short collateral conditional and quote/search content compact"
       const topBar = document.querySelector(${JSON.stringify(selector("paper-order-top-bar"))});
       const search = topBar?.querySelector(${JSON.stringify(selector("paper-order-search-stock"))});
       const activity = topBar?.querySelector(${JSON.stringify(selector("paper-order-activity-mark"))});
-      if (!search || !activity) return null;
+      const close = topBar?.querySelector(${JSON.stringify(selector("paper-order-close"))});
+      if (!search || !activity || !close || !topBar) return null;
       const searchBox = search.getBoundingClientRect();
       const activityBox = activity.getBoundingClientRect();
+      const closeBox = close.getBoundingClientRect();
+      const topBarBox = topBar.getBoundingClientRect();
       return {
         label: search.getAttribute("aria-label"),
         role: search.getAttribute("role"),
         appearsBeforeActivity: search.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
         gap: activityBox.left - searchBox.right,
+        closeAppearsAfterActivity: activity.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
+        closeIsRightOfActivity: closeBox.left > activityBox.right,
+        closeWidth: closeBox.width,
+        closeHeight: closeBox.height,
+        topBarTop: topBarBox.top,
       };
     })()`);
     assert.equal(searchAccess?.label, "Search ticker or company");
@@ -442,6 +451,13 @@ test("entry keeps short collateral conditional and quote/search content compact"
     assert.ok(searchAccess?.appearsBeforeActivity);
     assert.ok(searchAccess.gap >= 0 && searchAccess.gap <= 12,
       "search should sit directly beside the activity icon");
+    assert.ok(searchAccess?.closeAppearsAfterActivity);
+    assert.ok(searchAccess?.closeIsRightOfActivity,
+      "close button should be positioned at the right side of the order header");
+    assert.ok(searchAccess.closeWidth >= 44 && searchAccess.closeHeight >= 44,
+      "close button should have a comfortable touch target");
+    assert.ok(searchAccess.topBarTop >= 66,
+      "order header should sit below the web status-bar safe area");
 
     for (const [scenario, hasSearch] of [
       ["scenario-sell", false],
