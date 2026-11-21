@@ -160,6 +160,16 @@ test("title flags lead completed achievements and fit the scrollable narrow-phon
     "the two-column title-flag choices fit at a 320px phone width");
 });
 
+test("premium flag artwork preserves its full image inside the animated frame", () => {
+  const badgeSource = readSource("../components/PremiumFlagBadge.tsx");
+  assert.match(badgeSource, /resizeMode="contain"/,
+    "custom flag artwork should not be cropped to fill the frame");
+  assert.match(badgeSource, /flagArtwork:\s*\{\s*width:\s*'92%',\s*height:\s*'88%'/,
+    "the animated image should leave enough room for motion inside the clipping frame");
+  assert.match(badgeSource, /alignItems:\s*'center',\s*justifyContent:\s*'center'/,
+    "the full flag artwork should remain centered within its frame");
+});
+
 test("achievement toasts use success haptics and the Final Seal uses medium impact", () => {
   assert.match(overlaySource, /const hapticsEnabled = brew\.hapticsEnabled/);
   assert.match(overlaySource, /Haptics\.notificationAsync\(Haptics\.NotificationFeedbackType\.Success\)/);

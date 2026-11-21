@@ -80,8 +80,8 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
       <View style={styles.flagSurface}>
         <Animated.Image
           source={FLAG_ARTWORK[flag.artwork]}
-          resizeMode="stretch"
-          style={[StyleSheet.absoluteFillObject, motionStyle]}
+          resizeMode="contain"
+          style={[styles.flagArtwork, motionStyle]}
         />
       </View>
     </Animated.View>
@@ -104,5 +104,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 5,
     backgroundColor: '#10151D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flagArtwork: {
+    width: '92%',
+    height: '88%',
   },
 });
