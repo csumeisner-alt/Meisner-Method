@@ -181,6 +181,14 @@ export function resolvePremiumFlagSelection(raw: string | null): FlagSelectionId
   return parsePremiumFlagId(raw) ?? DEFAULT_FLAG_ID;
 }
 
+export function enqueuePremiumFlagSelectionWrite(
+  previousWrite: Promise<void>,
+  flagId: FlagSelectionId,
+  save: (id: FlagSelectionId) => Promise<void>,
+): Promise<void> {
+  return previousWrite.catch(() => {}).then(() => save(flagId));
+}
+
 const achievementIds = new Set<string>(ACHIEVEMENTS.map((achievement) => achievement.id));
 
 export function parseEarnedAchievementIds(raw: string | null): AchievementId[] {

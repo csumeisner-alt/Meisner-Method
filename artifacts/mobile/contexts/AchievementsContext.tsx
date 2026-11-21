@@ -19,6 +19,7 @@ import {
   parseAnalyzeSearchCount,
   parseTrainingTapeOpenCount,
   enqueueAchievementToast,
+  enqueuePremiumFlagSelectionWrite,
   dismissAchievementToast,
   type Achievement,
   type AchievementId,
@@ -61,6 +62,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const hydratedRef = useRef(false);
   const achievementSealShownRef = useRef(false);
   const premiumFlagHydratedRef = useRef(false);
+  const premiumFlagWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingAwardsRef = useRef<AchievementId[]>([]);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const analyzeSearchCountRef = useRef<number | null>(null);
@@ -172,7 +174,11 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       (id === PRIDE_FLAG.id && !prideUnlocked)
     ) return;
     setStoredFlagSelection(id);
-    void AsyncStorage.setItem(PREMIUM_FLAG_STORAGE_KEY, id).catch((error) => {
+    premiumFlagWriteQueueRef.current = enqueuePremiumFlagSelectionWrite(
+      premiumFlagWriteQueueRef.current,
+      id,
+      (flagId) => AsyncStorage.setItem(PREMIUM_FLAG_STORAGE_KEY, flagId),
+    ).catch((error) => {
       console.warn('[achievements] Could not save premium flag selection:', error);
     });
   }, [prideUnlocked]);

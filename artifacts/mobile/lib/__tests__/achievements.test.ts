@@ -21,6 +21,7 @@ import {
   parseAnalyzeSearchCount,
   parseTrainingTapeOpenCount,
   resolvePremiumFlagSelection,
+  enqueuePremiumFlagSelectionWrite,
   enqueueAchievementToast,
   dismissAchievementToast,
 } from '../achievements.ts';
@@ -244,4 +245,44 @@ test('five achievement flags, default flag, and quote-gated Pride are validated'
   for (const flag of ACHIEVEMENT_UNLOCKED_FLAGS) {
     assert.equal(resolvePremiumFlagSelection(flag.id), flag.id);
   }
+});
+
+test('rapid premium flag selections persist in selection order', async () => {
+  const writes: string[] = [];
+  const saved = new Map<string, string>();
+  let unblockFirstWrite!: () => void;
+  let markFirstWriteStarted!: () => void;
+  const firstWriteStarted = new Promise<void>((resolve) => {
+    markFirstWriteStarted = resolve;
+  });
+  const firstWriteGate = new Promise<void>((resolve) => {
+    unblockFirstWrite = resolve;
+  });
+  let writeQueue = Promise.resolve();
+
+  const selectFlag = (flagId: 'heritage' | 'liberty' | 'founders') => {
+    writeQueue = enqueuePremiumFlagSelectionWrite(writeQueue, flagId, async (id) => {
+      writes.push(id);
+      if (id === 'heritage') {
+        markFirstWriteStarted();
+        await firstWriteGate;
+      }
+      saved.set('premium-flag', id);
+    });
+    return writeQueue;
+  };
+
+  const selectionWrites = [
+    selectFlag('heritage'),
+    selectFlag('liberty'),
+    selectFlag('founders'),
+  ];
+
+  await firstWriteStarted;
+  assert.deepEqual(writes, ['heritage'], 'later writes wait for the first storage write');
+  unblockFirstWrite();
+  await Promise.all(selectionWrites);
+
+  assert.deepEqual(writes, ['heritage', 'liberty', 'founders']);
+  assert.equal(saved.get('premium-flag'), 'founders');
 });
