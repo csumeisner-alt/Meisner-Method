@@ -197,6 +197,30 @@ test('Final Seal dismiss and choose actions close the celebration without resett
   );
 });
 
+test('replaying the Final Seal opens it without changing the one-time gate', () => {
+  const earnedIds = ACHIEVEMENTS.map(({ id }) => id);
+  const dismissedState = achievementSealReducer(
+    achievementSealReducer(INITIAL_ACHIEVEMENT_SEAL_STATE, {
+      type: 'completion-hydrated',
+      earnedIds,
+    }),
+    { type: 'dismiss' },
+  );
+
+  const replayedState = achievementSealReducer(dismissedState, { type: 'replay' });
+  assert.deepEqual(replayedState, { visible: true, shown: true });
+  assert.deepEqual(earnedIds, ACHIEVEMENTS.map(({ id }) => id));
+  assert.equal(
+    shouldPresentAchievementSeal(replayedState, ACHIEVEMENTS[ACHIEVEMENTS.length - 1].id, earnedIds),
+    false,
+    'replay does not make the automatic one-time celebration eligible again',
+  );
+  assert.deepEqual(achievementSealReducer(replayedState, { type: 'dismiss' }), {
+    visible: false,
+    shown: true,
+  });
+});
+
 test('five achievement flags, default flag, and quote-gated Pride are validated', () => {
   assert.equal(ACHIEVEMENT_UNLOCKED_FLAGS.length, 5);
   assert.equal(ALL_PREMIUM_FLAGS.length, 6);

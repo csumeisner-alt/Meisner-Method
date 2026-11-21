@@ -89,6 +89,9 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(achievementsContextSource, /setItem\(ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY, 'true'\)/);
   assert.match(achievementsContextSource, /Promise\.all\(\[[\s\S]*?ACHIEVEMENT_STORAGE_KEY[\s\S]*?ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY/);
   assert.match(overlaySource, /THE FINAL SEAL/);
+  assert.match(overlaySource, /testID="replay-final-seal"[\s\S]*?accessibilityLabel="Replay the Final Seal"/);
+  assert.match(overlaySource, /const replayAchievementSeal = \(\) => \{\s*if \(!hasCompletedAllAchievements\(earnedIds\)\) return;\s*closeGallery\(\);\s*setTimeout\(\(\) => dispatchAchievementSeal\(\{ type: 'replay' \}\), 260\);/);
+  assert.match(overlaySource, /if \(!visible\) \{\s*progress\.setValue\(0\);\s*return;\s*\}[\s\S]*?duration: 1_850/);
   assert.match(overlaySource, /15 of 15 complete/);
   assert.match(overlaySource, /Choose your title flag/);
   assert.match(overlaySource, /duration: 1_850/);
@@ -269,7 +272,7 @@ test("achievement toasts use success haptics and the Final Seal uses medium impa
   assert.match(overlaySource, /Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\)/);
   assert.match(overlaySource, /toastHapticAchievementRef\.current === toastAchievement\.id/);
   assert.match(overlaySource, /Platform\.OS === 'web' \|\| !hapticsEnabled/);
-  assert.match(overlaySource, /!visible \|\| Platform\.OS === 'web' \|\| !hapticsEnabled/);
+  assert.match(overlaySource, /if \(!visible\) \{\s*hapticsPlayedRef\.current = false;\s*return;\s*\}[\s\S]*?Platform\.OS === 'web' \|\| !hapticsEnabled/);
   assert.match(overlaySource, /shouldPresentAchievementSeal\(achievementSeal, toastAchievement\.id, earnedIds\)/);
 });
 

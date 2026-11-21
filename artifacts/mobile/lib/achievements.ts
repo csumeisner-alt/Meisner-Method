@@ -94,6 +94,7 @@ export type AchievementSealAction =
   | { type: 'achievement-toast'; achievementId: AchievementId; earnedIds: readonly AchievementId[] }
   | { type: 'completion-hydrated'; earnedIds: readonly AchievementId[] }
   | { type: 'restore-shown' }
+  | { type: 'replay' }
   | { type: 'dismiss' }
   | { type: 'choose-title-flag' };
 
@@ -140,6 +141,9 @@ export function achievementSealReducer(
   }
   if (action.type === 'restore-shown') {
     return state.shown ? state : { visible: false, shown: true };
+  }
+  if (action.type === 'replay') {
+    return { ...state, visible: true };
   }
   if (!state.visible) return state;
   return { ...state, visible: false };

@@ -176,6 +176,10 @@ export function AchievementSealCelebration({
   const markerCount = ACHIEVEMENTS.length;
 
   useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
     if (reducedMotion) {
       progress.setValue(1);
       return;
@@ -192,15 +196,23 @@ export function AchievementSealCelebration({
     ]);
     animation.start();
     return () => animation.stop();
-  }, [progress, reducedMotion]);
+  }, [progress, reducedMotion, visible]);
 
   useEffect(() => {
-    if (!visible || Platform.OS === 'web' || !hapticsEnabled || hapticsPlayedRef.current) return;
+    if (!visible) {
+      hapticsPlayedRef.current = false;
+      return;
+    }
+    if (Platform.OS === 'web' || !hapticsEnabled || hapticsPlayedRef.current) return;
     hapticsPlayedRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   }, [hapticsEnabled, visible]);
 
   useEffect(() => {
+    if (!visible) {
+      soundPlayedRef.current = false;
+      return;
+    }
     if (Platform.OS === 'web' || Constants.appOwnership === 'expo' || soundPlayedRef.current) return;
 
     let cancelled = false;
@@ -244,7 +256,7 @@ export function AchievementSealCelebration({
       }
       soundPlayerRef.current = null;
     };
-  }, [reducedMotion]);
+  }, [reducedMotion, visible]);
 
   const ringScale = progress.interpolate({ inputRange: [0, 0.5, 0.78, 1], outputRange: [0.76, 0.94, 1.04, 1] });
   const ringOpacity = progress.interpolate({ inputRange: [0, 0.16, 0.5, 1], outputRange: [0, 0.5, 1, 1] });
@@ -477,6 +489,12 @@ export function AchievementsOverlay() {
   const chooseTitleFlagFromSeal = () => {
     dispatchAchievementSeal({ type: 'choose-title-flag' });
     setTimeout(openGallery, 260);
+  };
+
+  const replayAchievementSeal = () => {
+    if (!hasCompletedAllAchievements(earnedIds)) return;
+    closeGallery();
+    setTimeout(() => dispatchAchievementSeal({ type: 'replay' }), 260);
   };
 
   useEffect(() => {
@@ -741,6 +759,19 @@ export function AchievementsOverlay() {
                     <Text allowFontScaling style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                       Choose the default U.S. flag or one of five designs. Pride unlocks after {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.
                     </Text>
+                    <Pressable
+                      onPress={replayAchievementSeal}
+                      testID="replay-final-seal"
+                      accessibilityRole="button"
+                      accessibilityLabel="Replay the Final Seal"
+                      accessibilityHint="Reopens the achievement completion celebration."
+                      style={[styles.replaySealButton, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+                    >
+                      <Feather name="rotate-ccw" size={15} color={colors.gold} />
+                      <Text style={[styles.replaySealButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                        Replay the Final Seal
+                      </Text>
+                    </Pressable>
                     <View style={styles.flagGrid}>
                       <Pressable
                         onPress={() => selectPremiumFlag(DEFAULT_FLAG_ID)}
@@ -980,6 +1011,8 @@ const styles = StyleSheet.create({
   flagRewardEyebrow: { fontSize: 10, letterSpacing: 0.8 },
   flagRewardTitle: { fontSize: 13, lineHeight: 18 },
   flagRewardDescription: { fontSize: 11, lineHeight: 16 },
+  replaySealButton: { minHeight: 42, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, marginTop: 4 },
+  replaySealButtonText: { fontSize: 12 },
   flagRewardCopy: { flex: 1, gap: 3 },
   flagLockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   flagLockedIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
