@@ -2504,7 +2504,9 @@ export default function PaperScreen() {
     let knownOffline: boolean | null = null;
     const refresh = (forceRefresh = false) => {
       if (!appIsActive) return;
-      void fetchQuotes(positionsRef.current, activeIdRef.current, false, forceRefresh)
+      // Active-account refreshes are the only execution opportunity for
+      // device-local paper orders, so evaluate them on resume and each tick.
+      void fetchQuotes(positionsRef.current, activeIdRef.current, true, forceRefresh)
         .catch(() => {});
     };
     const refreshNetworkState = (state: Network.NetworkState) => {
@@ -3823,6 +3825,9 @@ export default function PaperScreen() {
       );
     }
 
+    const hasDeviceOnlyPendingOrders = accountOrders.some(
+      (order) => order.status === 'pending' && !isPaperChallengeAccountId(order.accountId),
+    );
     const statusColor = (s: string) => s === 'filled' ? BUY_COLOR : s === 'cancelled' ? DIM : SILVER;
     const typeLabel: Record<string, string> = {
       market: 'MKT', limit: 'LMT', stop: 'STP', stop_limit: 'S/L', trailing_stop: 'TRL',
@@ -3830,6 +3835,14 @@ export default function PaperScreen() {
 
     return (
       <View style={{ gap: 8, paddingHorizontal: 16 }}>
+        {hasDeviceOnlyPendingOrders && (
+          <Text
+            testID="paper-device-only-order-notice"
+            style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 }}
+          >
+            Paper accounts and orders are saved only on this device. Orders are not monitored while the app is closed; they are checked again after you reopen Paper Trading. Market orders need a fresh regular-session quote.
+          </Text>
+        )}
         {accountOrders.map(o => {
           const q = quotes[o.symbol];
           const isLightningStaged = isLightningRoundStagedOrder(o);
@@ -3854,7 +3867,7 @@ export default function PaperScreen() {
                     PENDING — MARKET OPEN
                   </Text>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
-                    Fills when the app next gets a fresh quote after the regular market opens; the final price may differ.
+                    Evaluated after you reopen and a fresh regular-session quote arrives; the final price may differ.
                   </Text>
                 </View>
               )}
