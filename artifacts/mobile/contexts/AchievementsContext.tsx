@@ -39,7 +39,9 @@ type AchievementsState = {
   quotesViewed: number;
   prideUnlocked: boolean;
   premiumFlagReady: boolean;
+  premiumFlagSaveStatus: 'saving' | 'error' | null;
   selectPremiumFlag: (id: FlagSelectionId) => void;
+  retryPremiumFlagSave: () => void;
   galleryVisible: boolean;
   openGallery: () => void;
   closeGallery: () => void;
@@ -56,6 +58,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const [achievementSealShown, setAchievementSealShown] = useState(false);
   const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>(DEFAULT_FLAG_ID);
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
+  const [premiumFlagSaveStatus, setPremiumFlagSaveStatus] = useState<'saving' | 'error' | null>(null);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [toastQueue, setToastQueue] = useState<Achievement[]>([]);
   const idsRef = useRef<AchievementId[]>([]);
@@ -63,6 +66,8 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const achievementSealShownRef = useRef(false);
   const premiumFlagHydratedRef = useRef(false);
   const premiumFlagWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const premiumFlagWriteAttemptRef = useRef(0);
+  const desiredPremiumFlagRef = useRef<FlagSelectionId>(DEFAULT_FLAG_ID);
   const pendingAwardsRef = useRef<AchievementId[]>([]);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const analyzeSearchCountRef = useRef<number | null>(null);
@@ -166,6 +171,31 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     return nextWrite;
   }, [awardAchievement, brew.quotesViewed]);
 
+  const persistPremiumFlagSelection = useCallback((id: FlagSelectionId) => {
+    desiredPremiumFlagRef.current = id;
+    const attempt = ++premiumFlagWriteAttemptRef.current;
+    setPremiumFlagSaveStatus('saving');
+    const write = enqueuePremiumFlagSelectionWrite(
+      premiumFlagWriteQueueRef.current,
+      id,
+      (flagId) => AsyncStorage.setItem(PREMIUM_FLAG_STORAGE_KEY, flagId),
+    );
+    premiumFlagWriteQueueRef.current = write;
+    void write.then(
+      () => {
+        if (premiumFlagWriteAttemptRef.current === attempt) setPremiumFlagSaveStatus(null);
+      },
+      (error) => {
+        if (premiumFlagWriteAttemptRef.current === attempt) {
+          setPremiumFlagSaveStatus('error');
+          console.warn('[achievements] Could not save premium flag selection:', error);
+        }
+      },
+    );
+    // The status above is the user-facing recovery path; avoid an unhandled rejection.
+    void write.catch(() => {});
+  }, []);
+
   const selectPremiumFlag = useCallback((id: FlagSelectionId) => {
     if (
       !hydratedRef.current ||
@@ -174,14 +204,12 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       (id === PRIDE_FLAG.id && !prideUnlocked)
     ) return;
     setStoredFlagSelection(id);
-    premiumFlagWriteQueueRef.current = enqueuePremiumFlagSelectionWrite(
-      premiumFlagWriteQueueRef.current,
-      id,
-      (flagId) => AsyncStorage.setItem(PREMIUM_FLAG_STORAGE_KEY, flagId),
-    ).catch((error) => {
-      console.warn('[achievements] Could not save premium flag selection:', error);
-    });
-  }, [prideUnlocked]);
+    persistPremiumFlagSelection(id);
+  }, [persistPremiumFlagSelection, prideUnlocked]);
+
+  const retryPremiumFlagSave = useCallback(() => {
+    persistPremiumFlagSelection(desiredPremiumFlagRef.current);
+  }, [persistPremiumFlagSelection]);
 
   useEffect(() => {
     let mounted = true;
@@ -203,10 +231,12 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         if (!mounted) return;
         const loadedIds = parseEarnedAchievementIds(raw);
         const sealShown = parseAchievementSealShown(sealShownRaw);
+        const loadedFlagSelection = resolvePremiumFlagSelection(flagSelectionRaw);
         idsRef.current = loadedIds;
         hydratedRef.current = true;
         achievementSealShownRef.current = sealShown;
-        setStoredFlagSelection(resolvePremiumFlagSelection(flagSelectionRaw));
+        desiredPremiumFlagRef.current = loadedFlagSelection;
+        setStoredFlagSelection(loadedFlagSelection);
         premiumFlagHydratedRef.current = true;
         setEarnedIds(loadedIds);
         setAchievementSealShown(sealShown);
@@ -252,7 +282,9 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         quotesViewed: brew.quotesViewed,
         prideUnlocked,
         premiumFlagReady,
+        premiumFlagSaveStatus,
         selectPremiumFlag,
+        retryPremiumFlagSave,
         galleryVisible,
         openGallery,
         closeGallery,

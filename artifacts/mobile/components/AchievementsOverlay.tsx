@@ -446,7 +446,9 @@ export function AchievementsOverlay() {
     quotesViewed,
     prideUnlocked,
     premiumFlagReady,
+    premiumFlagSaveStatus,
     selectPremiumFlag,
+    retryPremiumFlagSave,
     openGallery,
     galleryVisible,
     closeGallery,
@@ -759,6 +761,34 @@ export function AchievementsOverlay() {
                     <Text allowFontScaling style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                       Choose the default U.S. flag or one of five designs. Pride unlocks after {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.
                     </Text>
+                    {premiumFlagSaveStatus === 'saving' && (
+                      <Text
+                        accessibilityLiveRegion="polite"
+                        style={[styles.flagSaveNotice, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+                      >
+                        Saving your title flag…
+                      </Text>
+                    )}
+                    {premiumFlagSaveStatus === 'error' && (
+                      <View style={[styles.flagSaveError, { borderColor: colors.destructive, backgroundColor: colors.steelShadow }]}>
+                        <Text
+                          accessibilityLiveRegion="assertive"
+                          style={[styles.flagSaveNotice, { color: colors.destructive, fontFamily: 'Inter_600SemiBold' }]}
+                        >
+                          Your choice is selected here, but could not be saved and may not remain after closing the app.
+                        </Text>
+                        <Pressable
+                          onPress={retryPremiumFlagSave}
+                          accessibilityRole="button"
+                          accessibilityLabel="Retry saving title flag"
+                          style={styles.retryFlagSaveButton}
+                        >
+                          <Text style={[styles.retryFlagSaveText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                            Retry
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
                     <Pressable
                       onPress={replayAchievementSeal}
                       testID="replay-final-seal"
@@ -1011,6 +1041,10 @@ const styles = StyleSheet.create({
   flagRewardEyebrow: { fontSize: 10, letterSpacing: 0.8 },
   flagRewardTitle: { fontSize: 13, lineHeight: 18 },
   flagRewardDescription: { fontSize: 11, lineHeight: 16 },
+  flagSaveNotice: { fontSize: 11, lineHeight: 16 },
+  flagSaveError: { borderWidth: 1, borderRadius: 8, padding: 9, gap: 6 },
+  retryFlagSaveButton: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 10 },
+  retryFlagSaveText: { fontSize: 12 },
   replaySealButton: { minHeight: 42, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, marginTop: 4 },
   replaySealButtonText: { fontSize: 12 },
   flagRewardCopy: { flex: 1, gap: 3 },

@@ -286,3 +286,26 @@ test('rapid premium flag selections persist in selection order', async () => {
   assert.deepEqual(writes, ['heritage', 'liberty', 'founders']);
   assert.equal(saved.get('premium-flag'), 'founders');
 });
+
+test('failed premium flag writes remain unsaved and can be retried', async () => {
+  const failure = new Error('storage unavailable');
+  let writeQueue = Promise.resolve();
+  let saved: string | null = null;
+
+  const failedWrite = enqueuePremiumFlagSelectionWrite(
+    writeQueue,
+    'liberty',
+    async () => {
+      throw failure;
+    },
+  );
+  writeQueue = failedWrite;
+  await assert.rejects(failedWrite, failure);
+  assert.equal(saved, null, 'a failed write must not be mistaken for a durable selection');
+
+  const retriedWrite = enqueuePremiumFlagSelectionWrite(writeQueue, 'liberty', async (id) => {
+    saved = id;
+  });
+  await retriedWrite;
+  assert.equal(saved, 'liberty');
+});

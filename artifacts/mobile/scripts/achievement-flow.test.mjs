@@ -264,6 +264,10 @@ test("title-flag choices wrap enlarged labels and remain selectable in the scrol
     "selected choices keep a visible check marker after the wrapping label");
   assert.match(gallery, /onPress=\{\(\) => selectPremiumFlag\(flag\.id\)\}/,
     "wrapping text does not remove the flag selection action");
+  assert.match(gallery, /could not be saved and may not remain after closing the app/i,
+    "a failed local save is clearly distinguished from a durable selection");
+  assert.match(gallery, /onPress=\{retryPremiumFlagSave\}/,
+    "the user can retry saving the selected title flag");
 
   for (const viewportWidth of [320, 360]) {
     for (const fontScale of [1, 1.5, 2]) {
