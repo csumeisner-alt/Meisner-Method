@@ -87,6 +87,7 @@ const actionResultFromCommit = <T>(outcome: EconomyCommitResult<T>): BrewActionR
 
 export interface BrewTokenState {
   quotesViewed: number;
+  hydrated: boolean;
   isUnlocked: boolean;
   brewTokens: number;
   soundEnabled: boolean;
@@ -146,6 +147,7 @@ export interface QuoteViewUpdate {
 
 export function useBrewTokens(): BrewTokenState {
   const [quotesViewed, setQuotesViewed] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [brewTokens, setBrewTokens] = useState(0);
   const [soundEnabled, setSoundEnabledState] = useState(true);
@@ -379,6 +381,7 @@ export function useBrewTokens(): BrewTokenState {
       // that could not be read during hydration.
       hydrationFailedRef.current = true;
     }).finally(() => {
+      setHydrated(true);
       hydrationRef.current!.resolve();
     });
   }, []);
@@ -916,6 +919,7 @@ export function useBrewTokens(): BrewTokenState {
 
   return {
     quotesViewed,
+    hydrated,
     isUnlocked,
     brewTokens,
     soundEnabled,

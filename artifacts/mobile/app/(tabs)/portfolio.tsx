@@ -77,6 +77,7 @@ import {
   parseAppReviewState,
   requestAppReviewIfEligible,
 } from '@/lib/appReview';
+import { shouldShowTrainingTapeNudge } from '@/lib/trainingTapeNudge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1902,7 +1903,15 @@ function GradeHistoryModal({
   const chartWidth = Math.max(width - 48, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
-  const { awardAchievement, recordTrainingTapeOpen } = useAchievements();
+  const {
+    awardAchievement,
+    recordTrainingTapeOpen,
+    appAgeAnchorMs,
+    trainingTapeNudgeReady,
+    trainingTapeNudgeDismissed,
+    quoteProgressHydrated,
+    dismissTrainingTapeNudge,
+  } = useAchievements();
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [bankClosedInfoVisible, setBankClosedInfoVisible] = useState(false);
@@ -1912,6 +1921,7 @@ function GradeHistoryModal({
   const [bankReminderBusy, setBankReminderBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
   const [headerHintVisible, setHeaderHintVisible] = useState(false);
+  const [trainingTapeNudgeVisible, setTrainingTapeNudgeVisible] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const headerHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
@@ -2041,6 +2051,26 @@ function GradeHistoryModal({
   useEffect(() => {
     if (visible) prefetchTrainingTapeSnapshot();
   }, [visible]);
+
+  useEffect(() => {
+    const shouldShow = visible
+      && trainingTapeNudgeReady
+      && quoteProgressHydrated
+      && shouldShowTrainingTapeNudge({
+        appAgeAnchorMs,
+        quotesViewed,
+        dismissed: trainingTapeNudgeDismissed,
+        nowMs: Date.now(),
+      });
+    setTrainingTapeNudgeVisible(shouldShow);
+  }, [
+    appAgeAnchorMs,
+    quotesViewed,
+    trainingTapeNudgeDismissed,
+    trainingTapeNudgeReady,
+    quoteProgressHydrated,
+    visible,
+  ]);
 
   useEffect(() => {
     if (!visible) return;
@@ -2421,6 +2451,46 @@ function GradeHistoryModal({
               />
             </>
           )}
+          {trainingTapeNudgeVisible && (
+            <View style={gradeModalStyles.nudgeBackdrop} accessibilityViewIsModal>
+              <View
+                style={[
+                  gradeModalStyles.nudgeCard,
+                  { backgroundColor: colors.card, borderColor: colors.goldMuted },
+                ]}
+                accessibilityRole="alert"
+                testID="training-tape-monthly-nudge"
+              >
+                <View style={gradeModalStyles.nudgeHeading}>
+                  <View style={[gradeModalStyles.nudgeIcon, { backgroundColor: colors.steelShadow }]}>
+                    <Feather name="radio" size={18} color={colors.gold} />
+                  </View>
+                  <Text style={[gradeModalStyles.nudgeTitle, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
+                    A QUICK TIP
+                  </Text>
+                </View>
+                <Text style={[gradeModalStyles.nudgeBody, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
+                  {Platform.OS === 'web'
+                    ? 'Tap the “TRADE GRADE HISTORY” title to open Training Tape and read a short market quote.'
+                    : 'Press and hold the “TRADE GRADE HISTORY” title to open Training Tape and read a short market quote.'}
+                </Text>
+                <Pressable
+                  style={[gradeModalStyles.nudgeButton, { backgroundColor: colors.goldMuted }]}
+                  onPress={() => {
+                    setTrainingTapeNudgeVisible(false);
+                    dismissTrainingTapeNudge();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Got it, dismiss the Training Tape tip"
+                  testID="training-tape-monthly-nudge-dismiss"
+                >
+                  <Text style={[gradeModalStyles.nudgeButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
+                    GOT IT
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </View>
       </AmericanSteelBackground>
     </Modal>
@@ -2438,6 +2508,14 @@ const gradeModalStyles = StyleSheet.create({
   tapeShortcutText: { fontSize: 9, letterSpacing: 0.7 },
   headerHint: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, borderWidth: 1, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 4, marginTop: 7 },
   headerHintText: { fontSize: 8, letterSpacing: 0.75 },
+  nudgeBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 20, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.72)' },
+  nudgeCard: { width: '100%', maxWidth: 380, borderWidth: 1, borderRadius: 16, padding: 20, gap: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 18, elevation: 12 },
+  nudgeHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nudgeIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  nudgeTitle: { fontSize: 13, letterSpacing: 1 },
+  nudgeBody: { fontSize: 14, lineHeight: 21 },
+  nudgeButton: { minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  nudgeButtonText: { fontSize: 11, letterSpacing: 0.8 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 14, paddingTop: 14 },
   card: { borderWidth: 1, borderRadius: 12, padding: 10 },

@@ -51,3 +51,11 @@ test("training tape prefetches and reuses a recent market snapshot on open", () 
   assert.match(trainingTapeSource, /setMarketSnapshot\(cachedSnapshot\?\.snapshot \?\? null\)/);
   assert.match(trainingTapeSource, /if \(cacheIsFresh\)/);
 });
+
+test("the monthly first-quote tip is shown in grade history and can be dismissed", () => {
+  assert.match(portfolioSource, /shouldShowTrainingTapeNudge\(\{/);
+  assert.match(portfolioSource, /&& quoteProgressHydrated/);
+  assert.match(portfolioSource, /testID="training-tape-monthly-nudge"/);
+  assert.match(portfolioSource, /Press and hold the “TRADE GRADE HISTORY” title/);
+  assert.match(portfolioSource, /dismissTrainingTapeNudge\(\)/);
+});

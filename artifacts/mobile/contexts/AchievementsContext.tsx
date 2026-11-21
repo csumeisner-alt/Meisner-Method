@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getInstallationTimeAsync } from 'expo-application';
 import {
   ACHIEVEMENT_STORAGE_KEY,
   ACHIEVEMENT_SEAL_SHOWN_STORAGE_KEY,
@@ -25,6 +26,11 @@ import {
   type AchievementId,
   type FlagSelectionId,
 } from '@/lib/achievements';
+import {
+  APP_FIRST_OPENED_AT_STORAGE_KEY,
+  resolveAppAgeAnchor,
+  TRAINING_TAPE_NUDGE_DISMISSED_STORAGE_KEY,
+} from '@/lib/trainingTapeNudge';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 
 type AchievementsState = {
@@ -35,6 +41,11 @@ type AchievementsState = {
   awardAchievement: (id: AchievementId) => Promise<void>;
   recordAnalyzeSearch: () => Promise<void>;
   recordTrainingTapeOpen: () => Promise<void>;
+  appAgeAnchorMs: number | null;
+  trainingTapeNudgeReady: boolean;
+  trainingTapeNudgeDismissed: boolean;
+  quoteProgressHydrated: boolean;
+  dismissTrainingTapeNudge: () => void;
   selectedPremiumFlagId: FlagSelectionId;
   quotesViewed: number;
   prideUnlocked: boolean;
@@ -59,6 +70,9 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>(DEFAULT_FLAG_ID);
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
   const [premiumFlagSaveStatus, setPremiumFlagSaveStatus] = useState<'saving' | 'error' | null>(null);
+  const [appAgeAnchorMs, setAppAgeAnchorMs] = useState<number | null>(null);
+  const [trainingTapeNudgeReady, setTrainingTapeNudgeReady] = useState(false);
+  const [trainingTapeNudgeDismissed, setTrainingTapeNudgeDismissed] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [toastQueue, setToastQueue] = useState<Achievement[]>([]);
   const idsRef = useRef<AchievementId[]>([]);
@@ -171,6 +185,13 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     return nextWrite;
   }, [awardAchievement, brew.quotesViewed]);
 
+  const dismissTrainingTapeNudge = useCallback(() => {
+    setTrainingTapeNudgeDismissed(true);
+    void AsyncStorage.setItem(TRAINING_TAPE_NUDGE_DISMISSED_STORAGE_KEY, 'true').catch((error) => {
+      console.warn('[achievements] Could not save Training Tape tip dismissal:', error);
+    });
+  }, []);
+
   const persistPremiumFlagSelection = useCallback((id: FlagSelectionId) => {
     desiredPremiumFlagRef.current = id;
     const attempt = ++premiumFlagWriteAttemptRef.current;
@@ -261,6 +282,41 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     };
   }, [awardAchievement]);
 
+  useEffect(() => {
+    let mounted = true;
+    const loadTrainingTapeNudgeState = async () => {
+      const [resolvedAnchor, dismissedRaw] = await Promise.all([
+        resolveAppAgeAnchor({
+          getNativeInstallDate: () => getInstallationTimeAsync(),
+          readFirstOpenedAt: () => AsyncStorage.getItem(APP_FIRST_OPENED_AT_STORAGE_KEY),
+          writeFirstOpenedAt: (timestamp) => AsyncStorage.setItem(APP_FIRST_OPENED_AT_STORAGE_KEY, timestamp),
+          nowMs: Date.now(),
+        }),
+        AsyncStorage.getItem(TRAINING_TAPE_NUDGE_DISMISSED_STORAGE_KEY).catch((error) => {
+          console.warn('[achievements] Could not load Training Tape tip dismissal:', error);
+          return null;
+        }),
+      ]);
+      if (!mounted) return;
+      if (resolvedAnchor === null) {
+        console.warn('[achievements] Could not determine app age for Training Tape tip.');
+      }
+      setAppAgeAnchorMs(resolvedAnchor);
+      setTrainingTapeNudgeDismissed(dismissedRaw === 'true');
+      setTrainingTapeNudgeReady(true);
+    };
+
+    void loadTrainingTapeNudgeState().catch((error) => {
+      console.warn('[achievements] Could not load Training Tape tip state:', error);
+      if (!mounted) return;
+      setTrainingTapeNudgeReady(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const openGallery = useCallback(() => setGalleryVisible(true), []);
   const closeGallery = useCallback(() => setGalleryVisible(false), []);
   const dismissToast = useCallback(() => {
@@ -278,6 +334,11 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         awardAchievement,
         recordAnalyzeSearch,
         recordTrainingTapeOpen,
+        appAgeAnchorMs,
+        trainingTapeNudgeReady,
+        trainingTapeNudgeDismissed,
+        quoteProgressHydrated: brew.hydrated,
+        dismissTrainingTapeNudge,
         selectedPremiumFlagId,
         quotesViewed: brew.quotesViewed,
         prideUnlocked,
