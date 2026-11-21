@@ -158,3 +158,4 @@ test('swipe diagnostics distinguish accepted, rejected, cancelled, and completed
   );
   assert.equal(findUnfinishedInteraction([swipeEvent('interrupted')]), null);
 });
+
