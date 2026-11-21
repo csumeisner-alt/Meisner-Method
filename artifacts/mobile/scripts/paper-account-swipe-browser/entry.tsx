@@ -214,7 +214,7 @@ function PaperAccountInteractionFixture() {
               testID="paper-account-switch"
               accessibilityRole="button"
               onPress={() => setSelectorOpen(true)}
-              style={{ minHeight: 30, justifyContent: 'center' }}
+              style={{ minHeight: 36, justifyContent: 'center' }}
             >
               <Text style={{ color: '#ffd700' }}>SWITCH</Text>
             </TouchableOpacity>
@@ -263,7 +263,7 @@ function PaperAccountInteractionFixture() {
               justifyContent: 'center',
               alignItems: 'center',
               gap: 5,
-              marginTop: activeId !== 'paper-event:arena' && viewportWidth <= 360 ? 4 : 7,
+              marginTop: 4,
             }}
           >
             {accounts.map((item, index) => (

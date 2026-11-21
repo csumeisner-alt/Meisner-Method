@@ -12,3 +12,9 @@ description: The user's preferred first view and density for the Meisner Method 
 **Rule:** The Event Arena outer account card should be the same size as the three simulated portfolio cards, using shared minimum sizing and outer spacing rather than a separately compressed frame. Allow growth when enlarged text or additional event content requires it.
 
 **Why:** The user clarified that the outer Event Arena box, not only its inner summary, must match the other three account boxes.
+
+**Rule:** Keep Portfolio, Activity, Insights, Overview, and Positions smaller across regular and event portfolios.
+
+**Why:** The user wants more information visible on the screen, with less space used by navigation.
+
+**How to apply:** Use compact shared navigation spacing while preserving readable labels, selected states, position counts, and usable touch areas.

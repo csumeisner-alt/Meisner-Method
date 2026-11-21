@@ -346,14 +346,16 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     const standardEventCardHeight = await browser.evaluate(
       `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
     );
-    await touch(browser, "paper-current-account", 150, 0);
+    await touch(browser, "paper-account-switch");
+    await touch(browser, "select-paper-account-fireball");
     await waitFor(browser,
       `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "fireball"`,
       "The account did not switch to Fireball at the standard phone width.");
     const standardSimulatedCardHeight = await browser.evaluate(
       `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
     );
-    await touch(browser, "paper-current-account", -150, 0);
+    await touch(browser, "paper-account-switch");
+    await touch(browser, "select-paper-account-paper-event:arena");
     await waitFor(browser,
       `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "paper-event:arena"`,
       "The account did not return to Event Arena at the standard phone width.");
