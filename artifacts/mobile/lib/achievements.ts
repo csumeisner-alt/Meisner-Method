@@ -1,6 +1,6 @@
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
 export const ANALYZE_SEARCH_COUNT_STORAGE_KEY = '@meisnermethod/analyze_search_count_v1';
-export const ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD = 30;
+export const ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD = 15;
 export const PREMIUM_FLAG_STORAGE_KEY = '@meisnermethod/premium_flag_badge_v1';
 export const DEFAULT_FLAG_ID = 'default' as const;
 
@@ -14,7 +14,7 @@ export const ACHIEVEMENTS = [
   { id: 'quote-10', title: 'Tape Collector', description: 'Viewed 10 Training Tape quotes.', icon: 'bookmark' },
   { id: 'quote-25', title: 'Signal Tracker', description: 'Viewed 25 Training Tape quotes.', icon: 'activity' },
   { id: 'quote-50', title: 'Market Scholar', description: 'Completed five sell trades in Portfolio.', icon: 'book-open' },
-  { id: 'quote-100', title: 'Oracle', description: 'Completed 30 Analyze searches.', icon: 'eye' },
+  { id: 'quote-100', title: 'Oracle', description: 'Completed 15 Analyze searches.', icon: 'eye' },
   {
     id: 'first-paper-order',
     title: 'Paper Trader',
