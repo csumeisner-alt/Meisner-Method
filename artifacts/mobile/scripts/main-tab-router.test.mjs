@@ -48,6 +48,16 @@ test('500 real tab selections keep route keys, order, and saved route parameters
   }
 });
 
+test('Analyze tab dismisses heat-map detail routes back to the Analyze screen', () => {
+  assert.deepEqual(getMainTabNavigationPlan('/heat-map', '/'), {
+    action: 'dismiss',
+    href: '/',
+  });
+  assert.equal(getMainTabNavigationPlan('/', '/'), null);
+  const bar = source('../components/BottomTabBar.tsx');
+  assert.match(bar, /if \(plan\.action === 'dismiss'\) \{\s*router\.dismissTo\(plan\.href\)/);
+});
+
 test('a repeated tab selection and Android back never reorder tab routes', () => {
   const router = createTabs();
   let state = router.getInitialState(options);

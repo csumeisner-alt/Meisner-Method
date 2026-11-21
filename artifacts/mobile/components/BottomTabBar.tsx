@@ -25,6 +25,10 @@ export function BottomTabBar() {
     const plan = getMainTabNavigationPlan(pathname, path);
     if (!plan) return;
     if (!claimMainTabNavigation()) return;
+    if (plan.action === 'dismiss') {
+      router.dismissTo(plan.href);
+      return;
+    }
     router.navigate(plan.href);
   }
 

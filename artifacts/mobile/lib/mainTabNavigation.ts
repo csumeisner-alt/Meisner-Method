@@ -18,7 +18,10 @@ export function getMainTabNavigationPlan(
   targetPath: MainTabRoute,
 ) {
   const currentTab = getCurrentMainTabPath(currentPathname);
-  if (currentTab === targetPath) return null;
+  if (currentTab === targetPath) {
+    if (currentPathname === targetPath || (currentPathname === '' && targetPath === '/')) return null;
+    return { action: 'dismiss' as const, href: targetPath };
+  }
 
   const currentIndex = MAIN_TAB_ROUTES.indexOf(currentTab);
   const targetIndex = MAIN_TAB_ROUTES.indexOf(targetPath);
