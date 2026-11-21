@@ -9,17 +9,11 @@ Achievements should be one-time cosmetic rewards with brief, dismissible feedbac
 
 **How to apply:** when adding milestones, keep the catalog reviewable in Settings and verify the screen event triggers the achievement even when reward progress or remote services fail.
 
-Title-flag rewards unlock after all 15 achievements: the default U.S. flag plus five premium designs. Pride additionally requires the existing 22-view Biden quote threshold used by the Brew Bank.
+The achievement title flag is separate from Patriot Mode's own flag. Show no achievement title flag until Patriot Mode is unlocked and all 15 achievements are complete; then show the default U.S. flag or the user's saved premium design. Pride additionally requires the shared 30-view Biden quote threshold used by the Brew Bank.
 
-**Why:** the user specified separate achievement and quote-view gates for these cosmetic choices.
+**Why:** the user clarified that the Patriot Mode flag and achievement title flag are separate; the achievement default is earned only after full achievement completion and must not appear before Patriot Mode unlocks.
 
-**How to apply:** read the Brew Bank's persisted quote-view count and shared threshold; do not create a parallel Pride counter or award Pride at the 15-achievement milestone.
-
-When no flag selection is saved, use the default U.S. flag that matches the Patriot Mode unlock. Preserve any valid saved selection.
-
-**Why:** the user clarified that the default title flag should match the flag shown with Patriot Mode.
-
-**How to apply:** resolve missing or invalid stored selections to `DEFAULT_FLAG_ID`, while honoring valid saved choices.
+**How to apply:** gate the achievement title badge on both Patriot Mode unlock and all 15 achievements, preserve valid saved selections, and read the Brew Bank's persisted quote-view count and shared 30-view threshold for Pride; do not create a parallel Pride counter.
 
 Do not preview or announce title-flag rewards before the achievement set is complete; keep the reveal a surprise.
 

@@ -80,6 +80,23 @@ export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[])
   return ACHIEVEMENTS.every((achievement) => earned.has(achievement.id));
 }
 
+export function canShowAchievementTitleFlag({
+  isPatriotModeUnlocked,
+  achievementsHydrated,
+  flagSelectionReady,
+  earnedIds,
+}: {
+  isPatriotModeUnlocked: boolean;
+  achievementsHydrated: boolean;
+  flagSelectionReady: boolean;
+  earnedIds: readonly AchievementId[];
+}): boolean {
+  return isPatriotModeUnlocked
+    && achievementsHydrated
+    && flagSelectionReady
+    && hasCompletedAllAchievements(earnedIds);
+}
+
 export type AchievementSealState = {
   visible: boolean;
   shown: boolean;

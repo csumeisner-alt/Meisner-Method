@@ -5,16 +5,18 @@ import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 
 type TitleFlagBadgeProps = {
   flagId: FlagSelectionId;
-  ready: boolean;
+  unlocked: boolean;
   size: number;
   style?: StyleProp<ViewStyle>;
 };
 
-export function TitleFlagBadge({ flagId, ready, size, style }: TitleFlagBadgeProps) {
+export function TitleFlagBadge({ flagId, unlocked, size, style }: TitleFlagBadgeProps) {
+  if (!unlocked) return null;
+
   const height = size * 0.625;
   const slotStyle = [styles.slot, { width: size, height }, style];
 
-  if (ready && flagId !== DEFAULT_FLAG_ID) {
+  if (flagId !== DEFAULT_FLAG_ID) {
     return (
       <View style={slotStyle}>
         <PremiumFlagBadge flagId={flagId} size={size} />

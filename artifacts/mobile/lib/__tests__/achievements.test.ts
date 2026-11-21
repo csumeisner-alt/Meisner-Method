@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
   ACHIEVEMENTS,
+  canShowAchievementTitleFlag,
   getTrainingTapeAchievementsForOpenCount,
   INITIAL_ACHIEVEMENT_SEAL_STATE,
   achievementSealReducer,
@@ -245,6 +246,22 @@ test('five achievement flags, default flag, and quote-gated Pride are validated'
   for (const flag of ACHIEVEMENT_UNLOCKED_FLAGS) {
     assert.equal(resolvePremiumFlagSelection(flag.id), flag.id);
   }
+});
+
+test('achievement title flag waits for Patriot unlock and full achievement completion', () => {
+  const earnedIds = ACHIEVEMENTS.map(({ id }) => id);
+  const base = {
+    isPatriotModeUnlocked: true,
+    achievementsHydrated: true,
+    flagSelectionReady: true,
+    earnedIds,
+  };
+
+  assert.equal(canShowAchievementTitleFlag({ ...base, isPatriotModeUnlocked: false }), false);
+  assert.equal(canShowAchievementTitleFlag({ ...base, earnedIds: earnedIds.slice(0, -1) }), false);
+  assert.equal(canShowAchievementTitleFlag({ ...base, achievementsHydrated: false }), false);
+  assert.equal(canShowAchievementTitleFlag({ ...base, flagSelectionReady: false }), false);
+  assert.equal(canShowAchievementTitleFlag(base), true);
 });
 
 test('rapid premium flag selections persist in selection order', async () => {

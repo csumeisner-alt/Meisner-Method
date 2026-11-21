@@ -32,6 +32,7 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
+import { canShowAchievementTitleFlag } from '@/lib/achievements';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
@@ -181,7 +182,7 @@ function formatPct(p: number) {
 export default function HomeScreen() {
   const colors = useColors();
   const { width: viewportWidth } = useWindowDimensions();
-  const titleFlagSize = viewportWidth < 360 ? 56 : viewportWidth < 400 ? 64 : 68;
+  const titleFlagSize = viewportWidth < 360 ? 44 : viewportWidth < 400 ? 48 : 52;
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -282,8 +283,20 @@ export default function HomeScreen() {
   const [alertModalAlertId, setAlertModalAlertId] = useState<string | null>(null);
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
-  const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
-  const { recordAnalyzeSearch, selectedPremiumFlagId, premiumFlagReady } = useAchievements();
+  const { isActive, isUnlocked, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
+  const {
+    recordAnalyzeSearch,
+    earnedIds,
+    achievementsHydrated,
+    selectedPremiumFlagId,
+    premiumFlagReady,
+  } = useAchievements();
+  const titleFlagUnlocked = canShowAchievementTitleFlag({
+    isPatriotModeUnlocked: isUnlocked,
+    achievementsHydrated,
+    flagSelectionReady: premiumFlagReady,
+    earnedIds,
+  });
   const [showCelebration, setShowCelebration] = useState(false);
   const marketPulseQuery = useGetMarketPulse({
     query: {
@@ -637,24 +650,33 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
             <MMLogo size={44} />
             <View style={styles.brandText}>
-              <View style={[styles.brandTitleRow, { paddingRight: titleFlagSize + 8 }]}>
+              <View style={[styles.brandTitleRow, { paddingRight: titleFlagUnlocked ? titleFlagSize : 0 }]}>
                 <Text
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
                   style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}
                 >
                   Meisner Method
                 </Text>
               </View>
-              <TitleFlagBadge
-                flagId={selectedPremiumFlagId}
-                ready={premiumFlagReady}
-                size={titleFlagSize}
-                style={[
-                  styles.titleFlagBadge,
-                  { top: '50%', transform: [{ translateY: -(titleFlagSize * 0.625) / 2 }] },
-                ]}
-              />
-              <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              {titleFlagUnlocked && (
+                <TitleFlagBadge
+                  flagId={selectedPremiumFlagId}
+                  unlocked={titleFlagUnlocked}
+                  size={titleFlagSize}
+                  style={[
+                    styles.titleFlagBadge,
+                    { top: '50%', transform: [{ translateY: -(titleFlagSize * 0.625) / 2 }] },
+                  ]}
+                />
+              )}
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+              >
                 AI-powered market intelligence
               </Text>
               {neonGucciActive && (

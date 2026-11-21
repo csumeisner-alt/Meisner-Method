@@ -18,6 +18,7 @@ const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 const overlaySource = readSource("../components/AchievementsOverlay.tsx");
+const titleFlagBadgeSource = readSource("../components/TitleFlagBadge.tsx");
 const premiumFlagBadgeSource = readSource("../components/PremiumFlagBadge.tsx");
 const analyzeFlagStorySource = readSource("../../mockup-sandbox/src/components/mockups/analyze-selected-flag-story/AnalyzeSelectedFlagStory.tsx");
 const analyzeFlagStoryStyleSource = readSource("../../mockup-sandbox/src/components/mockups/analyze-selected-flag-story/_group.css");
@@ -123,33 +124,44 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /maxHeight: '88%'/);
 });
 
-test("Analyze title stays stable across achievement states on narrow screens", () => {
+test("Analyze title stays complete and achievement flag waits for all achievements", () => {
   const headerSource = homeSource.match(/\{\/\* Header \*\/\}([\s\S]*?)\{\/\* Search bar \*\/\}/)?.[0];
 
   assert.ok(headerSource, "the Analyze header and following search section should be present");
   assert.match(headerSource, /Meisner Method/);
   assert.match(headerSource, /AI-powered market intelligence/);
-  assert.match(headerSource, /<TitleFlagBadge[\s\S]*?flagId=\{selectedPremiumFlagId\}[\s\S]*?ready=\{premiumFlagReady\}/);
-  assert.doesNotMatch(headerSource, /hasCompletedAllAchievements/);
+  assert.match(headerSource, /titleFlagUnlocked && \([\s\S]*?<TitleFlagBadge[\s\S]*?flagId=\{selectedPremiumFlagId\}[\s\S]*?unlocked=\{titleFlagUnlocked\}/);
+  assert.match(homeSource, /const titleFlagUnlocked = canShowAchievementTitleFlag\(\{/);
+  assert.match(homeSource, /isPatriotModeUnlocked: isUnlocked/);
+  assert.match(headerSource, /paddingRight: titleFlagUnlocked \? titleFlagSize : 0/);
+  assert.match(headerSource, /adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.6\}/);
+  assert.match(headerSource, /numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.7\}[\s\S]*?AI-powered market intelligence/);
+  assert.match(titleFlagBadgeSource, /if \(!unlocked\) return null/);
+  assert.match(titleFlagBadgeSource, /if \(flagId !== DEFAULT_FLAG_ID\)/);
+  assert.match(titleFlagBadgeSource, /accessibilityLabel="Default U\.S\. flag"/);
+  assert.match(homeSource, /useAmericanMode\(\)[\s\S]*?isUnlocked/);
   assert.match(homeSource, /brandTitleRow: \{ position: 'relative', height: 26/);
   assert.match(homeSource, /titleFlagBadge: \{ position: 'absolute', right: -8, zIndex: 1 \}/);
   assert.match(headerSource, /top: '50%', transform: \[\{ translateY: -\(titleFlagSize \* 0\.625\) \/ 2 \}\]/);
-  assert.doesNotMatch(headerSource, /allowFontScaling=\{false\}/);
   assert.match(homeSource, /brandText: \{ flex: 1, minWidth: 0, position: 'relative' \}/);
   assert.match(homeSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 1 \}/);
+  assert.match(homeSource, /titleFlagSize = viewportWidth < 360 \? 44 : viewportWidth < 400 \? 48 : 52/);
 
   for (const viewportWidth of [320, 360, 375]) {
-    const titleFlagSize = viewportWidth < 360 ? 56 : viewportWidth < 400 ? 64 : 68;
-    const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 24 - 21 - 8 - titleFlagSize - 8;
+    const titleFlagSize = viewportWidth < 360 ? 44 : viewportWidth < 400 ? 48 : 52;
+    const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 24 - 21 - 8 - titleFlagSize;
     assert.ok(
-      availableBrandTextWidth >= 80,
-      `the title has ${availableBrandTextWidth}px available at ${viewportWidth}px after the flag`,
+      availableBrandTextWidth >= 90,
+      `the title has ${availableBrandTextWidth}px available at ${viewportWidth}px after the smaller flag`,
     );
   }
 
   assert.match(analyzeFlagStorySource, /analyze-title-flag--heritage/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?height: 30px/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?position: absolute;[\s\S]*?top: 50%;[\s\S]*?right: -8px;[\s\S]*?width: 68px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?height: 30px[\s\S]*?padding-right: 56px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title \{[\s\S]*?font-size: clamp\(10\.5px, calc\(13\.333vw - 34px\), 18px\)/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?white-space: nowrap/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?position: absolute;[\s\S]*?top: 50%;[\s\S]*?right: -8px;[\s\S]*?width: 48px/);
+  assert.match(analyzeFlagStoryStyleSource, /@media \(max-width: 340px\)[\s\S]*?\.analyze-title-flag-position \{ width: 40px; height: 25px; \}/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride[\s\S]*?linear-gradient/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 2px 0 0/);
 
