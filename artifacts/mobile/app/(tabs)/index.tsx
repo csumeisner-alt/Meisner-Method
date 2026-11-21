@@ -22,8 +22,6 @@ import { useApi } from '@/hooks/useApi';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
-import { MMLogo } from '@/components/MMLogo';
-import { TitleFlagBadge } from '@/components/TitleFlagBadge';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { AmericanCelebration } from '@/components/AmericanCelebration';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
@@ -57,6 +55,8 @@ import {
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { AnalyzeBrandHeader } from '@/components/AnalyzeBrandHeader';
 
 type MarketSessionProxyQuote = {
   marketSession: string;
@@ -182,7 +182,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const [brandTitleRowWidth, setBrandTitleRowWidth] = useState(0);
   const [brandNameWidth, setBrandNameWidth] = useState(0);
-  const titleFlagSize = Math.max(0, Math.min(52, Math.floor(brandTitleRowWidth - brandNameWidth - 6)));
+  const titleFlagSize = Math.max(32, Math.min(52, Math.floor(brandTitleRowWidth - brandNameWidth - 6)));
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -648,49 +648,20 @@ export default function HomeScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
-            <MMLogo size={36} />
-            <View style={styles.brandText}>
-              <View
-                style={styles.brandTitleRow}
-                onLayout={(event) => {
-                  const width = event.nativeEvent.layout.width;
-                  setBrandTitleRowWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
-                }}
-              >
-                <Text
-                  numberOfLines={1}
-                  onLayout={(event) => {
-                    const width = event.nativeEvent.layout.width;
-                    setBrandNameWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
-                  }}
-                  style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}
-                >
-                  Meisner Method
-                </Text>
-                {titleFlagUnlocked && titleFlagSize > 0 && (
-                  <TitleFlagBadge
-                    flagId={selectedPremiumFlagId}
-                    unlocked={titleFlagUnlocked}
-                    size={titleFlagSize}
-                    style={styles.titleFlagBadge}
-                  />
-                )}
-              </View>
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-                style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
-              >
-                AI-powered market intelligence
-              </Text>
-              {neonGucciActive && (
-                <View style={styles.neonThemeBadge}>
-                  <View style={styles.neonThemeDot} />
-                  <Text style={styles.neonThemeBadgeText}>HYBRID NEON GUCCI · ACTIVE</Text>
-                </View>
-              )}
-            </View>
+            <AnalyzeBrandHeader
+              flagId={selectedPremiumFlagId}
+              unlocked={titleFlagUnlocked}
+              flagSize={titleFlagSize}
+              headingColor={colors.heading}
+              mutedForeground={colors.mutedForeground}
+              neonGucciActive={neonGucciActive}
+              onTitleRowLayout={(width) => {
+                setBrandTitleRowWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
+              }}
+              onBrandNameLayout={(width) => {
+                setBrandNameWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
+              }}
+            />
             <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 2 }} />
           </TouchableOpacity>
           <TouchableOpacity
@@ -1121,14 +1092,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 8, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  brandText: { flex: 1, minWidth: 0, position: 'relative' },
-  brandTitleRow: { height: 26, flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'visible' },
-  titleFlagBadge: { flexShrink: 0 },
-  brandName: { fontSize: 21, lineHeight: 26, flexShrink: 0 },
-  tagline: { fontSize: 12, marginTop: 1 },
-  neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },
-  neonThemeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#55ecff' },
-  neonThemeBadgeText: { color: '#b9ffcf', fontSize: 7, fontWeight: '800', letterSpacing: 0.55 },
   searchSection: { paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
   searchRow: {
     flexDirection: 'row',

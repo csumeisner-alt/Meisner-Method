@@ -7,18 +7,18 @@ type TitleFlagBadgeProps = {
   flagId: FlagSelectionId;
   unlocked: boolean;
   size: number;
+  testID?: string;
   style?: StyleProp<ViewStyle>;
 };
 
-export function TitleFlagBadge({ flagId, unlocked, size, style }: TitleFlagBadgeProps) {
+export function TitleFlagBadge({ flagId, unlocked, size, testID, style }: TitleFlagBadgeProps) {
   if (!unlocked) return null;
-
   const height = size * 0.625;
   const slotStyle = [styles.slot, { width: size, height }, style];
 
   if (flagId !== DEFAULT_FLAG_ID) {
     return (
-      <View style={slotStyle}>
+      <View testID={testID} style={slotStyle}>
         <PremiumFlagBadge flagId={flagId} size={size} />
       </View>
     );
@@ -29,6 +29,7 @@ export function TitleFlagBadge({ flagId, unlocked, size, style }: TitleFlagBadge
       accessible
       accessibilityRole="image"
       accessibilityLabel="Default U.S. flag"
+      testID={testID}
       style={slotStyle}
     >
       <Text style={{ fontSize: size * 0.7, lineHeight: height, includeFontPadding: false }}>🇺🇸</Text>
