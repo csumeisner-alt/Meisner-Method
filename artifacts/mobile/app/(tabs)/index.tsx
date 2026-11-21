@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { MMLogo } from '@/components/MMLogo';
+import { TitleFlagBadge } from '@/components/TitleFlagBadge';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { AmericanCelebration } from '@/components/AmericanCelebration';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
@@ -178,6 +180,8 @@ function formatPct(p: number) {
 
 export default function HomeScreen() {
   const colors = useColors();
+  const { width: viewportWidth } = useWindowDimensions();
+  const titleFlagSize = viewportWidth < 360 ? 48 : viewportWidth < 400 ? 52 : 56;
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -279,7 +283,7 @@ export default function HomeScreen() {
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
-  const { recordAnalyzeSearch } = useAchievements();
+  const { recordAnalyzeSearch, selectedPremiumFlagId, premiumFlagReady } = useAchievements();
   const [showCelebration, setShowCelebration] = useState(false);
   const marketPulseQuery = useGetMarketPulse({
     query: {
@@ -633,9 +637,20 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
             <MMLogo size={44} />
             <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-                Meisner Method
-              </Text>
+              <View style={[styles.brandTitleRow, { paddingRight: titleFlagSize + 8 }]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}
+                >
+                  Meisner Method
+                </Text>
+                <TitleFlagBadge
+                  flagId={selectedPremiumFlagId}
+                  ready={premiumFlagReady}
+                  size={titleFlagSize}
+                  style={[styles.titleFlagBadge, { top: -(titleFlagSize * 0.625 - 26) / 2 }]}
+                />
+              </View>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence
               </Text>
@@ -1076,7 +1091,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brandText: { flex: 1 },
+  brandText: { flex: 1, minWidth: 0 },
+  brandTitleRow: { position: 'relative', height: 26, justifyContent: 'center' },
+  titleFlagBadge: { position: 'absolute', right: 0 },
   brandName: { fontSize: 21, lineHeight: 26, flexShrink: 1 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },

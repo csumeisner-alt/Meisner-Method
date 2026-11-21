@@ -12,10 +12,9 @@ export function AnalyzeSelectedFlagStory() {
           <div className="analyze-brand-copy">
             <div className="analyze-brand-title-row">
               <span className="analyze-brand-title">Meisner Method</span>
-              <span className="analyze-title-flag" role="img" aria-label="Gadsden title flag selected">
+              <span className="analyze-title-flag analyze-title-flag--heritage" role="img" aria-label="Gadsden title flag selected">
                 <img src="/__mockup/images/premium-flags/gadsden.png" alt="" />
                 <span className="analyze-title-flag-check" aria-hidden="true">✓</span>
-                <span className="analyze-title-flag-name">GADSDEN</span>
               </span>
             </div>
             <p className="analyze-tagline">AI-powered market intelligence</p>

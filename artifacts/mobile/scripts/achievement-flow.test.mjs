@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { ACHIEVEMENTS, ALL_PREMIUM_FLAGS, hasCompletedAllAchievements } from "../lib/achievements.ts";
 import { getAchievementSealLayout } from "../lib/achievementSealLayout.ts";
+import { PREMIUM_FLAG_BORDER_STYLES } from "../lib/premiumFlagBorders.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const readSource = (path) => readFileSync(resolve(scriptDir, path), "utf8");
@@ -18,6 +19,8 @@ const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 const overlaySource = readSource("../components/AchievementsOverlay.tsx");
 const premiumFlagBadgeSource = readSource("../components/PremiumFlagBadge.tsx");
+const analyzeFlagStorySource = readSource("../../mockup-sandbox/src/components/mockups/analyze-selected-flag-story/AnalyzeSelectedFlagStory.tsx");
+const analyzeFlagStoryStyleSource = readSource("../../mockup-sandbox/src/components/mockups/analyze-selected-flag-story/_group.css");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
 test("Achievements panel heading uses a gold trophy and keeps its accessible name", () => {
@@ -120,18 +123,28 @@ test("Analyze title stays stable across achievement states on narrow screens", (
   assert.ok(headerSource, "the Analyze header and following search section should be present");
   assert.match(headerSource, /Meisner Method/);
   assert.match(headerSource, /AI-powered market intelligence/);
-  assert.doesNotMatch(headerSource, /hasCompletedAllAchievements|selectedPremiumFlagId|PremiumFlagBadge|🇺🇸/);
+  assert.match(headerSource, /<TitleFlagBadge[\s\S]*?flagId=\{selectedPremiumFlagId\}[\s\S]*?ready=\{premiumFlagReady\}/);
+  assert.doesNotMatch(headerSource, /hasCompletedAllAchievements/);
+  assert.match(homeSource, /brandTitleRow: \{ position: 'relative', height: 26/);
+  assert.match(homeSource, /titleFlagBadge: \{ position: 'absolute', right: 0 \}/);
   assert.doesNotMatch(headerSource, /allowFontScaling=\{false\}/);
-  assert.match(homeSource, /brandText: \{ flex: 1 \}/);
+  assert.match(homeSource, /brandText: \{ flex: 1, minWidth: 0 \}/);
   assert.match(homeSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 1 \}/);
 
   for (const viewportWidth of [320, 360, 375]) {
-    const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 12 - 21;
+    const titleFlagSize = viewportWidth < 360 ? 48 : viewportWidth < 400 ? 52 : 56;
+    const availableBrandTextWidth = viewportWidth - 40 - 36 - 44 - 24 - 21 - 8 - titleFlagSize - 8;
     assert.ok(
-      availableBrandTextWidth >= 160,
-      `the brand text has ${availableBrandTextWidth}px available at ${viewportWidth}px`,
+      availableBrandTextWidth >= 90,
+      `the title has ${availableBrandTextWidth}px available at ${viewportWidth}px after the flag`,
     );
   }
+
+  assert.match(analyzeFlagStorySource, /analyze-title-flag--heritage/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?height: 30px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag \{[\s\S]*?position: absolute;[\s\S]*?right: 0;[\s\S]*?width: 56px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride[\s\S]*?linear-gradient/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 2px 0 0/);
 
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\}/);
@@ -180,13 +193,24 @@ test("title flags lead completed achievements and fit the scrollable narrow-phon
     "the two-column title-flag choices fit at a 320px phone width");
 });
 
-test("premium title flags stay animated without a gold frame", () => {
+test("premium title flags stay animated with distinct per-flag borders", () => {
   assert.match(premiumFlagBadgeSource, /const motionStyle = useAnimatedStyle/);
   assert.match(premiumFlagBadgeSource, /duration:\s*5_600/);
   assert.match(premiumFlagBadgeSource, /styles\.frame,[\s\S]*?motionStyle/,
     "the cloth motion should remain applied to the flag badge");
-  assert.doesNotMatch(premiumFlagBadgeSource, /borderColor:\s*colors\.gold|borderWidth:\s*1|shadowColor:\s*colors\.gold/,
-    "the flag artwork should not have a gold outline or glow");
+  assert.match(premiumFlagBadgeSource, /border\.kind === 'rainbow'/,
+    "Pride uses a rainbow border");
+  assert.match(premiumFlagBadgeSource, /backgroundColor: border\.color/,
+    "each other premium flag uses its own border color");
+  const solidColors = Object.values(PREMIUM_FLAG_BORDER_STYLES)
+    .filter((border) => border.kind === "solid")
+    .map((border) => border.color);
+  assert.equal(solidColors.length, 5);
+  assert.equal(new Set(solidColors).size, solidColors.length,
+    "every solid premium flag border has a unique color");
+  assert.equal(PREMIUM_FLAG_BORDER_STYLES.eagle.kind, "rainbow");
+  assert.equal(PREMIUM_FLAG_BORDER_STYLES.default, undefined,
+    "the default U.S. flag has no custom border");
 });
 
 test("premium flag artwork preserves its full image inside the animated frame", () => {
@@ -212,7 +236,7 @@ test("premium flag artwork stays complete in consistent gallery previews", () =>
     "the badge preserves each artwork's natural proportions");
   assert.doesNotMatch(premiumFlagBadgeSource, /scale:\s*1\.045/,
     "the flag is not persistently enlarged past its frame");
-  assert.match(premiumFlagBadgeSource, /backgroundColor: colors\.steelShadow,[\s\S]*?motionStyle/,
+  assert.match(premiumFlagBadgeSource, /styles\.frame,[\s\S]*?motionStyle/,
     "subtle badge motion applies to the complete frame, not an enlarged image");
 
   assert.match(overlaySource, /const TITLE_FLAG_PREVIEW_SIZE = 96/);

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Image, type ImageSourcePropType, StyleSheet, View } from 'react-native';
+import { type ImageSourcePropType, StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -10,7 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { ALL_PREMIUM_FLAGS, type PremiumFlagId } from '@/lib/achievements';
-import { useColors } from '@/hooks/useColors';
+import { PREMIUM_FLAG_BORDER_STYLES } from '@/lib/premiumFlagBorders';
 
 const FLAG_ARTWORK: Record<(typeof ALL_PREMIUM_FLAGS)[number]['artwork'], ImageSourcePropType> = {
   gadsden: require('@/assets/images/premium-flags/gadsden.png'),
@@ -28,10 +29,11 @@ type PremiumFlagBadgeProps = {
 
 export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
   const flag = ALL_PREMIUM_FLAGS.find((item) => item.id === flagId) ?? ALL_PREMIUM_FLAGS[0];
-  const colors = useColors();
+  const border = PREMIUM_FLAG_BORDER_STYLES[flagId];
   const progress = useSharedValue(0);
   const width = size;
   const height = size * 0.625;
+  const borderWidth = Math.max(2, size * 0.045);
 
   const motionStyle = useAnimatedStyle(() => {
     const breeze = Math.sin(progress.value * Math.PI * 2);
@@ -70,25 +72,41 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
         {
           width,
           height,
-          backgroundColor: colors.steelShadow,
         },
         motionStyle,
       ]}
     >
-      <View style={styles.flagSurface}>
-        <Animated.Image
-          source={FLAG_ARTWORK[flag.artwork]}
-          resizeMode="contain"
-          style={styles.flagArtwork}
-        />
-      </View>
+      {border.kind === 'rainbow' ? (
+        <LinearGradient
+          colors={border.colors}
+          style={[styles.borderFrame, { padding: borderWidth }]}
+        >
+          <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} />
+        </LinearGradient>
+      ) : (
+        <View style={[styles.borderFrame, { backgroundColor: border.color, padding: borderWidth }]}>
+          <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} />
+        </View>
+      )}
     </Animated.View>
+  );
+}
+
+function FlagArtwork({ artwork }: { artwork: ImageSourcePropType }) {
+  return (
+    <View style={styles.flagSurface}>
+      <Animated.Image source={artwork} resizeMode="contain" style={styles.flagArtwork} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   frame: {
-    padding: 0,
+    overflow: 'hidden',
+    borderRadius: 8,
+  },
+  borderFrame: {
+    flex: 1,
     overflow: 'hidden',
     borderRadius: 8,
   },
