@@ -287,25 +287,41 @@ test('rapid premium flag selections persist in selection order', async () => {
   assert.equal(saved.get('premium-flag'), 'founders');
 });
 
-test('failed premium flag writes remain unsaved and can be retried', async () => {
+test('a failed premium flag write does not block a newer selection', async () => {
   const failure = new Error('storage unavailable');
   let writeQueue = Promise.resolve();
+  const writes: string[] = [];
   let saved: string | null = null;
+  let failFirstWrite!: (error: Error) => void;
+  let markFirstWriteStarted!: () => void;
+  const firstWriteStarted = new Promise<void>((resolve) => {
+    markFirstWriteStarted = resolve;
+  });
+  const firstWriteFailure = new Promise<never>((_resolve, reject) => {
+    failFirstWrite = reject;
+  });
 
   const failedWrite = enqueuePremiumFlagSelectionWrite(
     writeQueue,
     'liberty',
-    async () => {
-      throw failure;
+    async (id) => {
+      writes.push(id);
+      markFirstWriteStarted();
+      await firstWriteFailure;
     },
   );
   writeQueue = failedWrite;
-  await assert.rejects(failedWrite, failure);
-  assert.equal(saved, null, 'a failed write must not be mistaken for a durable selection');
-
-  const retriedWrite = enqueuePremiumFlagSelectionWrite(writeQueue, 'liberty', async (id) => {
+  const firstWriteRejection = assert.rejects(failedWrite, failure);
+  const newerWrite = enqueuePremiumFlagSelectionWrite(writeQueue, 'founders', async (id) => {
+    writes.push(id);
     saved = id;
   });
-  await retriedWrite;
-  assert.equal(saved, 'liberty');
+
+  await firstWriteStarted;
+  failFirstWrite(failure);
+  await firstWriteRejection;
+  await newerWrite;
+
+  assert.deepEqual(writes, ['liberty', 'founders']);
+  assert.equal(saved, 'founders', 'the latest successful selection remains saved');
 });
