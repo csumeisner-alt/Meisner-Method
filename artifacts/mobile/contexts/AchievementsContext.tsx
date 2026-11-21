@@ -188,17 +188,24 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         console.warn('[achievements] Could not load completion celebration state:', error);
         return null;
       }),
+      AsyncStorage.getItem(PREMIUM_FLAG_STORAGE_KEY).catch((error) => {
+        console.warn('[achievements] Could not load premium flag selection:', error);
+        return null;
+      }),
     ])
-      .then(([raw, sealShownRaw]) => {
+      .then(([raw, sealShownRaw, flagSelectionRaw]) => {
         if (!mounted) return;
         const loadedIds = parseEarnedAchievementIds(raw);
         const sealShown = parseAchievementSealShown(sealShownRaw);
         idsRef.current = loadedIds;
         hydratedRef.current = true;
         achievementSealShownRef.current = sealShown;
+        setStoredFlagSelection(resolvePremiumFlagSelection(flagSelectionRaw));
+        premiumFlagHydratedRef.current = true;
         setEarnedIds(loadedIds);
         setAchievementSealShown(sealShown);
         setAchievementsHydrated(true);
+        setPremiumFlagReady(true);
 
         const pending = pendingAwardsRef.current.splice(0);
         for (const id of pending) void awardAchievement(id);
@@ -207,7 +214,9 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         if (!mounted) return;
         console.warn('[achievements] Could not load earned achievements:', error);
         hydratedRef.current = true;
+        premiumFlagHydratedRef.current = true;
         setAchievementsHydrated(true);
+        setPremiumFlagReady(true);
         const pending = pendingAwardsRef.current.splice(0);
         for (const id of pending) void awardAchievement(id);
       });
@@ -215,26 +224,6 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       mounted = false;
     };
   }, [awardAchievement]);
-
-  useEffect(() => {
-    let mounted = true;
-    void AsyncStorage.getItem(PREMIUM_FLAG_STORAGE_KEY)
-      .then((raw) => {
-        if (!mounted) return;
-        setStoredFlagSelection(resolvePremiumFlagSelection(raw));
-      })
-      .catch((error) => {
-        if (mounted) console.warn('[achievements] Could not load premium flag selection:', error);
-      })
-      .finally(() => {
-        if (!mounted) return;
-        premiumFlagHydratedRef.current = true;
-        setPremiumFlagReady(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const openGallery = useCallback(() => setGalleryVisible(true), []);
   const closeGallery = useCallback(() => setGalleryVisible(false), []);

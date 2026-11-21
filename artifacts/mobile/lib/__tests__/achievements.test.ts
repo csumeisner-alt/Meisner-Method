@@ -213,6 +213,11 @@ test('five achievement flags, default flag, and quote-gated Pride are validated'
   assert.equal(parsePremiumFlagId(null), null);
   assert.equal(resolvePremiumFlagSelection(null), DEFAULT_FLAG_ID);
   assert.equal(resolvePremiumFlagSelection('unknown'), DEFAULT_FLAG_ID);
-  assert.equal(resolvePremiumFlagSelection('heritage'), 'heritage');
   assert.equal(resolvePremiumFlagSelection('default'), DEFAULT_FLAG_ID);
+  for (const flag of ALL_PREMIUM_FLAGS) {
+    assert.equal(resolvePremiumFlagSelection(flag.id), flag.id);
+  }
+  for (const flag of ACHIEVEMENT_UNLOCKED_FLAGS) {
+    assert.equal(resolvePremiumFlagSelection(flag.id), flag.id);
+  }
 });
