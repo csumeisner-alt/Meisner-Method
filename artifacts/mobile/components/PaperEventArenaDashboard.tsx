@@ -314,23 +314,31 @@ export function PaperEventArenaDashboard({
         </Text>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
-        <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
-          {phase === 'ended' && summary ? 'FINAL EQUITY' : 'ACCOUNT EQUITY'}
-        </Text>
-        <Text
-          testID="paper-event-account-equity"
-          accessibilityLabel={`Event account equity ${displayedEquity == null ? 'unavailable' : money(displayedEquity)}`}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-          style={{ flex: 1, color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 20, letterSpacing: -0.5, textAlign: 'right' }}
-        >
-          {displayedEquity == null ? '—' : money(displayedEquity)}
-        </Text>
-      </View>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
+              {phase === 'ended' && summary ? 'FINAL EQUITY' : 'ACCOUNT EQUITY'}
+            </Text>
+            <Text
+              testID="paper-event-account-equity"
+              accessibilityLabel={`Event account equity ${displayedEquity == null ? 'unavailable' : money(displayedEquity)}`}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={{ color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 22, lineHeight: 24, letterSpacing: -0.65 }}
+            >
+              {displayedEquity == null ? '—' : money(displayedEquity)}
+            </Text>
+          </View>
+          <View
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={{ width: '26%', height: 1, marginBottom: 5, borderRadius: 1, backgroundColor: 'rgba(231,198,106,0.36)' }}
+          />
+        </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
         {metric(
           'COMP P/L',
           competitionPnL == null ? '—' : signedMoney(competitionPnL),
@@ -376,7 +384,7 @@ export function PaperEventArenaDashboard({
         </TouchableOpacity>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
             <Text
@@ -403,7 +411,7 @@ export function PaperEventArenaDashboard({
             accessibilityRole="progressbar"
             accessibilityLabel="Event schedule progress"
             accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
-            style={{ height: 2, overflow: 'hidden', borderRadius: 2, marginTop: 3, backgroundColor: 'rgba(255,255,255,0.12)' }}
+            style={{ height: 3, overflow: 'hidden', borderRadius: 2, marginTop: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
           >
             <View
               testID="paper-event-account-progress"
@@ -429,12 +437,12 @@ function LeaderboardButton({ onPress }: { onPress: () => void }) {
       activeOpacity={0.8}
       hitSlop={8}
       style={{
-        width: 28,
-        height: 28,
+        width: 32,
+        height: 32,
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 8,
+        borderRadius: 9,
         borderWidth: 1,
         borderColor: 'rgba(231,198,106,0.52)',
         backgroundColor: 'rgba(231,198,106,0.12)',

@@ -15,6 +15,12 @@ The achievement title flag is separate from Patriot Mode's own flag. Show no ach
 
 **How to apply:** gate the achievement title badge on both Patriot Mode unlock and all 15 achievements, preserve valid saved selections, and read the Brew Bank's persisted quote-view count and shared 30-view threshold for Pride; do not create a parallel Pride counter.
 
+Keep the Analyze “Meisner Method” title at its full size. When an achievement flag is unlocked, place it inline after the title and let it use the remaining header space.
+
+**Why:** the user clarified that the brand title must never shrink to make room for the flag.
+
+**How to apply:** do not use fit-to-width or text shrinking on the title; reclaim header spacing first, then size the inline flag from the remaining row width.
+
 Do not preview or announce title-flag rewards before the achievement set is complete; keep the reveal a surprise.
 
 **Why:** the user asked that the 15-achievement reward remain undisclosed until completion.

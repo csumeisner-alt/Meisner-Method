@@ -4107,7 +4107,7 @@ export default function PaperScreen() {
         {isSelectedEventAccount ? (
           <>
             <View style={styles.eventChampionshipTopline}>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.eventHeroLabel, { flex: 1, minWidth: 0 }]}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.eventHeroLabel, { flex: 1, minWidth: 0 }]}>
                 {account?.id.startsWith('paper-lightning:') ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
                 {selectedEventDateRange ? ` · ${selectedEventDateRange}` : ''}
               </Text>
@@ -5683,8 +5683,9 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   eventChampionshipHero: {
-    backgroundColor: 'rgba(24,24,25,0.98)',
-    borderColor: 'rgba(231,198,106,0.62)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(9,10,11,0.98)',
+    borderColor: 'rgba(231,198,106,0.68)',
   },
   eventChampionshipTopline: {
     flexDirection: 'row',
@@ -5693,9 +5694,14 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 2,
   },
-  eventChampionshipSwitchButton: { minHeight: 36, paddingHorizontal: 9 },
+  eventChampionshipSwitchButton: { minHeight: 40, minWidth: 64, paddingHorizontal: 9 },
   eventChampionshipPositionIndicators: { marginTop: 4 },
-  eventHeroLabel: { color: BUY_COLOR },
+  eventHeroLabel: {
+    color: '#12d9ae',
+    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+    letterSpacing: 0.3,
+  },
   editAccountsButton: {
     minHeight: 36,
     paddingHorizontal: 11,

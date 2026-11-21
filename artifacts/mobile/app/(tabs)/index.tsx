@@ -12,7 +12,6 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -181,8 +180,9 @@ function formatPct(p: number) {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { width: viewportWidth } = useWindowDimensions();
-  const titleFlagSize = viewportWidth < 360 ? 44 : viewportWidth < 400 ? 48 : 52;
+  const [brandTitleRowWidth, setBrandTitleRowWidth] = useState(0);
+  const [brandNameWidth, setBrandNameWidth] = useState(0);
+  const titleFlagSize = Math.max(0, Math.min(52, Math.floor(brandTitleRowWidth - brandNameWidth - 6)));
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -648,29 +648,34 @@ export default function HomeScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
-            <MMLogo size={44} />
+            <MMLogo size={36} />
             <View style={styles.brandText}>
-              <View style={[styles.brandTitleRow, { paddingRight: titleFlagUnlocked ? titleFlagSize : 0 }]}>
+              <View
+                style={styles.brandTitleRow}
+                onLayout={(event) => {
+                  const width = event.nativeEvent.layout.width;
+                  setBrandTitleRowWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
+                }}
+              >
                 <Text
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.6}
+                  onLayout={(event) => {
+                    const width = event.nativeEvent.layout.width;
+                    setBrandNameWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
+                  }}
                   style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}
                 >
                   Meisner Method
                 </Text>
+                {titleFlagUnlocked && titleFlagSize > 0 && (
+                  <TitleFlagBadge
+                    flagId={selectedPremiumFlagId}
+                    unlocked={titleFlagUnlocked}
+                    size={titleFlagSize}
+                    style={styles.titleFlagBadge}
+                  />
+                )}
               </View>
-              {titleFlagUnlocked && (
-                <TitleFlagBadge
-                  flagId={selectedPremiumFlagId}
-                  unlocked={titleFlagUnlocked}
-                  size={titleFlagSize}
-                  style={[
-                    styles.titleFlagBadge,
-                    { top: '50%', transform: [{ translateY: -(titleFlagSize * 0.625) / 2 }] },
-                  ]}
-                />
-              )}
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -686,7 +691,7 @@ export default function HomeScreen() {
                 </View>
               )}
             </View>
-            <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 8 }} />
+            <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 2 }} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -1114,12 +1119,12 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 16 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  header: { paddingHorizontal: 8, paddingBottom: 16 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   brandText: { flex: 1, minWidth: 0, position: 'relative' },
-  brandTitleRow: { position: 'relative', height: 26, justifyContent: 'center' },
-  titleFlagBadge: { position: 'absolute', right: -8, zIndex: 1 },
-  brandName: { fontSize: 21, lineHeight: 26, flexShrink: 1 },
+  brandTitleRow: { height: 26, flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'visible' },
+  titleFlagBadge: { flexShrink: 0 },
+  brandName: { fontSize: 21, lineHeight: 26, flexShrink: 0 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },
   neonThemeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#55ecff' },

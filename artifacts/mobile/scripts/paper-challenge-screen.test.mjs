@@ -277,6 +277,7 @@ test("Lightning Round promotion reuses the account card and opens its existing s
   assert.match(eventAccountDashboard, /testID="paper-open-lightning-round-promotion"/);
   assert.match(eventAccountDashboard, /JOIN EVENT/);
   assert.match(eventAccountDashboard, /VIEW EVENT/);
+  assert.match(eventAccountDashboard, /<ImageBackground[\s\S]*?source=\{EVENT_ARENA_ARTWORK_SOURCES\['lightning-round-arena'\]\}[\s\S]*?backgroundColor: 'rgba\(2,15,43,0\.48\)'/);
   assert.match(eventAccountDashboard, /testID="paper-event-view-leaderboard"/);
   assert.match(eventAccountDashboard, /testID="paper-event-account-equity"/);
 });
@@ -1252,16 +1253,16 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /formatPaperEventCountdown\(startAtMs, endAtMs, now\)/);
   assert.match(eventAccountDashboard, /accessibilityLabel="View Event Arena leaderboard"/);
   assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
-  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3/);
+  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 4/);
   assert.match(eventAccountDashboard, /flexBasis: compactMetrics \? '46%' : '22%'/);
-  assert.match(eventAccountDashboard, /width: 28,[\s\S]*?height: 28,[\s\S]*?flexShrink: 0/);
+  assert.match(eventAccountDashboard, /width: 32,[\s\S]*?height: 32,[\s\S]*?flexShrink: 0/);
   assert.match(eventAccountDashboard, /hitSlop=\{8\}/);
   assert.match(eventAccountDashboard, /accessibilityRole="button"[\s\S]*?accessibilityLabel="View Event Arena leaderboard"[\s\S]*?onPress=\{onPress\}/);
-  assert.match(eventAccountDashboard, /accessibilityRole="progressbar"[\s\S]*?height: 2[\s\S]*?testID="paper-event-account-progress"/);
+  assert.match(eventAccountDashboard, /accessibilityRole="progressbar"[\s\S]*?height: 3[\s\S]*?testID="paper-event-account-progress"/);
   assert.match(eventAccountDashboard, /const compactMetrics = fontScale >= 1\.3/);
   assert.match(eventAccountDashboard, /<LeaderboardButton onPress=\{onViewLeaderboard\} \/>/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
-  assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 36/);
+  assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 40/);
   assert.match(screen, /screenWidth <= 360 && styles\.compactAccountHero/);
   const eventHeroStyle = screen.slice(screen.indexOf('  eventChampionshipHero: {'), screen.indexOf('  eventChampionshipTopline: {'));
   assert.doesNotMatch(eventHeroStyle, /padding/);

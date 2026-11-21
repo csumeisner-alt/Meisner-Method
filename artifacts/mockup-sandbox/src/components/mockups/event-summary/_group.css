@@ -1,0 +1,429 @@
+:root {
+  color-scheme: dark;
+  --event-bg: #08090a;
+  --event-card: #101112;
+  --event-gold: #e7c66a;
+  --event-muted: #b4b0a6;
+  --event-teal: #12d9ae;
+  --event-red: #ff7777;
+  --event-white: #fff8e8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--event-bg);
+  color: var(--event-white);
+  font-family: Inter, Arial, sans-serif;
+}
+
+.event-summary-preview {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background:
+    radial-gradient(ellipse at 80% 0%, rgba(231, 198, 106, 0.055), transparent 38%),
+    var(--event-bg);
+}
+
+.event-card {
+  width: 100%;
+  max-width: 680px;
+  overflow: hidden;
+  padding: 13px 15px 11px;
+  border: 1px solid rgba(231, 198, 106, 0.56);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #111213 0%, #090a0b 100%);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3);
+}
+
+.event-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.event-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--event-gold);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-switch {
+  flex: 0 0 auto;
+  min-width: 63px;
+  height: 36px;
+  border: 1px solid rgba(255, 215, 0, 0.55);
+  border-radius: 11px;
+  background: rgba(255, 215, 0, 0.08);
+  color: #f6d84a;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.equity-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.equity-label {
+  flex: 0 0 auto;
+  color: var(--event-muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+}
+
+.equity-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--event-white);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.55px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.metric-tile {
+  min-width: 0;
+  padding: 4px 6px 5px;
+  border: 1px solid rgba(231, 198, 106, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.metric-label {
+  overflow: hidden;
+  color: var(--event-muted);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-value {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--event-white);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-value.negative {
+  color: var(--event-red);
+}
+
+.metric-value.gold {
+  color: #f3ce55;
+}
+
+.event-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.event-footer-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-footer-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-status {
+  overflow: hidden;
+  color: var(--event-white);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.participant-count {
+  flex: 0 0 auto;
+  color: var(--event-muted);
+  font-size: 9px;
+}
+
+.event-progress {
+  height: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.event-progress-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--event-gold);
+}
+
+.leaderboard-button {
+  display: grid;
+  width: 36px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(231, 198, 106, 0.58);
+  border-radius: 10px;
+  background: rgba(231, 198, 106, 0.1);
+  color: var(--event-gold);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.account-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.account-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: #3c3d3f;
+}
+
+.account-dot.active {
+  width: 17px;
+  background: var(--event-teal);
+}
+
+/* Current app layout: keep this as the extracted comparison baseline. */
+.event-card.current .event-title {
+  color: var(--event-gold);
+  font-size: 9px;
+  letter-spacing: 0.55px;
+}
+
+.event-card.current .event-switch {
+  min-width: 56px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 8px;
+}
+
+.event-card.current .equity-label,
+.event-card.current .metric-label {
+  font-size: 7px;
+}
+
+.event-card.current .equity-value {
+  font-size: 20px;
+}
+
+.event-card.current .metric-value {
+  font-size: 10px;
+}
+
+.event-card.current .event-footer {
+  margin-top: 3px;
+}
+
+.event-card.current .event-status {
+  font-size: 9px;
+}
+
+.event-card.current .participant-count {
+  font-size: 8px;
+}
+
+.event-card.current .event-progress {
+  height: 2px;
+  margin-top: 3px;
+}
+
+.event-card.current .leaderboard-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.event-card.reference .event-title {
+  color: var(--event-teal);
+  font-size: 14px;
+}
+
+.event-card.reference .event-switch {
+  min-width: 68px;
+  height: 42px;
+  border: 2px solid #ffd319;
+  border-radius: 15px;
+  background: rgba(255, 211, 25, 0.075);
+  font-size: 10px;
+}
+
+.event-card.reference .equity-line {
+  align-items: flex-start;
+  margin-top: 7px;
+}
+
+.event-card.reference .equity-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.event-card.reference .equity-label {
+  font-size: 9px;
+}
+
+.event-card.reference .equity-value {
+  flex: none;
+  font-size: 26px;
+  text-align: left;
+}
+
+.event-card.reference .equity-accent {
+  width: 31%;
+  height: 2px;
+  align-self: flex-end;
+  margin: 0 0 7px 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, rgba(231, 198, 106, 0.58));
+}
+
+.event-card.reference .metric-grid {
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.event-card.reference .metric-tile {
+  padding: 5px 7px 6px;
+  border-color: rgba(231, 198, 106, 0.34);
+  border-radius: 11px;
+}
+
+.event-card.reference .metric-label {
+  font-size: 8px;
+}
+
+.event-card.reference .metric-value {
+  font-size: 12px;
+}
+
+.event-card.reference .event-footer {
+  margin-top: 7px;
+}
+
+.event-card.reference .event-status {
+  font-size: 12px;
+}
+
+.event-card.reference .participant-count {
+  font-size: 10px;
+}
+
+.event-card.reference .event-progress {
+  height: 4px;
+  margin-top: 5px;
+}
+
+.event-card.reference .leaderboard-button {
+  width: 38px;
+  height: 36px;
+  border-radius: 11px;
+  font-size: 18px;
+}
+
+@media (max-width: 430px) {
+  .event-card.reference .metric-label {
+    font-size: 7px;
+  }
+
+  .event-card.reference .metric-value {
+    font-size: 9px;
+    letter-spacing: -0.2px;
+  }
+}
+
+@media (max-width: 380px) {
+  .event-summary-preview {
+    padding: 8px;
+  }
+
+  .event-card {
+    padding: 11px 10px 9px;
+    border-radius: 15px;
+  }
+
+  .event-card.reference .event-title {
+    font-size: 12px;
+  }
+
+  .event-card.reference .event-switch {
+    min-width: 58px;
+    height: 38px;
+  }
+
+  .event-card.reference .equity-value {
+    font-size: 24px;
+  }
+
+  .event-card.reference .metric-grid {
+    gap: 4px;
+  }
+
+  .event-card.reference .metric-tile {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .event-card.reference .metric-label {
+    font-size: 6px;
+    letter-spacing: 0.15px;
+  }
+
+  .event-card.reference .metric-value {
+    font-size: 8px;
+  }
+}

@@ -21,18 +21,18 @@
 }
 
 .analyze-app-header {
-  padding: 0 20px 14px;
+  padding: 0 8px 14px;
 }
 
 .analyze-brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 4px;
 }
 
 .analyze-brand-icon {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
   border-radius: 8px;
   object-fit: cover;
@@ -45,33 +45,33 @@
 }
 
 .analyze-brand-title-row {
-  min-width: 0;
-  height: 30px;
   display: flex;
   align-items: center;
-  padding-right: 56px;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  overflow: visible;
 }
 
 .analyze-brand-title {
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
   color: #f2f2f2;
-  font-size: clamp(10.5px, calc(13.333vw - 34px), 18px);
+  font-size: 21px;
   font-weight: 750;
-  letter-spacing: 0.55px;
+  letter-spacing: 0.8px;
   line-height: 1.15;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .analyze-title-flag-position {
-  position: absolute;
-  top: 50%;
-  right: -8px;
-  z-index: 2;
-  width: 48px;
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 52px;
   height: 30px;
-  transform: translateY(-50%);
+  z-index: 2;
 }
 
 .analyze-title-flag {
@@ -133,13 +133,13 @@
 .analyze-header-actions {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   color: #909090;
 }
 
 .analyze-header-action {
-  width: 28px;
-  height: 32px;
+  width: 22px;
+  height: 28px;
   display: grid;
   place-items: center;
 }
@@ -394,9 +394,4 @@
   .analyze-trending { margin-top: 9px; }
   .analyze-trending-loading { min-height: 52px; }
   .analyze-bottom-tabs { min-height: 58px; }
-}
-
-@media (max-width: 340px) {
-  .analyze-brand-title-row { padding-right: 48px; }
-  .analyze-title-flag-position { width: 40px; height: 25px; }
 }
