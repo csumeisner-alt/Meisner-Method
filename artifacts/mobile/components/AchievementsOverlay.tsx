@@ -36,9 +36,11 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { NEON_GUCCI_DECOR } from '@/constants/colors';
 
 const RAINBOW_ARC_COLORS = ['#E54B4B', '#F28C38', '#F1C84B', '#47B879', '#3A9ED9', '#4E69C8', '#8556B3'];
 const TITLE_FLAG_PREVIEW_SIZE = 96;
+const IRON_SWORD_COLOR = '#C2CAD3';
 
 function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
   const colors = useColors();
@@ -435,7 +437,7 @@ export function AchievementsOverlay() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
-  const { brew } = useAmericanMode();
+  const { brew, isActive, neonGucciActive } = useAmericanMode();
   const hapticsEnabled = brew.hapticsEnabled;
   const {
     earnedIds,
@@ -700,7 +702,28 @@ export function AchievementsOverlay() {
             <View style={[styles.panel, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <View style={styles.panelHeader}>
               <View style={styles.panelTitleGroup}>
-                <MaterialCommunityIcons name="trophy-outline" size={20} color={colors.gold} accessible={false} />
+                <View style={styles.achievementSwordStage}>
+                  {(isActive || neonGucciActive) && (
+                    <View
+                      style={[
+                        styles.achievementSwordGlow,
+                        {
+                          backgroundColor: neonGucciActive ? 'rgba(85,236,255,0.10)' : 'rgba(214,173,84,0.12)',
+                          borderWidth: neonGucciActive ? 1 : 0,
+                          borderColor: neonGucciActive ? 'rgba(140,243,207,0.42)' : 'transparent',
+                          shadowColor: neonGucciActive ? NEON_GUCCI_DECOR.cyan : colors.gold,
+                        },
+                      ]}
+                    />
+                  )}
+                  <MaterialCommunityIcons
+                    name="sword"
+                    size={20}
+                    color={neonGucciActive ? NEON_GUCCI_DECOR.mint : IRON_SWORD_COLOR}
+                    style={neonGucciActive ? styles.neonAchievementSword : undefined}
+                    accessible={false}
+                  />
+                </View>
                 <View>
                   <Text
                     style={[styles.panelTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}
@@ -1027,6 +1050,22 @@ const styles = StyleSheet.create({
   panel: { width: '100%', maxWidth: 460, maxHeight: '88%', borderWidth: 1, borderRadius: 16, padding: 18 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   panelTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  achievementSwordStage: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  achievementSwordGlow: {
+    position: 'absolute',
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    shadowOpacity: 0.42,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  neonAchievementSword: {
+    textShadowColor: NEON_GUCCI_DECOR.cyan,
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 0 },
+  },
   panelTitle: { fontSize: 14, letterSpacing: 1 },
   panelSubtitle: { fontSize: 11, marginTop: 2 },
   achievementScroll: { flexShrink: 1 },

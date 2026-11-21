@@ -23,13 +23,19 @@ const analyzeFlagStorySource = readSource("../../mockup-sandbox/src/components/m
 const analyzeFlagStoryStyleSource = readSource("../../mockup-sandbox/src/components/mockups/analyze-selected-flag-story/_group.css");
 const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
-test("Achievements panel heading uses a gold trophy and keeps its accessible name", () => {
+test("Achievements panel heading uses a theme-aware sword and keeps its accessible name", () => {
   const heading = overlaySource.match(
-    /<MaterialCommunityIcons name="trophy-outline"[\s\S]*?<\/Text>/,
+    /<View style=\{styles\.panelTitleGroup\}>[\s\S]*?accessibilityLabel="Achievements"/,
   )?.[0];
 
-  assert.ok(heading, "the panel heading should use the trophy icon");
-  assert.match(heading, /size=\{20\} color=\{colors\.gold\} accessible=\{false\}/);
+  assert.ok(heading, "the panel heading should use the sword icon");
+  assert.match(heading, /name="sword"[\s\S]*?color=\{neonGucciActive \? NEON_GUCCI_DECOR\.mint : IRON_SWORD_COLOR\}/);
+  assert.match(overlaySource, /const IRON_SWORD_COLOR = '#C2CAD3'/);
+  assert.match(heading, /\(isActive \|\| neonGucciActive\) &&/,
+    "the default theme stays unglowed while Patriot and Neon Gucci render a glow");
+  assert.match(heading, /shadowColor: neonGucciActive \? NEON_GUCCI_DECOR\.cyan : colors\.gold/);
+  assert.match(overlaySource, /textShadowColor: NEON_GUCCI_DECOR\.cyan/,
+    "Neon Gucci colors the sword mint and adds a cyan edge glow");
   assert.match(heading, /accessibilityRole="header"/);
   assert.match(heading, /accessibilityLabel="Achievements"/);
 });
