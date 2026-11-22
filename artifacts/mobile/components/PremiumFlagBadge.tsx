@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { type ImageSourcePropType, StyleSheet, View } from 'react-native';
+import { type ImageResizeMode, type ImageSourcePropType, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   cancelAnimation,
@@ -33,7 +33,7 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
   const progress = useSharedValue(0);
   const width = size;
   const height = size * 0.625;
-  const borderWidth = Math.max(2, size * 0.045);
+  const borderWidth = Math.max(0.75, size * 0.012);
 
   const motionStyle = useAnimatedStyle(() => {
     const breeze = Math.sin(progress.value * Math.PI * 2);
@@ -79,25 +79,25 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
       {border.kind === 'rainbow' ? (
         <LinearGradient
           colors={border.colors}
-          style={[styles.borderFrame, { padding: borderWidth }]}
+          style={[styles.rainbowBorder, { padding: borderWidth }]}
         >
-          <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} />
+          <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} resizeMode="stretch" />
         </LinearGradient>
       ) : (
-        <View style={[styles.borderFrame, { backgroundColor: border.color, padding: borderWidth }]}>
-          <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} />
-        </View>
+        <FlagArtwork artwork={FLAG_ARTWORK[flag.artwork]} />
       )}
     </Animated.View>
   );
 }
 
-function FlagArtwork({ artwork }: { artwork: ImageSourcePropType }) {
-  return (
-    <View style={styles.flagSurface}>
-      <Animated.Image source={artwork} resizeMode="contain" style={styles.flagArtwork} />
-    </View>
-  );
+function FlagArtwork({
+  artwork,
+  resizeMode = 'contain',
+}: {
+  artwork: ImageSourcePropType;
+  resizeMode?: ImageResizeMode;
+}) {
+  return <Animated.Image source={artwork} resizeMode={resizeMode} style={styles.flagArtwork} />;
 }
 
 const styles = StyleSheet.create({
@@ -105,21 +105,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 8,
   },
-  borderFrame: {
+  rainbowBorder: {
     flex: 1,
     overflow: 'hidden',
-    borderRadius: 8,
-  },
-  flagSurface: {
-    flex: 1,
-    overflow: 'hidden',
-    borderRadius: 5,
-    backgroundColor: '#10151D',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 6,
   },
   flagArtwork: {
-    width: '92%',
-    height: '88%',
+    width: '100%',
+    height: '100%',
+    borderRadius: 6,
   },
 });

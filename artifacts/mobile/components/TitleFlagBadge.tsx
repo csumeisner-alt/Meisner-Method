@@ -41,6 +41,7 @@ const styles = StyleSheet.create({
   slot: {
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     pointerEvents: 'none',
   },
 });

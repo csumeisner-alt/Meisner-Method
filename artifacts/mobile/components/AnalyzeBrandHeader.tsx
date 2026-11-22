@@ -31,7 +31,9 @@ export function AnalyzeBrandHeader({
 
   return (
     <>
-      <MMLogo size={36} />
+      <View testID="analyze-brand-logo" style={styles.brandLogo}>
+        <MMLogo size={36} />
+      </View>
       <View style={styles.brandText}>
         <View
           testID="analyze-brand-title-row"
@@ -42,8 +44,6 @@ export function AnalyzeBrandHeader({
             testID="analyze-brand-title"
             numberOfLines={1}
             onLayout={(event) => onBrandNameLayout(event.nativeEvent.layout.width)}
-            adjustsFontSizeToFit
-            minimumFontScale={0.6}
             style={[
               styles.brandName,
               { color: headingColor, fontFamily: 'Inter_700Bold', letterSpacing: 0.8, lineHeight: 26 * fontScale },
@@ -85,10 +85,11 @@ export function AnalyzeBrandHeader({
 }
 
 const styles = StyleSheet.create({
+  brandLogo: { width: 36, height: 36, flexShrink: 0 },
   brandText: { flex: 1, minWidth: 0, position: 'relative' },
-  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'visible' },
+  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, overflow: 'visible' },
   titleFlagBadge: { flexShrink: 0 },
-  brandName: { fontSize: 21, lineHeight: 26, flexShrink: 1 },
+  brandName: { fontSize: 21, lineHeight: 26, flexShrink: 0 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },
   neonThemeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#55ecff' },

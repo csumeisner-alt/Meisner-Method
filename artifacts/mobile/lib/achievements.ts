@@ -81,18 +81,15 @@ export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[])
 }
 
 export function canShowAchievementTitleFlag({
-  isPatriotModeUnlocked,
   achievementsHydrated,
   flagSelectionReady,
   earnedIds,
 }: {
-  isPatriotModeUnlocked: boolean;
   achievementsHydrated: boolean;
   flagSelectionReady: boolean;
   earnedIds: readonly AchievementId[];
 }): boolean {
-  return isPatriotModeUnlocked
-    && achievementsHydrated
+  return achievementsHydrated
     && flagSelectionReady
     && hasCompletedAllAchievements(earnedIds);
 }

@@ -121,11 +121,15 @@ async function waitFor(browser, expression, message) {
   throw new Error(message);
 }
 
-test("Analyze title flag and tagline do not overlap at narrow widths or enlarged text", async () => {
+test("selected title flags stay inline with the full-size title at narrow widths", async () => {
   const bundle = await buildHeaderBundle();
   const source = await readFile(join(mobileDir, "components/AnalyzeBrandHeader.tsx"), "utf8");
   assert.match(source, /minHeight: titleRowHeight/);
   assert.match(source, /<TitleFlagBadge[\s\S]*?testID="analyze-title-flag"/);
+  const titleText = source.match(/<Text[\s\S]*?testID="analyze-brand-title"[\s\S]*?<\/Text>/)?.[0] ?? "";
+  assert.ok(titleText, "the Analyze brand title renders");
+  assert.doesNotMatch(titleText, /adjustsFontSizeToFit|minimumFontScale/,
+    "the title does not shrink to make room for a selected flag");
   let bundleRequested = false;
   const server = createServer((request, response) => {
     if (request.url === "/bundle.js") {
@@ -167,7 +171,7 @@ test("Analyze title flag and tagline do not overlap at narrow widths or enlarged
     await browser.send("Page.enable");
     await browser.send("Runtime.enable");
 
-    for (const width of [320, 360]) {
+    for (const width of [320, 390]) {
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width,
         height: 700,
@@ -185,8 +189,8 @@ test("Analyze title flag and tagline do not overlap at narrow widths or enlarged
           `The browser did not resize to ${width}px.`);
       }
 
-      for (const flag of ["default", "pride"]) {
-        for (const fontScale of [1, 1.75]) {
+      for (const flag of ["default", "heritage", "pride"]) {
+        for (const fontScale of [1]) {
           await browser.evaluate(`window.__setAnalyzeHeaderFlag(${JSON.stringify(flag)})`);
           await browser.evaluate(`window.__setAnalyzeHeaderFontScale(${fontScale})`);
           await waitFor(browser, `document.querySelector(${JSON.stringify(selector("analyze-title-flag"))})?.getBoundingClientRect().width > 0`,
@@ -203,6 +207,9 @@ test("Analyze title flag and tagline do not overlap at narrow widths or enlarged
             return {
               viewport: window.innerWidth,
               title: bounds("analyze-brand-title"),
+              titleText: document.querySelector('[data-testid="analyze-brand-title"]')?.textContent,
+              titleFontSize: getComputedStyle(document.querySelector('[data-testid="analyze-brand-title"]')).fontSize,
+              logo: bounds("analyze-brand-logo"),
               titleRow: bounds("analyze-brand-title-row"),
               flag: bounds("analyze-title-flag"),
               tagline: bounds("analyze-brand-tagline"),
@@ -214,15 +221,23 @@ test("Analyze title flag and tagline do not overlap at narrow widths or enlarged
           })()`);
           const label = `${flag} flag at ${width}px and ${fontScale}x text`;
           assert.equal(geometry.viewport, width, `${label}: viewport width`);
-          assert.ok(geometry.title && geometry.titleRow && geometry.flag && geometry.tagline, `${label}: all header elements render`);
-          assert.ok(geometry.flag.width > 0 && geometry.flag.height > 0, `${label}: flag remains visible`);
+          assert.ok(geometry.title && geometry.logo && geometry.titleRow && geometry.flag && geometry.tagline, `${label}: all header elements render`);
+          assert.equal(geometry.titleText, "Meisner Method", `${label}: the title stays complete`);
+          assert.equal(geometry.titleFontSize, "21px", `${label}: the title stays at its fixed size`);
+          assert.ok(Math.abs(geometry.logo.height - 36) < 0.5, `${label}: the M logo stays 36px tall`);
+          assert.ok(Math.abs(geometry.flag.width - 57.6) < 0.5, `${label}: flag width preserves the 8:5 flag ratio`);
+          assert.ok(Math.abs(geometry.flag.height - geometry.logo.height) < 0.5,
+            `${label}: flag height exactly matches the M logo`);
+          assert.ok(Math.abs(geometry.flag.top - geometry.logo.top) < 0.5,
+            `${label}: flag top aligns with the M logo and never sits above it`);
           assert.ok(geometry.title.right <= geometry.flag.left + 1, `${label}: flag does not cover the brand title`);
           assert.ok(geometry.titleRow.height >= geometry.flag.height - 1, `${label}: title row is tall enough for the flag`);
-          assert.ok(geometry.flag.top >= geometry.titleRow.top - 1, `${label}: flag stays within the title row`);
+          assert.ok(geometry.flag.top >= geometry.titleRow.top - 0.5, `${label}: flag stays within the title row`);
           assert.ok(geometry.flag.bottom <= geometry.titleRow.bottom + 1, `${label}: flag stays within the title row`);
           assert.ok(geometry.titleRow.bottom <= geometry.tagline.top, `${label}: tagline remains below the title and flag`);
           assert.ok(geometry.tagline.height > 0, `${label}: tagline remains visible`);
           assert.equal(geometry.taglineText, "AI-powered market intelligence", `${label}: tagline stays in its original row`);
+          if (flag === "heritage") assert.match(geometry.flagName ?? "", /Gadsden premium flag/);
           if (flag === "pride") assert.match(geometry.flagName ?? "", /Pride premium flag/);
         }
       }

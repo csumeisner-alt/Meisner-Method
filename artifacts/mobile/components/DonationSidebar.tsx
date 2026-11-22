@@ -28,6 +28,7 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { Confetti } from '@/components/Confetti';
+import { AchievementSwordIcon } from '@/components/AchievementSwordIcon';
 import { getSettingsPanelWidth, getSettingsScrollBottomPadding } from '@/lib/settingsPanelLayout';
 import {
   useAmericanMode,
@@ -889,7 +890,7 @@ export function DonationSidebar({
               accessibilityRole="button"
               accessibilityLabel={`Achievements, ${earnedIds.length} of ${ACHIEVEMENTS.length} earned`}
             >
-              <Feather name="award" size={20} color={colors.gold} />
+              <AchievementSwordIcon isPatriotModeActive={isActive} neonGucciActive={neonGucciActive} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                   Achievements

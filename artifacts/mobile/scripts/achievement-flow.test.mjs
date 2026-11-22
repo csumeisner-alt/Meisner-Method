@@ -18,6 +18,8 @@ const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 const overlaySource = readSource("../components/AchievementsOverlay.tsx");
+const achievementSwordSource = readSource("../components/AchievementSwordIcon.tsx");
+const colorTokensSource = readSource("../constants/colors.ts");
 const titleFlagBadgeSource = readSource("../components/TitleFlagBadge.tsx");
 const premiumFlagBadgeSource = readSource("../components/PremiumFlagBadge.tsx");
 const analyzeBrandHeaderSource = readSource("../components/AnalyzeBrandHeader.tsx");
@@ -31,15 +33,20 @@ test("Achievements panel heading uses a theme-aware sword and keeps its accessib
   )?.[0];
 
   assert.ok(heading, "the panel heading should use the sword icon");
-  assert.match(heading, /name="sword"[\s\S]*?color=\{neonGucciActive \? NEON_GUCCI_DECOR\.mint : IRON_SWORD_COLOR\}/);
-  assert.match(overlaySource, /const IRON_SWORD_COLOR = '#C2CAD3'/);
-  assert.match(heading, /\(isActive \|\| neonGucciActive\) &&/,
+  assert.match(heading, /<AchievementSwordIcon isPatriotModeActive=\{isActive\} neonGucciActive=\{neonGucciActive\} \/>/);
+  assert.match(achievementSwordSource, /name="sword"[\s\S]*?color=\{neonGucciActive \? NEON_GUCCI_DECOR\.mint : ACHIEVEMENT_SWORD_COLOR\}/);
+  assert.match(colorTokensSource, /export const ACHIEVEMENT_SWORD_COLOR = '#C2CAD3'/);
+  assert.match(achievementSwordSource, /isPatriotModeActive \|\| neonGucciActive/,
     "the default theme stays unglowed while Patriot and Neon Gucci render a glow");
-  assert.match(heading, /shadowColor: neonGucciActive \? NEON_GUCCI_DECOR\.cyan : colors\.gold/);
-  assert.match(overlaySource, /textShadowColor: NEON_GUCCI_DECOR\.cyan/,
+  assert.match(achievementSwordSource, /shadowColor: neonGucciActive \? NEON_GUCCI_DECOR\.cyan : colors\.gold/);
+  assert.match(achievementSwordSource, /textShadowColor: NEON_GUCCI_DECOR\.cyan/,
     "Neon Gucci colors the sword mint and adds a cyan edge glow");
   assert.match(heading, /accessibilityRole="header"/);
   assert.match(heading, /accessibilityLabel="Achievements"/);
+  const settingsAchievementRow = settingsSource.match(/accessibilityLabel=\{`Achievements,[\s\S]*?<\/TouchableOpacity>/)?.[0] ?? "";
+  assert.match(settingsAchievementRow, /<AchievementSwordIcon isPatriotModeActive=\{isActive\} neonGucciActive=\{neonGucciActive\} \/>/,
+    "the Settings collection row reuses the same theme-aware sword");
+  assert.doesNotMatch(settingsAchievementRow, /name="award"/);
 });
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
@@ -131,45 +138,75 @@ test("Analyze title stays complete and achievement flag waits for all achievemen
   assert.ok(headerSource, "the Analyze header and following search section should be present");
   assert.match(headerSource, /<AnalyzeBrandHeader[\s\S]*?flagId=\{selectedPremiumFlagId\}[\s\S]*?unlocked=\{titleFlagUnlocked\}[\s\S]*?flagSize=\{titleFlagSize\}/);
   assert.match(homeSource, /const titleFlagUnlocked = canShowAchievementTitleFlag\(\{/);
-  assert.match(homeSource, /isPatriotModeUnlocked: isUnlocked/);
-  assert.match(homeSource, /useAmericanMode\(\)[\s\S]*?isUnlocked/);
+  const titleFlagGate = homeSource.match(/const titleFlagUnlocked = canShowAchievementTitleFlag\(\{[\s\S]*?\}\);/)?.[0] ?? "";
+  assert.doesNotMatch(titleFlagGate, /isPatriotModeUnlocked/,
+    "the selected title flag appears after all achievements without a separate Patriot Mode gate");
+  assert.match(homeSource, /useAmericanMode\(\)/);
   assert.match(analyzeBrandHeaderSource, /Meisner Method/);
   assert.match(analyzeBrandHeaderSource, /AI-powered market intelligence/);
-  assert.match(analyzeBrandHeaderSource, /numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.6\}/);
+  const analyzeTitleText = analyzeBrandHeaderSource.match(/<Text[\s\S]*?testID="analyze-brand-title"[\s\S]*?<\/Text>/)?.[0] ?? "";
+  assert.ok(analyzeTitleText, "the Analyze brand title should be present");
+  assert.doesNotMatch(analyzeTitleText, /adjustsFontSizeToFit|minimumFontScale/,
+    "the brand title must never shrink to make room for the flag");
   assert.match(analyzeBrandHeaderSource, /numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.7\}[\s\S]*?AI-powered market intelligence/);
   assert.match(analyzeBrandHeaderSource, /<TitleFlagBadge[\s\S]*?flagId=\{flagId\}[\s\S]*?unlocked=\{unlocked\}/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-title-row"[\s\S]*?onLayout=\{\(event\) => onTitleRowLayout\(event\.nativeEvent\.layout\.width\)\}/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-title"[\s\S]*?onLayout=\{\(event\) => onBrandNameLayout\(event\.nativeEvent\.layout\.width\)\}/);
   assert.match(analyzeBrandHeaderSource, /minHeight: titleRowHeight/);
   assert.match(analyzeBrandHeaderSource, /const titleRowHeight = Math\.max\(26 \* fontScale, unlocked \? flagHeight : 0\)/);
-  assert.match(analyzeBrandHeaderSource, /brandTitleRow: \{ flexDirection: 'row', alignItems: 'center', gap: 6/);
+  assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-logo" style=\{styles\.brandLogo\}/);
+  assert.match(analyzeBrandHeaderSource, /brandLogo: \{ width: 36, height: 36, flexShrink: 0 \}/);
+  assert.match(analyzeBrandHeaderSource, /brandTitleRow: \{ flexDirection: 'row', alignItems: 'center', gap: 4/);
   assert.match(analyzeBrandHeaderSource, /titleFlagBadge: \{ flexShrink: 0 \}/);
+  assert.match(analyzeBrandHeaderSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 0 \}/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-tagline"/);
   assert.match(analyzeBrandHeaderSource, /<MMLogo size=\{36\} \/>/);
   assert.match(titleFlagBadgeSource, /if \(!unlocked\) return null/);
   assert.match(titleFlagBadgeSource, /if \(flagId !== DEFAULT_FLAG_ID\)/);
   assert.match(titleFlagBadgeSource, /accessibilityLabel="Default U\.S\. flag"/);
-  assert.match(homeSource, /const titleFlagSize = Math\.max\(32, Math\.min\(52, Math\.floor\(brandTitleRowWidth - brandNameWidth - 6\)\)\)/);
+  assert.match(titleFlagBadgeSource, /overflow: 'hidden'/);
+  assert.match(homeSource, /const ANALYZE_TITLE_FLAG_SIZE = ANALYZE_BRAND_LOGO_SIZE \/ ANALYZE_TITLE_FLAG_ASPECT_RATIO/);
+  assert.match(homeSource, /const titleFlagSize = availableTitleFlagWidth >= ANALYZE_TITLE_FLAG_SIZE \? ANALYZE_TITLE_FLAG_SIZE : 0/);
   assert.match(headerSource, /onTitleRowLayout=\{\(width\) => \{[\s\S]*?setBrandTitleRowWidth/);
   assert.match(headerSource, /onBrandNameLayout=\{\(width\) => \{[\s\S]*?setBrandNameWidth/);
   assert.match(homeSource, /header: \{ paddingHorizontal: 8/);
-  assert.match(homeSource, /brandRow: \{ flexDirection: 'row', alignItems: 'center', gap: 4 \}/);
+  assert.match(homeSource, /compactHeader = screenWidth <= 340/);
+  assert.match(homeSource, /paddingHorizontal: compactHeader \? 2 : 8/);
+  assert.match(homeSource, /brandRow: \{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 \}/);
   assert.doesNotMatch(headerSource, /hasCompletedAllAchievements/);
   assert.doesNotMatch(analyzeBrandHeaderSource, /allowFontScaling=\{false\}/);
 
   assert.match(analyzeFlagStorySource, /analyze-title-flag--heritage/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?display: flex;[\s\S]*?gap: 6px;[\s\S]*?height: 30px/);
+  assert.match(analyzeFlagStorySource, /aria-label="Gadsden title flag"/);
+  assert.doesNotMatch(analyzeFlagStorySource, /analyze-title-flag-check/);
+  for (const marker of ["MARKET COLD", "−3.56% LAST SESSION", "WATCHLIST (5)", "TRENDING (10)", "NVDA", "ANT", "INTC", "IREN"]) {
+    assert.ok(analyzeFlagStorySource.includes(marker),
+      `the story preview includes ${marker} from the populated Analyze screen`);
+  }
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?display: flex;[\s\S]*?gap: 4px;[\s\S]*?height: 36px/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-brand-title-row \{[\s\S]*?\}/)?.[0] ?? '', /padding-right/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title \{[\s\S]*?flex: 0 0 auto;[\s\S]*?font-size: 21px/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-brand-title \{[\s\S]*?\}/)?.[0] ?? '', /clamp|ellipsis|overflow: hidden/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?white-space: nowrap/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?flex: 1 1 auto;[\s\S]*?max-width: 52px;[\s\S]*?height: 30px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?width: 57\.6px;[\s\S]*?height: 36px;[\s\S]*?overflow: hidden/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-title-flag-position \{[\s\S]*?\}/)?.[0] ?? '', /position: absolute|right: -8px/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride[\s\S]*?linear-gradient/);
+  assert.doesNotMatch(analyzeFlagStoryStyleSource, /\.analyze-title-flag--heritage\s*\{/,
+    "the selected Gadsden artwork has no decorative border");
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride \{[\s\S]*?padding: 1px;[\s\S]*?linear-gradient/,
+    "the Pride border is thin and directly surrounds the artwork");
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 2px 0 0/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title \{[\s\S]*?color: #e8e8e8/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-search \{[\s\S]*?border: 1px solid #484848;[\s\S]*?background: #0f0f0f/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-market-frame \{[\s\S]*?border: 1\.6px solid #d6ad54/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-market-headline \{[\s\S]*?color: #8edfff/);
+  assert.match(analyzeFlagStoryStyleSource, /@media \(max-width: 340px\)[\s\S]*?analyze-header-action--info \{ display: none; \}/);
 
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\}/);
+  assert.match(achievementsContextSource, /setStoredFlagSelection\(id\)/,
+    "selecting a gallery flag updates the context immediately");
+  assert.match(achievementsContextSource, /selectedPremiumFlagId,/,
+    "the selected flag is exposed to the Analyze header");
 });
 
 test("title flags lead completed achievements and fit the scrollable narrow-phone panel", () => {
@@ -215,34 +252,32 @@ test("title flags lead completed achievements and fit the scrollable narrow-phon
     "the two-column title-flag choices fit at a 320px phone width");
 });
 
-test("premium title flags stay animated with distinct per-flag borders", () => {
+test("premium title flags stay animated and only Pride keeps a border", () => {
   assert.match(premiumFlagBadgeSource, /const motionStyle = useAnimatedStyle/);
   assert.match(premiumFlagBadgeSource, /duration:\s*5_600/);
   assert.match(premiumFlagBadgeSource, /styles\.frame,[\s\S]*?motionStyle/,
     "the cloth motion should remain applied to the flag badge");
   assert.match(premiumFlagBadgeSource, /border\.kind === 'rainbow'/,
     "Pride uses a rainbow border");
-  assert.match(premiumFlagBadgeSource, /backgroundColor: border\.color/,
-    "each other premium flag uses its own border color");
-  const solidColors = Object.values(PREMIUM_FLAG_BORDER_STYLES)
-    .filter((border) => border.kind === "solid")
-    .map((border) => border.color);
-  assert.equal(solidColors.length, 5);
-  assert.equal(new Set(solidColors).size, solidColors.length,
-    "every solid premium flag border has a unique color");
+  for (const id of ["heritage", "liberty", "founders", "midnight", "southern-cross"]) {
+    assert.equal(PREMIUM_FLAG_BORDER_STYLES[id].kind, "none",
+      `${id} has no decorative border`);
+  }
   assert.equal(PREMIUM_FLAG_BORDER_STYLES.eagle.kind, "rainbow");
   assert.equal(PREMIUM_FLAG_BORDER_STYLES.default, undefined,
     "the default U.S. flag has no custom border");
+  assert.match(premiumFlagBadgeSource, /Math\.max\(0\.75, size \* 0\.012\)/,
+    "Pride's rainbow edge is a slim line");
+  assert.match(premiumFlagBadgeSource, /resizeMode="stretch"/,
+    "Pride artwork reaches the inner edge of its border without letterboxing");
 });
 
 test("premium flag artwork preserves its full image inside the animated frame", () => {
   const badgeSource = readSource("../components/PremiumFlagBadge.tsx");
-  assert.match(badgeSource, /resizeMode="contain"/,
+  assert.match(badgeSource, /resizeMode = 'contain'/,
     "custom flag artwork should not be cropped to fill the frame");
-  assert.match(badgeSource, /flagArtwork:\s*\{\s*width:\s*'92%',\s*height:\s*'88%'/,
-    "the animated image should leave enough room for motion inside the clipping frame");
-  assert.match(badgeSource, /alignItems:\s*'center',\s*justifyContent:\s*'center'/,
-    "the full flag artwork should remain centered within its frame");
+  assert.match(badgeSource, /flagArtwork: \{\s*width: '100%',\s*height: '100%'/,
+    "flag artwork fills the borderless slot or Pride frame edge to edge");
 });
 
 test("premium flag artwork stays complete in consistent gallery previews", () => {
@@ -254,7 +289,7 @@ test("premium flag artwork stays complete in consistent gallery previews", () =>
     );
   }
 
-  assert.match(premiumFlagBadgeSource, /resizeMode="contain"/,
+  assert.match(premiumFlagBadgeSource, /resizeMode = 'contain'/,
     "the badge preserves each artwork's natural proportions");
   assert.doesNotMatch(premiumFlagBadgeSource, /scale:\s*1\.045/,
     "the flag is not persistently enlarged past its frame");

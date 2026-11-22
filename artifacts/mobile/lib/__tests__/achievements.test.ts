@@ -248,16 +248,14 @@ test('five achievement flags, default flag, and quote-gated Pride are validated'
   }
 });
 
-test('achievement title flag waits for Patriot unlock and full achievement completion', () => {
+test('achievement title flag appears after full completion and selection hydration', () => {
   const earnedIds = ACHIEVEMENTS.map(({ id }) => id);
   const base = {
-    isPatriotModeUnlocked: true,
     achievementsHydrated: true,
     flagSelectionReady: true,
     earnedIds,
   };
 
-  assert.equal(canShowAchievementTitleFlag({ ...base, isPatriotModeUnlocked: false }), false);
   assert.equal(canShowAchievementTitleFlag({ ...base, earnedIds: earnedIds.slice(0, -1) }), false);
   assert.equal(canShowAchievementTitleFlag({ ...base, achievementsHydrated: false }), false);
   assert.equal(canShowAchievementTitleFlag({ ...base, flagSelectionReady: false }), false);

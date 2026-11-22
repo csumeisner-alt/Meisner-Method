@@ -9,11 +9,11 @@ Achievements should be one-time cosmetic rewards with brief, dismissible feedbac
 
 **How to apply:** when adding milestones, keep the catalog reviewable in Settings and verify the screen event triggers the achievement even when reward progress or remote services fail.
 
-The achievement title flag is separate from Patriot Mode's own flag. Show no achievement title flag until Patriot Mode is unlocked and all 15 achievements are complete; then show the default U.S. flag or the user's saved premium design. Pride additionally requires the shared 30-view Biden quote threshold used by the Brew Bank.
+Show the selected achievement title flag once all 15 achievements are complete and selection data is ready; do not require Patriot Mode to be unlocked. If Patriot Mode is unlocked, the selected design replaces its default flag in the same header slot. Pride still requires the shared 30-view Biden quote threshold used by the Brew Bank.
 
-**Why:** the user clarified that the Patriot Mode flag and achievement title flag are separate; the achievement default is earned only after full achievement completion and must not appear before Patriot Mode unlocks.
+**Why:** the user clarified that a selected flag should appear immediately, and that it replaces the Patriot Mode default when that mode is unlocked.
 
-**How to apply:** gate the achievement title badge on both Patriot Mode unlock and all 15 achievements, preserve valid saved selections, and read the Brew Bank's persisted quote-view count and shared 30-view threshold for Pride; do not create a parallel Pride counter.
+**How to apply:** gate the header flag on completed achievements and hydrated selection data, preserve valid saved selections, and read the Brew Bank's persisted quote-view count and shared 30-view threshold for Pride; do not create a parallel Pride counter.
 
 Keep the Analyze “Meisner Method” title at its full size. When an achievement flag is unlocked, place it inline after the title and let it use the remaining header space.
 

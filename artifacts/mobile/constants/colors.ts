@@ -134,4 +134,6 @@ export const NEON_GUCCI_DECOR = {
   ink: '#14100f',
 } as const;
 
+export const ACHIEVEMENT_SWORD_COLOR = '#C2CAD3';
+
 export default colors;
