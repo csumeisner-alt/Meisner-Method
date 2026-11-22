@@ -22,6 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getEventArenaLeaderboard } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { EventArenaOverview } from '@/components/EventArenaOverview';
@@ -38,6 +39,7 @@ import {
 import {
   getPaperChallengeMilestones,
   getPaperChallengeArchiveChartWidth,
+  getCurrentUserEventArenaRank,
   getPaperChallengeWindow,
   isMountainChampionshipTransferLocked,
   isPaperChallengeConfiguration,
@@ -47,6 +49,7 @@ import {
   sortPaperChallengeHistory,
   ensurePaperChallengeAccount,
   updatePaperChallengeStore,
+  updatePaperChallengeArchiveRank,
   withdrawUpcomingPaperChallenge,
   type PaperChallengeEnrollment,
   type PaperChallengeConfiguration,
@@ -91,6 +94,7 @@ import { didNetworkReconnect, isNetworkOffline } from '@/lib/networkConnectivity
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const EVENT_ARENA_CASH_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const EVENT_ARENA_RANK_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_ARENA_CASH_REFRESH_INTERVAL_MS = 120_000;
 const EVENT_ARENA_BACKGROUND_REFRESH_INTERVAL_MS = 60_000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -371,6 +375,54 @@ function EventArenaScreenContent() {
     [store.history, sortMode],
   );
   const selectedPastEvent = store.history.find((event) => event.eventId === selectedPastEventId) ?? null;
+
+  useEffect(() => {
+    const event = selectedPastEvent;
+    const nowMs = Date.now();
+    if (
+      section !== 'past'
+      || storeState !== 'ready'
+      || !event
+      || event.finalRank != null
+      || event.leaderboardOptedIn !== true
+      || event.eventEndAtMs > nowMs
+      || nowMs - event.eventEndAtMs >= EVENT_ARENA_RANK_RETENTION_MS
+    ) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+        const leaderboard = await getEventArenaLeaderboard(event.eventId, {
+          headers: { 'X-Event-Arena-Installation-Id': installationId },
+        });
+        const finalRank = getCurrentUserEventArenaRank(leaderboard.entries);
+        if (!finalRank || cancelled) return;
+
+        const updated = await updatePaperChallengeStore(
+          (current) => updatePaperChallengeArchiveRank(current, event.eventId, finalRank),
+          {
+            getItem: (key) => AsyncStorage.getItem(key),
+            setItem: (key, value) => AsyncStorage.setItem(key, value),
+          },
+        );
+        if (cancelled) return;
+        setStore(updated);
+        void syncPairedEventArenaState();
+      } catch {
+        // Keep the archived result readable and allow another refresh next time it is opened.
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [
+    section,
+    selectedPastEvent?.eventEndAtMs,
+    selectedPastEvent?.eventId,
+    selectedPastEvent?.finalRank,
+    selectedPastEvent?.leaderboardOptedIn,
+    storeState,
+  ]);
 
   const readStore = useCallback(async () => {
     if (storeReadInFlightRef.current) return;

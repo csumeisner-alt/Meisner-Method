@@ -743,12 +743,6 @@ export function AchievementsOverlay() {
             >
               {hasCompletedAllAchievements(earnedIds) && (
                 <View style={[styles.flagRewardCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
-                  <View style={styles.flagRewardHeading}>
-                    <Feather name="award" size={17} color={colors.gold} />
-                    <Text style={[styles.flagRewardEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                      TITLE FLAG
-                    </Text>
-                  </View>
                   <>
                     <Text
                       ref={titleFlagGalleryHeadingRef}
@@ -1038,8 +1032,6 @@ const styles = StyleSheet.create({
   achievementTitle: { fontSize: 12 },
   achievementDescription: { fontSize: 10, lineHeight: 14 },
   flagRewardCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 8, gap: 7 },
-  flagRewardHeading: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  flagRewardEyebrow: { fontSize: 10, letterSpacing: 0.8 },
   flagRewardTitle: { fontSize: 13, lineHeight: 18 },
   flagRewardDescription: { fontSize: 11, lineHeight: 16 },
   flagSaveNotice: { fontSize: 11, lineHeight: 16 },

@@ -84,7 +84,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
   assert.match(overlaySource, /showsVerticalScrollIndicator=\{false\}/);
-  assert.match(overlaySource, /TITLE FLAG/);
+  assert.doesNotMatch(overlaySource, /TITLE FLAG/);
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /DEFAULT_FLAG_ID/);
   assert.match(overlaySource, /ACHIEVEMENT_UNLOCKED_FLAGS\.map/);
@@ -112,6 +112,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /if \(!visible\) \{\s*progress\.setValue\(0\);\s*return;\s*\}[\s\S]*?duration: 1_850/);
   assert.match(overlaySource, /15 of 15 complete/);
   assert.match(overlaySource, /Choose your title flag/);
+  assert.match(overlaySource, /color: colors\.foreground, fontFamily: 'Inter_700Bold'/);
   assert.match(overlaySource, /duration: 1_850/);
   assert.match(overlaySource, /staggerStart = 0\.06/);
   assert.match(overlaySource, /final_seal_unlock\.mp3/);

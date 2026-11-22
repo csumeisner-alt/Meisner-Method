@@ -1268,6 +1268,20 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.doesNotMatch(eventHeroStyle, /padding/);
 });
 
+test("regular opted-in Event Arena results save and backfill their leaderboard rank", () => {
+  const finalizationStart = screen.indexOf("let finalRank: number | undefined;");
+  const finalizationEnd = screen.indexOf("const eventEquityHistory", finalizationStart);
+  const finalization = screen.slice(finalizationStart, finalizationEnd);
+  assert.ok(finalizationStart >= 0 && finalizationEnd > finalizationStart);
+  assert.match(finalization, /if \(enrollment\.leaderboardOptedIn\)/);
+  assert.match(finalization, /getEventArenaLeaderboard\(enrollment\.eventId/);
+  assert.match(finalization, /getCurrentUserEventArenaRank\(leaderboard\.entries\)/);
+  assert.doesNotMatch(finalization, /eventType === 'lightning-round' && enrollment\.leaderboardOptedIn/);
+  assert.match(eventArena, /selectedPastEvent\?\.leaderboardOptedIn/);
+  assert.match(eventArena, /getEventArenaLeaderboard\(event\.eventId/);
+  assert.match(eventArena, /updatePaperChallengeArchiveRank\(current, event\.eventId, finalRank\)/);
+});
+
 test("position and order cards are compact without removing their essential values or actions", () => {
   const positionCardStyleStart = paperLayout.indexOf("  posCard: {");
   const positionCardStyleEnd = paperLayout.indexOf("\n  posCardExpanded:", positionCardStyleStart);

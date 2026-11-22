@@ -178,6 +178,7 @@ import {
   ensurePaperChallengeAccount,
   getPaperChallengeMilestones,
   getMissingPaperChallengeQuoteSymbols,
+  getCurrentUserEventArenaRank,
   getPaperChallengeWindow,
   finalizePaperChallengeStore,
   LIGHTNING_ROUND_STARTING_BALANCE,
@@ -206,6 +207,7 @@ import {
   getSearchStockSymbolsQueryKey,
   useSearchHeatMapInstruments,
   useSearchStockSymbols,
+  getEventArenaLeaderboard,
   createDeviceTransfer,
   redeemDeviceTransfer,
   completeDeviceTransfer,
@@ -2244,16 +2246,18 @@ export default function PaperScreen() {
       if (startEquity === null) return;
       const completedAtMs = Date.now();
       let finalRank: number | undefined;
-      if (enrollment.eventType === 'lightning-round' && enrollment.leaderboardOptedIn) {
+      if (enrollment.leaderboardOptedIn) {
         const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
-        const response = await fetch(
-          `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard`,
-          { headers: { 'X-Event-Arena-Installation-Id': installationId } },
-        );
-        if (!response.ok) throw new Error('The final Lightning Round ranking is unavailable.');
-        const payload = await response.json() as { entries?: Array<{ rank?: number; isCurrentUser?: boolean }> };
-        const rankEntry = payload.entries?.find((entry) => entry.isCurrentUser && Number.isInteger(entry.rank) && (entry.rank ?? 0) > 0);
-        finalRank = rankEntry?.rank;
+        try {
+          const leaderboard = await getEventArenaLeaderboard(enrollment.eventId, {
+            headers: { 'X-Event-Arena-Installation-Id': installationId },
+          });
+          finalRank = getCurrentUserEventArenaRank(leaderboard.entries);
+        } catch {
+          throw new Error(enrollment.eventType === 'lightning-round'
+            ? 'The final Lightning Round ranking is unavailable.'
+            : 'The final Event Arena ranking is unavailable.');
+        }
       }
       const eventEquityHistory = isLightningRound
         ? []

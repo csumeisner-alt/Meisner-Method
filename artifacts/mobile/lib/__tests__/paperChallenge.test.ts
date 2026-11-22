@@ -20,6 +20,7 @@ import {
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
   getPaperEventLiveNoticeDismissalKey,
+  getCurrentUserEventArenaRank,
   getPaperChallengeWindow,
   getLightningRoundWindow,
   findPreparedLightningRoundWindow,
@@ -36,6 +37,7 @@ import {
   type PaperChallengeSummary,
   type PaperChallengeAccountState,
   finalizePaperChallengeStore,
+  updatePaperChallengeArchiveRank,
   normalizePaperChallengeStore,
   getMissingPaperChallengeQuoteSymbols,
   PAPER_CHALLENGE_STORAGE_KEY,
@@ -938,6 +940,45 @@ test('legacy event records keep missing archive details unavailable', () => {
   }).enrollment;
   assert.equal(legacyRedEnrollment?.eventType, 'event-arena');
   assert.equal(legacyRedEnrollment?.rankingDirection, 'highest-return');
+});
+
+test('regular event leaderboard rank is selected for the current user and saved to its archive', () => {
+  assert.equal(getCurrentUserEventArenaRank([{ rank: 1, isCurrentUser: true }]), 1);
+  const rank = getCurrentUserEventArenaRank([
+    { rank: 1, isCurrentUser: false },
+    { rank: 2, isCurrentUser: true },
+  ]);
+  assert.equal(rank, 2);
+  assert.equal(getCurrentUserEventArenaRank([{ rank: 0, isCurrentUser: true }]), undefined);
+  assert.equal(getCurrentUserEventArenaRank([{ rank: 1, isCurrentUser: false }]), undefined);
+
+  const summary = {
+    eventId: '2026-11-16',
+    eventStartAtMs: 1,
+    eventEndAtMs: 2,
+    joinedAtMs: 1,
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+    endEquity: 99_000,
+    netProfit: -1_000,
+    returnPercent: -1,
+    tradeCount: 1,
+    buyCount: 1,
+    sellCount: 0,
+    symbolsTraded: ['ABC'],
+    realizedPnL: 0,
+    completedAtMs: 3,
+    leaderboardOptedIn: true,
+  } satisfies PaperChallengeSummary;
+  const otherSummary = { ...summary, eventId: '2026-11-23' };
+  const store: PaperChallengeStore = { enrollment: null, history: [summary, otherSummary] };
+  const updated = updatePaperChallengeArchiveRank(store, summary.eventId, 1);
+
+  assert.equal(updated.history[0].finalRank, 1);
+  assert.equal(updated.history[1].finalRank, undefined);
+  assert.equal(updatePaperChallengeArchiveRank(updated, summary.eventId, 2), updated);
+  assert.equal(updatePaperChallengeArchiveRank(store, summary.eventId, 0), store);
 });
 
 test('event artwork survives enrollment normalization, summary creation, and archive finalization', () => {

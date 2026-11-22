@@ -621,6 +621,33 @@ export function getMissingPaperChallengeQuoteSymbols(
     .map((position) => position.symbol))];
 }
 
+export function getCurrentUserEventArenaRank(
+  entries: ReadonlyArray<{ rank?: number; isCurrentUser?: boolean }> | undefined,
+): number | undefined {
+  return entries?.find((entry) =>
+    entry.isCurrentUser
+    && Number.isInteger(entry.rank)
+    && (entry.rank ?? 0) > 0,
+  )?.rank;
+}
+
+export function updatePaperChallengeArchiveRank(
+  store: PaperChallengeStore,
+  eventId: string,
+  finalRank: number,
+): PaperChallengeStore {
+  if (!Number.isInteger(finalRank) || finalRank <= 0) return store;
+  const existing = store.history.find((event) => event.eventId === eventId);
+  if (!existing || (Number.isInteger(existing.finalRank) && (existing.finalRank ?? 0) > 0)) return store;
+
+  return {
+    ...store,
+    history: store.history.map((event) =>
+      event.eventId === eventId ? { ...event, finalRank } : event,
+    ),
+  };
+}
+
 export function finalizePaperChallengeStore(
   store: PaperChallengeStore,
   summary: PaperChallengeSummary,
