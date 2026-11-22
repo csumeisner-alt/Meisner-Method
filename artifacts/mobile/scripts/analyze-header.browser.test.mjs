@@ -121,11 +121,13 @@ async function waitFor(browser, expression, message) {
   throw new Error(message);
 }
 
-test("selected title flags stay inline with the full-size title at narrow widths", async () => {
+test("selected title flags use the empty header space without moving existing content", async () => {
   const bundle = await buildHeaderBundle();
   const source = await readFile(join(mobileDir, "components/AnalyzeBrandHeader.tsx"), "utf8");
   assert.match(source, /minHeight: titleRowHeight/);
   assert.match(source, /<TitleFlagBadge[\s\S]*?testID="analyze-title-flag"/);
+  assert.match(source, /titleFlagOverlay:[\s\S]*?position: 'absolute'/);
+  assert.match(source, /left: brandNameWidth \+ 6/);
   const titleText = source.match(/<Text[\s\S]*?testID="analyze-brand-title"[\s\S]*?<\/Text>/)?.[0] ?? "";
   assert.ok(titleText, "the Analyze brand title renders");
   assert.doesNotMatch(titleText, /adjustsFontSizeToFit|minimumFontScale/,
@@ -171,7 +173,33 @@ test("selected title flags stay inline with the full-size title at narrow widths
     await browser.send("Page.enable");
     await browser.send("Runtime.enable");
 
-    for (const width of [320, 390]) {
+    const measureHeader = () => browser.evaluate(`(() => {
+      const bounds = (id) => {
+        const node = document.querySelector('[data-testid="' + id + '"]');
+        if (!node) return null;
+        const rect = node.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      const flagNode = document.querySelector(${JSON.stringify(selector("analyze-title-flag"))});
+      return {
+        viewport: window.innerWidth,
+        title: bounds("analyze-brand-title"),
+        titleText: document.querySelector('[data-testid="analyze-brand-title"]')?.textContent,
+        titleFontSize: getComputedStyle(document.querySelector('[data-testid="analyze-brand-title"]')).fontSize,
+        logo: bounds("analyze-brand-logo"),
+        brandCopy: bounds("analyze-brand-copy"),
+        titleRow: bounds("analyze-brand-title-row"),
+        flag: bounds("analyze-title-flag"),
+        tagline: bounds("analyze-brand-tagline"),
+        info: bounds("analyze-info"),
+        flagName: flagNode?.getAttribute("aria-label")
+          ?? flagNode?.querySelector("[aria-label]")?.getAttribute("aria-label")
+          ?? flagNode?.textContent,
+        taglineText: document.querySelector(${JSON.stringify(selector("analyze-brand-tagline"))})?.textContent,
+      };
+    })()`);
+
+    for (const width of [320, 360, 390]) {
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width,
         height: 700,
@@ -189,56 +217,63 @@ test("selected title flags stay inline with the full-size title at narrow widths
           `The browser did not resize to ${width}px.`);
       }
 
+      await browser.evaluate(`window.__setAnalyzeHeaderUnlocked(false)`);
+      await browser.evaluate(`window.__setAnalyzeHeaderFlag("default")`);
+      await browser.evaluate(`window.__setAnalyzeHeaderFontScale(1)`);
+      await delay(50);
+      const baseline = await measureHeader();
+      const hasRoom = baseline.brandCopy.width - baseline.title.width - 6 >= 36 / 0.625;
+
       for (const flag of ["default", "heritage", "pride"]) {
-        for (const fontScale of [1]) {
-          await browser.evaluate(`window.__setAnalyzeHeaderFlag(${JSON.stringify(flag)})`);
-          await browser.evaluate(`window.__setAnalyzeHeaderFontScale(${fontScale})`);
+        await browser.evaluate(`window.__setAnalyzeHeaderFlag(${JSON.stringify(flag)})`);
+        await browser.evaluate(`window.__setAnalyzeHeaderUnlocked(true)`);
+        await browser.evaluate(`window.__setAnalyzeHeaderFontScale(1)`);
+        if (hasRoom) {
           await waitFor(browser, `document.querySelector(${JSON.stringify(selector("analyze-title-flag"))})?.getBoundingClientRect().width > 0`,
-            `The ${flag} flag did not render at ${width}px and ${fontScale}x text.`);
-          await delay(30);
-          const geometry = await browser.evaluate(`(() => {
-            const bounds = (id) => {
-              const node = document.querySelector('[data-testid="' + id + '"]');
-              if (!node) return null;
-              const rect = node.getBoundingClientRect();
-              return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
-            };
-            const flagNode = document.querySelector(${JSON.stringify(selector("analyze-title-flag"))});
-            return {
-              viewport: window.innerWidth,
-              title: bounds("analyze-brand-title"),
-              titleText: document.querySelector('[data-testid="analyze-brand-title"]')?.textContent,
-              titleFontSize: getComputedStyle(document.querySelector('[data-testid="analyze-brand-title"]')).fontSize,
-              logo: bounds("analyze-brand-logo"),
-              titleRow: bounds("analyze-brand-title-row"),
-              flag: bounds("analyze-title-flag"),
-              tagline: bounds("analyze-brand-tagline"),
-              flagName: flagNode?.getAttribute("aria-label")
-                ?? flagNode?.querySelector("[aria-label]")?.getAttribute("aria-label")
-                ?? flagNode?.textContent,
-              taglineText: document.querySelector(${JSON.stringify(selector("analyze-brand-tagline"))})?.textContent,
-            };
-          })()`);
-          const label = `${flag} flag at ${width}px and ${fontScale}x text`;
-          assert.equal(geometry.viewport, width, `${label}: viewport width`);
-          assert.ok(geometry.title && geometry.logo && geometry.titleRow && geometry.flag && geometry.tagline, `${label}: all header elements render`);
-          assert.equal(geometry.titleText, "Meisner Method", `${label}: the title stays complete`);
-          assert.equal(geometry.titleFontSize, "21px", `${label}: the title stays at its fixed size`);
+            `The ${flag} flag did not render in the available space at ${width}px.`);
+        } else {
+          await waitFor(browser, `!document.querySelector(${JSON.stringify(selector("analyze-title-flag"))})`,
+            `The ${flag} flag must not overlap existing header content at ${width}px.`);
+        }
+
+        await delay(30);
+        const geometry = await measureHeader();
+        const label = `${flag} flag at ${width}px`;
+        assert.equal(geometry.viewport, width, `${label}: viewport width`);
+        assert.ok(geometry.title && geometry.logo && geometry.brandCopy && geometry.titleRow && geometry.tagline && geometry.info,
+          `${label}: existing header elements render`);
+        assert.equal(geometry.titleText, "Meisner Method", `${label}: the title stays unchanged`);
+        assert.equal(geometry.titleFontSize, baseline.titleFontSize, `${label}: the title stays at its original size`);
+        assert.equal(geometry.titleRow.height, baseline.titleRow.height, `${label}: title line height stays unchanged`);
+        assert.equal(geometry.taglineText, baseline.taglineText, `${label}: tagline copy stays unchanged`);
+        for (const key of ["left", "right", "top", "bottom", "width", "height"]) {
+          assert.ok(Math.abs(geometry.title[key] - baseline.title[key]) < 0.5,
+            `${label}: title ${key} does not move`);
+          assert.ok(Math.abs(geometry.tagline[key] - baseline.tagline[key]) < 0.5,
+            `${label}: tagline ${key} does not move`);
+          assert.ok(Math.abs(geometry.logo[key] - baseline.logo[key]) < 0.5,
+            `${label}: M logo ${key} does not move`);
+          assert.ok(Math.abs(geometry.info[key] - baseline.info[key]) < 0.5,
+            `${label}: info icon ${key} does not move`);
+        }
+        if (hasRoom) {
+          assert.ok(geometry.flag, `${label}: flag appears only when there is room`);
           assert.ok(Math.abs(geometry.logo.height - 36) < 0.5, `${label}: the M logo stays 36px tall`);
           assert.ok(Math.abs(geometry.flag.width - 57.6) < 0.5, `${label}: flag width preserves the 8:5 flag ratio`);
           assert.ok(Math.abs(geometry.flag.height - geometry.logo.height) < 0.5,
             `${label}: flag height exactly matches the M logo`);
           assert.ok(Math.abs(geometry.flag.top - geometry.logo.top) < 0.5,
-            `${label}: flag top aligns with the M logo and never sits above it`);
-          assert.ok(geometry.title.right <= geometry.flag.left + 1, `${label}: flag does not cover the brand title`);
-          assert.ok(geometry.titleRow.height >= geometry.flag.height - 1, `${label}: title row is tall enough for the flag`);
-          assert.ok(geometry.flag.top >= geometry.titleRow.top - 0.5, `${label}: flag stays within the title row`);
-          assert.ok(geometry.flag.bottom <= geometry.titleRow.bottom + 1, `${label}: flag stays within the title row`);
-          assert.ok(geometry.titleRow.bottom <= geometry.tagline.top, `${label}: tagline remains below the title and flag`);
-          assert.ok(geometry.tagline.height > 0, `${label}: tagline remains visible`);
-          assert.equal(geometry.taglineText, "AI-powered market intelligence", `${label}: tagline stays in its original row`);
+            `${label}: flag aligns to the M logo without sitting above it`);
+          assert.ok(Math.abs(geometry.flag.left - geometry.title.right - 6) < 0.5,
+            `${label}: flag sits in the gap immediately to the title's right`);
+          assert.ok(geometry.flag.right <= geometry.info.left + 0.5,
+            `${label}: flag stays clear of the info control`);
+          assert.ok(geometry.flag.bottom <= geometry.brandCopy.bottom + 0.5,
+            `${label}: flag stays inside the brand header`);
           if (flag === "heritage") assert.match(geometry.flagName ?? "", /Gadsden premium flag/);
           if (flag === "pride") assert.match(geometry.flagName ?? "", /Pride premium flag/);
+        } else {
+          assert.equal(geometry.flag, null, `${label}: no flag covers the existing text or controls`);
         }
       }
     }

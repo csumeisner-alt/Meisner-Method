@@ -12,7 +12,6 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -184,11 +183,9 @@ function formatPct(p: number) {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { width: screenWidth } = useWindowDimensions();
-  const compactHeader = screenWidth <= 340;
   const [brandTitleRowWidth, setBrandTitleRowWidth] = useState(0);
   const [brandNameWidth, setBrandNameWidth] = useState(0);
-  const availableTitleFlagWidth = brandTitleRowWidth - brandNameWidth - 4;
+  const availableTitleFlagWidth = brandTitleRowWidth - brandNameWidth - 6;
   const titleFlagSize = availableTitleFlagWidth >= ANALYZE_TITLE_FLAG_SIZE ? ANALYZE_TITLE_FLAG_SIZE : 0;
   const analyzeScroll = useRetainedTabScroll('main-tab:analyze');
   const router = useRouter();
@@ -651,10 +648,10 @@ export default function HomeScreen() {
       )}
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 12, paddingHorizontal: compactHeader ? 2 : 8 }]}>
+      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity
-            style={[styles.brandRow, { flex: 1, gap: compactHeader ? 2 : 4 }]}
+            style={[styles.brandRow, { flex: 1 }]}
             onPress={showTip}
             activeOpacity={0.75}
           >
@@ -672,14 +669,7 @@ export default function HomeScreen() {
                 setBrandNameWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
               }}
             />
-            {!compactHeader && (
-              <Feather
-                name="info"
-                size={13}
-                color={colors.mutedForeground}
-                style={{ marginLeft: 'auto', marginRight: 2, alignSelf: 'center' }}
-              />
-            )}
+            <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 2 }} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -1108,7 +1098,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 8, paddingBottom: 16 },
-  brandRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   searchSection: { paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
   searchRow: {
     flexDirection: 'row',

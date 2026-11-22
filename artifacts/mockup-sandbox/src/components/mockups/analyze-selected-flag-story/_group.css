@@ -26,7 +26,7 @@
 
 .analyze-brand-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 4px;
 }
 
@@ -47,14 +47,16 @@
 .analyze-brand-title-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  height: 36px;
+  height: 26px;
   overflow: visible;
 }
 
 .analyze-brand-title {
+  position: relative;
   flex: 0 0 auto;
+  display: inline-block;
   color: #e8e8e8;
   font-size: 21px;
   font-weight: 700;
@@ -64,7 +66,9 @@
 }
 
 .analyze-title-flag-position {
-  position: relative;
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 3.5px;
   display: flex;
   flex: 0 0 57.6px;
   align-items: center;
@@ -106,7 +110,7 @@
 }
 
 .analyze-tagline {
-  margin: 2px 0 0;
+  margin: 1px 0 0;
   color: #888;
   font-size: 12px;
   font-weight: 400;
@@ -419,8 +423,6 @@
 }
 
 @media (max-width: 340px) {
-  .analyze-app-header { padding-right: 2px; padding-left: 2px; }
-  .analyze-brand-row { gap: 2px; }
-  .analyze-header-action--info { display: none; }
+  .analyze-title-flag-position { display: none; }
 }
 

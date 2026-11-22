@@ -151,12 +151,14 @@ test("Analyze title stays complete and achievement flag waits for all achievemen
   assert.match(analyzeBrandHeaderSource, /numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.7\}[\s\S]*?AI-powered market intelligence/);
   assert.match(analyzeBrandHeaderSource, /<TitleFlagBadge[\s\S]*?flagId=\{flagId\}[\s\S]*?unlocked=\{unlocked\}/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-title-row"[\s\S]*?onLayout=\{\(event\) => onTitleRowLayout\(event\.nativeEvent\.layout\.width\)\}/);
-  assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-title"[\s\S]*?onLayout=\{\(event\) => onBrandNameLayout\(event\.nativeEvent\.layout\.width\)\}/);
+  assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-title"[\s\S]*?onLayout=\{\(event\) => \{[\s\S]*?onBrandNameLayout\(width\);/);
   assert.match(analyzeBrandHeaderSource, /minHeight: titleRowHeight/);
-  assert.match(analyzeBrandHeaderSource, /const titleRowHeight = Math\.max\(26 \* fontScale, unlocked \? flagHeight : 0\)/);
+  assert.match(analyzeBrandHeaderSource, /const titleRowHeight = 26 \* fontScale/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-logo" style=\{styles\.brandLogo\}/);
   assert.match(analyzeBrandHeaderSource, /brandLogo: \{ width: 36, height: 36, flexShrink: 0 \}/);
-  assert.match(analyzeBrandHeaderSource, /brandTitleRow: \{ flexDirection: 'row', alignItems: 'center', gap: 4/);
+  assert.match(analyzeBrandHeaderSource, /brandTitleRow: \{ flexDirection: 'row', alignItems: 'center', gap: 6/);
+  assert.match(analyzeBrandHeaderSource, /titleFlagOverlay: \{[\s\S]*?position: 'absolute'/);
+  assert.match(analyzeBrandHeaderSource, /left: brandNameWidth \+ 6/);
   assert.match(analyzeBrandHeaderSource, /titleFlagBadge: \{ flexShrink: 0 \}/);
   assert.match(analyzeBrandHeaderSource, /brandName: \{ fontSize: 21, lineHeight: 26, flexShrink: 0 \}/);
   assert.match(analyzeBrandHeaderSource, /testID="analyze-brand-tagline"/);
@@ -170,9 +172,7 @@ test("Analyze title stays complete and achievement flag waits for all achievemen
   assert.match(headerSource, /onTitleRowLayout=\{\(width\) => \{[\s\S]*?setBrandTitleRowWidth/);
   assert.match(headerSource, /onBrandNameLayout=\{\(width\) => \{[\s\S]*?setBrandNameWidth/);
   assert.match(homeSource, /header: \{ paddingHorizontal: 8/);
-  assert.match(homeSource, /compactHeader = screenWidth <= 340/);
-  assert.match(homeSource, /paddingHorizontal: compactHeader \? 2 : 8/);
-  assert.match(homeSource, /brandRow: \{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 \}/);
+  assert.match(homeSource, /brandRow: \{ flexDirection: 'row', alignItems: 'center', gap: 4 \}/);
   assert.doesNotMatch(headerSource, /hasCompletedAllAchievements/);
   assert.doesNotMatch(analyzeBrandHeaderSource, /allowFontScaling=\{false\}/);
 
@@ -183,23 +183,23 @@ test("Analyze title stays complete and achievement flag waits for all achievemen
     assert.ok(analyzeFlagStorySource.includes(marker),
       `the story preview includes ${marker} from the populated Analyze screen`);
   }
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?display: flex;[\s\S]*?gap: 4px;[\s\S]*?height: 36px/);
+  assert.match(analyzeFlagStorySource, /<span className="analyze-brand-title">[\s\S]*?<span className="analyze-title-flag-position">/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title-row \{[\s\S]*?display: flex;[\s\S]*?gap: 6px;[\s\S]*?height: 26px/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-brand-title-row \{[\s\S]*?\}/)?.[0] ?? '', /padding-right/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title \{[\s\S]*?flex: 0 0 auto;[\s\S]*?font-size: 21px/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-brand-title \{[\s\S]*?\}/)?.[0] ?? '', /clamp|ellipsis|overflow: hidden/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?white-space: nowrap/);
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?width: 57\.6px;[\s\S]*?height: 36px;[\s\S]*?overflow: hidden/);
-  assert.doesNotMatch(analyzeFlagStoryStyleSource.match(/\.analyze-title-flag-position \{[\s\S]*?\}/)?.[0] ?? '', /position: absolute|right: -8px/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag-position \{[\s\S]*?position: absolute;[\s\S]*?left: calc\(100% \+ 6px\);[\s\S]*?width: 57\.6px;[\s\S]*?height: 36px;[\s\S]*?overflow: hidden/);
   assert.doesNotMatch(analyzeFlagStoryStyleSource, /\.analyze-title-flag--heritage\s*\{/,
     "the selected Gadsden artwork has no decorative border");
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-title-flag--pride \{[\s\S]*?padding: 1px;[\s\S]*?linear-gradient/,
     "the Pride border is thin and directly surrounds the artwork");
-  assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 2px 0 0/);
+  assert.match(analyzeFlagStoryStyleSource, /\.analyze-tagline \{[\s\S]*?margin: 1px 0 0/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-brand-title \{[\s\S]*?color: #e8e8e8/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-search \{[\s\S]*?border: 1px solid #484848;[\s\S]*?background: #0f0f0f/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-market-frame \{[\s\S]*?border: 1\.6px solid #d6ad54/);
   assert.match(analyzeFlagStoryStyleSource, /\.analyze-market-headline \{[\s\S]*?color: #8edfff/);
-  assert.match(analyzeFlagStoryStyleSource, /@media \(max-width: 340px\)[\s\S]*?analyze-header-action--info \{ display: none; \}/);
+  assert.match(analyzeFlagStoryStyleSource, /@media \(max-width: 340px\)[\s\S]*?analyze-title-flag-position \{ display: none; \}/);
 
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /<PremiumFlagBadge flagId=\{flag\.id\}/);

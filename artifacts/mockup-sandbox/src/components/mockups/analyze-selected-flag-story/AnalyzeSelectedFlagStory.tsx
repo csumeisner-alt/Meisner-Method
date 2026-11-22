@@ -18,10 +18,12 @@ export function AnalyzeSelectedFlagStory() {
           <img className="analyze-brand-icon" src="/__mockup/images/meisner-method-icon-128.png" alt="" />
           <div className="analyze-brand-copy">
             <div className="analyze-brand-title-row">
-              <span className="analyze-brand-title">Meisner Method</span>
-              <span className="analyze-title-flag-position">
-                <span className="analyze-title-flag analyze-title-flag--heritage" role="img" aria-label="Gadsden title flag">
-                  <img src="/__mockup/images/premium-flags/gadsden.png" alt="" />
+              <span className="analyze-brand-title">
+                Meisner Method
+                <span className="analyze-title-flag-position">
+                  <span className="analyze-title-flag analyze-title-flag--heritage" role="img" aria-label="Gadsden title flag">
+                    <img src="/__mockup/images/premium-flags/gadsden.png" alt="" />
+                  </span>
                 </span>
               </span>
             </div>

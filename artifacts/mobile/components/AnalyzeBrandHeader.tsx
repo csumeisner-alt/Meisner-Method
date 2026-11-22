@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { FlagSelectionId } from '@/lib/achievements';
 import { MMLogo } from '@/components/MMLogo';
@@ -26,15 +26,15 @@ export function AnalyzeBrandHeader({
   onBrandNameLayout,
 }: AnalyzeBrandHeaderProps) {
   const { fontScale } = useWindowDimensions();
-  const flagHeight = flagSize * 0.625;
-  const titleRowHeight = Math.max(26 * fontScale, unlocked ? flagHeight : 0);
+  const [brandNameWidth, setBrandNameWidth] = useState(0);
+  const titleRowHeight = 26 * fontScale;
 
   return (
     <>
       <View testID="analyze-brand-logo" style={styles.brandLogo}>
         <MMLogo size={36} />
       </View>
-      <View style={styles.brandText}>
+      <View testID="analyze-brand-copy" style={styles.brandText}>
         <View
           testID="analyze-brand-title-row"
           onLayout={(event) => onTitleRowLayout(event.nativeEvent.layout.width)}
@@ -43,7 +43,11 @@ export function AnalyzeBrandHeader({
           <Text
             testID="analyze-brand-title"
             numberOfLines={1}
-            onLayout={(event) => onBrandNameLayout(event.nativeEvent.layout.width)}
+            onLayout={(event) => {
+              const width = event.nativeEvent.layout.width;
+              setBrandNameWidth((current) => Math.abs(current - width) < 0.5 ? current : width);
+              onBrandNameLayout(width);
+            }}
             style={[
               styles.brandName,
               { color: headingColor, fontFamily: 'Inter_700Bold', letterSpacing: 0.8, lineHeight: 26 * fontScale },
@@ -51,15 +55,6 @@ export function AnalyzeBrandHeader({
           >
             Meisner Method
           </Text>
-          {unlocked && flagSize > 0 && (
-            <TitleFlagBadge
-              flagId={flagId}
-              unlocked={unlocked}
-              size={flagSize}
-              testID="analyze-title-flag"
-              style={styles.titleFlagBadge}
-            />
-          )}
         </View>
         <Text
           testID="analyze-brand-tagline"
@@ -79,6 +74,20 @@ export function AnalyzeBrandHeader({
             <Text style={styles.neonThemeBadgeText}>HYBRID NEON GUCCI · ACTIVE</Text>
           </View>
         )}
+        {unlocked && flagSize > 0 && (
+          <View
+            pointerEvents="none"
+            style={[styles.titleFlagOverlay, { left: brandNameWidth + 6 }]}
+          >
+            <TitleFlagBadge
+              flagId={flagId}
+              unlocked={unlocked}
+              size={flagSize}
+              testID="analyze-title-flag"
+              style={styles.titleFlagBadge}
+            />
+          </View>
+        )}
       </View>
     </>
   );
@@ -87,7 +96,15 @@ export function AnalyzeBrandHeader({
 const styles = StyleSheet.create({
   brandLogo: { width: 36, height: 36, flexShrink: 0 },
   brandText: { flex: 1, minWidth: 0, position: 'relative' },
-  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, overflow: 'visible' },
+  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'visible' },
+  titleFlagOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    zIndex: 2,
+  },
   titleFlagBadge: { flexShrink: 0 },
   brandName: { fontSize: 21, lineHeight: 26, flexShrink: 0 },
   tagline: { fontSize: 12, marginTop: 1 },
