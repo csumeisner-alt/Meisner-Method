@@ -1485,6 +1485,11 @@ test("Event Arena competition keeps its visual summary and reminders inside the 
   assert.match(eventArenaOverview, /<ScrollView[\s\S]*?testID="event-arena-overview"[\s\S]*?<\/ScrollView>/);
   assert.match(eventArenaOverview, /<EventArenaReminderControls \/>/);
   assert.match(eventArenaReminderControls, /testID="paper-event-notifications-toggle"/);
+  assert.match(eventArenaReminderControls, /marginTop: compact \? 0 : 12/);
+  assert.match(eventArenaReminderControls, /trackColor=\{\{ false: colors\.mutedForeground, true: colors\.primary \}\}/);
+  assert.match(eventArenaReminderControls, /thumbColor=\{reminders\.enabled \? colors\.primaryForeground : colors\.foreground\}/);
+  assert.match(eventArenaReminderControls, /scaleX: 1\.15[\s\S]*?scaleY: 1\.15/);
+  assert.match(eventArenaReminderControls, /ios_backgroundColor=\{colors\.mutedForeground\}/);
   assert.doesNotMatch(eventArenaReminderControls, /Saved preference:|Device permission:|On-device reminders:|Remote push:/);
   assert.match(eventArenaReminderControls, /reminders\.setEnabled\(enabled\)/);
   assert.match(eventArenaReminderControls, /reminders\.permission === 'settings-required'[\s\S]*?reminders\.openSettings\(\)/);

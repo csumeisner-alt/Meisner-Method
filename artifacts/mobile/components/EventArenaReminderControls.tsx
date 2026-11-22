@@ -29,6 +29,7 @@ export function EventArenaReminderControls({ compact = false }: { compact?: bool
         borderTopWidth: compact ? 1 : 1,
         borderBottomWidth: compact ? 1 : 1,
         gap: 10,
+        marginTop: compact ? 0 : 12,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -64,8 +65,10 @@ export function EventArenaReminderControls({ compact = false }: { compact?: bool
             void reminders.setEnabled(enabled);
           }}
           disabled={!reminders.loaded || reminders.busy || reminders.permission === 'unavailable'}
-          trackColor={{ false: colors.muted, true: colors.primary }}
-          thumbColor={colors.card}
+          style={{ transform: [{ scaleX: 1.15 }, { scaleY: 1.15 }] }}
+          trackColor={{ false: colors.mutedForeground, true: colors.primary }}
+          thumbColor={reminders.enabled ? colors.primaryForeground : colors.foreground}
+          ios_backgroundColor={colors.mutedForeground}
         />
       </View>
 
