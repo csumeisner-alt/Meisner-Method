@@ -2972,15 +2972,15 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       ],
     } })`);
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "pending" })`);
-    assert.equal(
-      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-change-value"))})?.textContent.includes("100.5")`),
-      true,
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-change-value"))})?.textContent.includes("100.5")`,
       "while refreshed history is loading, the previous chart and its summary should remain visible.",
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "reject" })`);
-    assert.equal(
-      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-refresh-error"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`),
-      true,
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-refresh-error"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "a failed refresh should explain that cached history remains visible without closing the detail card.",
     );
     const historyRefreshesBeforeRetry = await browser.evaluate("window.__heatMapBrowserTest.cryptoSupplyHistoryRefetches.length");
