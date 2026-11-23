@@ -66,6 +66,7 @@ import {
 import { getEventArenaAccountEquity } from '@/lib/eventArenaHome';
 import { getLightningRoundEventPortfolio } from '@/lib/lightningRoundPreparation';
 import {
+  buildPreStartEventArenaScore,
   formatEventArenaMoney,
   formatEventArenaReturn,
   formatEventArenaSignedMoney,
@@ -376,7 +377,8 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   quoteResults.forEach((result) => {
     if (result.status === 'fulfilled') quotes.set(result.value[0], result.value[1]);
   });
-  if (!account) {
+  const isPreStartRegistration = !isLightningRound && event.phase === 'upcoming' && !account;
+  if (!account && !isPreStartRegistration) {
     throw new Error('Your isolated event account is unavailable. Open Paper Trading and try again.');
   }
   const configuration = {
@@ -389,6 +391,18 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
         : {}),
   } as const;
   const startEquity = configuration.startingBalance;
+  if (isPreStartRegistration) {
+    return {
+      payload: buildPreStartEventArenaScore({
+        installationId: await getEventArenaParticipantId(AsyncStorage, getInstallationId),
+        alias: enrollment.leaderboardAlias?.trim() ?? '',
+        ...configuration,
+        eventStartAtMs: event.startAtMs,
+        eventEndAtMs: event.endAtMs,
+      }),
+      usesAverageCost: false,
+    };
+  }
   const eventPortfolio = isLightningRound
     ? getLightningRoundEventPortfolio(
       eventTransactions,
@@ -454,7 +468,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       eventEndAtMs: event.endAtMs,
       cashBalance: isLightningRound
         ? eventPortfolio?.cashBalance ?? startEquity
-        : Number(account.cash || 0),
+    : Number(account?.cash || 0),
       appliedTransferIds: !isLightningRound && Array.isArray(cache.eventArenaAppliedTransferIds)
         ? cache.eventArenaAppliedTransferIds.slice(-500)
         : [],
@@ -1734,6 +1748,24 @@ export function PaperChallengeLeaderboard({
                       {eventStatus.label.toUpperCase()}
                     </Text>
                   </View>
+                  {optedIn && eventStatus.phase === 'upcoming' && (
+                    <View
+                      testID="paper-event-registration-status"
+                      accessible
+                      accessibilityLabel="You’re registered. Your Event Portfolio opens when the event starts."
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(35,128,103,0.25)', borderWidth: 1, borderColor: 'rgba(112,226,181,0.5)' }}
+                    >
+                      <Feather name="check-circle" size={15} color="#81E2BB" />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: '#A1F0D0', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>
+                          YOU’RE REGISTERED
+                        </Text>
+                        <Text style={{ color: '#D4E8DF', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 2 }}>
+                          Your Event Portfolio opens when the event starts.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                   {eventStatus.phase !== 'ended' && (
                     <View testID="paper-event-leaderboard-countdown" accessible accessibilityLabel={eventStatus.countdown} style={{ alignItems: 'center', marginTop: 12, paddingVertical: 10, paddingHorizontal: 15, borderRadius: 14, backgroundColor: 'rgba(7,12,20,0.68)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
                       <Text style={{ color: '#CFD3D7', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5 }}>

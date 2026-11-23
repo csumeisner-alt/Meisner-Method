@@ -7,6 +7,31 @@ export type EventArenaStatus = {
   countdown: string;
 };
 
+export type PreStartEventArenaScoreInput = {
+  installationId: string;
+  alias: string;
+  eventType: import('./paperChallenge.ts').PaperChallengeEventType;
+  artworkId: import('./paperChallenge.ts').PaperChallengeArtworkId;
+  startingBalance: number;
+  rankingDirection: import('./paperChallenge.ts').PaperChallengeRankingDirection;
+  purchaseLimit?: number;
+  eventStartAtMs: number;
+  eventEndAtMs: number;
+};
+
+export function buildPreStartEventArenaScore(input: PreStartEventArenaScoreInput) {
+  return {
+    ...input,
+    cashBalance: input.startingBalance,
+    appliedTransferIds: [] as string[],
+    startEquity: input.startingBalance,
+    equity: input.startingBalance,
+    returnPercent: 0,
+    tradeCount: 0,
+    holdings: [] as Array<never>,
+  };
+}
+
 export function formatEventArenaMoney(value: number) {
   return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

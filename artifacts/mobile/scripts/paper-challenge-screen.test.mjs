@@ -517,6 +517,9 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /updatePaperChallengeEnrollment\(/);
   assert.match(leaderboard, /event-arena\/\$\{encodeURIComponent\(event\.id\)\}\/leaderboard/);
   assert.match(leaderboard, /useGetEventArenaLeaderboard/);
+  assert.match(leaderboard, /isPreStartRegistration = !isLightningRound && event\.phase === 'upcoming' && !account/);
+  assert.match(leaderboard, /buildPreStartEventArenaScore\(\{[\s\S]*?installationId: await getEventArenaParticipantId/);
+  assert.match(leaderboard, /testID="paper-event-registration-status"[\s\S]*?YOU’RE REGISTERED[\s\S]*?Your Event Portfolio opens when the event starts/);
   assert.doesNotMatch(leaderboard, /getEventArenaLeaderboardHistory|paper-event-rank-history|Your event history|Self-reported rank and return snapshots|retry-paper-event-rank-history|displayedEventHistory|eventHistory/);
   assert.match(leaderboard, /X-Event-Arena-Installation-Id/);
   assert.match(leaderboard, /entry\.isCurrentUser/);

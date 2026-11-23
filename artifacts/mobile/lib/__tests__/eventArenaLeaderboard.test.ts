@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildPreStartEventArenaScore,
   formatEventArenaReturn,
   formatEventArenaSignedMoney,
   getEventArenaOwnEntry,
@@ -10,6 +11,35 @@ import {
   getEventArenaStandingsEntries,
   getEventArenaStatus,
 } from '../eventArenaLeaderboard.ts';
+
+test('pre-start registration publishes a zero-return score without creating the event account', () => {
+  assert.deepEqual(buildPreStartEventArenaScore({
+    installationId: 'participant-installation-01',
+    alias: 'Ryan',
+    eventType: 'event-arena',
+    artworkId: 'neon-nightclub',
+    startingBalance: 250_000,
+    rankingDirection: 'highest-return',
+    eventStartAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+  }), {
+    installationId: 'participant-installation-01',
+    alias: 'Ryan',
+    eventType: 'event-arena',
+    artworkId: 'neon-nightclub',
+    startingBalance: 250_000,
+    rankingDirection: 'highest-return',
+    eventStartAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    cashBalance: 250_000,
+    appliedTransferIds: [],
+    startEquity: 250_000,
+    equity: 250_000,
+    returnPercent: 0,
+    tradeCount: 0,
+    holdings: [],
+  });
+});
 
 test('podium slots follow rank order and leave missing places empty', () => {
   const participants = [
