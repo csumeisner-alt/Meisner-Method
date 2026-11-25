@@ -2783,6 +2783,13 @@ export default function PaperScreen() {
         return { status: 'rejected', message: 'That order is no longer pending and cannot be edited.' };
       }
       if (!sym) return { status: 'rejected', message: 'Choose a stock before submitting the order.' };
+      const existingLightningOrder = args.orderId
+        ? currentOrders.find((order) => order.id === args.orderId
+          && isLightningRoundStagedOrder(order, lightningEnrollment?.eventId))
+        : undefined;
+      if (preparingLightningOrder && args.orderId && !existingLightningOrder) {
+        return { status: 'rejected', message: 'Only this Lightning Round’s queued orders can be edited.' };
+      }
       if (enrollment?.eventType === 'one-stock-challenge') {
         if (intent) {
           return { status: 'rejected', message: 'Short selling is not available in the One-Stock Challenge.' };
@@ -2812,6 +2819,55 @@ export default function PaperScreen() {
           }
         }
       }
+
+      if (preparingLightningOrder && lightningEnrollment) {
+        if (!Number.isFinite(args.shares) || args.shares <= 0) {
+          return { status: 'rejected', message: 'Enter a positive share quantity.' };
+        }
+        if (!Number.isFinite(args.quotePrice) || args.quotePrice <= 0) {
+          return { status: 'rejected', message: 'A valid reviewed provider price is required.' };
+        }
+        const nowISO = new Date().toISOString();
+        const metadata = args.stockInfo ?? (existingLightningOrder ? {
+          companyName: existingLightningOrder.companyName,
+          dividendYield: existingLightningOrder.dividendYield ?? 0,
+          dividendRate: existingLightningOrder.dividendRate ?? 0,
+          expenseRatio: existingLightningOrder.expenseRatio ?? 0,
+          sector: existingLightningOrder.sector ?? '',
+          assetType: existingLightningOrder.assetType ?? 'unknown',
+        } : undefined);
+        const stagedOrder: PaperOrder = {
+          ...(existingLightningOrder ?? {}),
+          id: existingLightningOrder?.id ?? uid(),
+          accountId,
+          lightningRoundEventId: lightningEnrollment.eventId,
+          symbol: sym,
+          companyName,
+          orderType: 'market',
+          side: 'buy',
+          intent: undefined,
+          assetType: metadata?.assetType,
+          shares: args.shares,
+          dividendYield: metadata?.dividendYield ?? 0,
+          dividendRate: metadata?.dividendRate ?? 0,
+          expenseRatio: metadata?.expenseRatio ?? 0,
+          sector: metadata?.sector ?? '',
+          status: 'pending',
+          placedAt: existingLightningOrder?.placedAt ?? nowISO,
+          rejectionReason: undefined,
+          filledPrice: undefined,
+          filledAt: undefined,
+        };
+        const updatedOrders = existingLightningOrder
+          ? currentOrders.map((order) => order.id === existingLightningOrder.id ? stagedOrder : order)
+          : [...currentOrders, stagedOrder];
+        await saveOrders(updatedOrders);
+        return {
+          status: 'pending',
+          message: `${args.shares} ${sym} market buy queued for Lightning Round. It will remain pending until the event starts.`,
+        };
+      }
+
       let currentQuote: LiveQuote;
       try {
         // Account data remains guest-local. Refresh the provider price at submit
@@ -2840,10 +2896,6 @@ export default function PaperScreen() {
       } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
         return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
       }
-      const existingLightningOrder = args.orderId
-        ? currentOrders.find((order) => order.id === args.orderId
-          && isLightningRoundStagedOrder(order, lightningEnrollment?.eventId))
-        : undefined;
       if (
         args.orderType === 'market'
         && priorOrder
@@ -2852,10 +2904,6 @@ export default function PaperScreen() {
       ) {
         return { status: 'rejected', message: 'Only a queued Lightning Round order can be edited.' };
       }
-      if (preparingLightningOrder && args.orderId && !existingLightningOrder) {
-        return { status: 'rejected', message: 'Only this Lightning Round’s queued orders can be edited.' };
-      }
-
       const accountPositions = currentPositions.filter((position) => position.accountId === accountId);
       const riskPendingOrders = preparingLightningOrder
         ? currentOrders.filter((order) => !isLightningRoundStagedOrder(order))
@@ -2907,47 +2955,6 @@ export default function PaperScreen() {
       if (riskError) return { status: 'rejected', message: riskError };
 
       const nowISO = new Date().toISOString();
-      if (preparingLightningOrder && lightningEnrollment) {
-        const existingOrder = existingLightningOrder;
-        const metadata = args.stockInfo ?? (existingOrder ? {
-          companyName: existingOrder.companyName,
-          dividendYield: existingOrder.dividendYield ?? 0,
-          dividendRate: existingOrder.dividendRate ?? 0,
-          expenseRatio: existingOrder.expenseRatio ?? 0,
-          sector: existingOrder.sector ?? '',
-          assetType: existingOrder.assetType ?? 'unknown',
-        } : undefined);
-        const stagedOrder: PaperOrder = {
-          ...(existingOrder ?? {}),
-          id: existingOrder?.id ?? uid(),
-          accountId,
-          lightningRoundEventId: lightningEnrollment.eventId,
-          symbol: sym,
-          companyName,
-          orderType: 'market',
-          side: 'buy',
-          intent: undefined,
-          assetType: metadata?.assetType,
-          shares: args.shares,
-          dividendYield: metadata?.dividendYield ?? 0,
-          dividendRate: metadata?.dividendRate ?? 0,
-          expenseRatio: metadata?.expenseRatio ?? 0,
-          sector: metadata?.sector ?? '',
-          status: 'pending',
-          placedAt: existingOrder?.placedAt ?? nowISO,
-          rejectionReason: undefined,
-          filledPrice: undefined,
-          filledAt: undefined,
-        };
-        const updatedOrders = existingOrder
-          ? currentOrders.map((order) => order.id === existingOrder.id ? stagedOrder : order)
-          : [...currentOrders, stagedOrder];
-        await saveOrders(updatedOrders);
-        return {
-          status: 'pending',
-          message: `${args.shares} ${sym} market buy queued for Lightning Round. It will remain pending until the event starts.`,
-        };
-      }
       if (args.orderType === 'market' && !marketClosed) {
         const fillPrice = applySlippage(args.quotePrice, args.shares, direction);
         const fillRiskError = checkRisk({

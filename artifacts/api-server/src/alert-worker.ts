@@ -247,8 +247,14 @@ function startHealthServer(port: number): void {
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const EVENT_ARENA_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const LIGHTNING_ORDER_RETRY_START_MS = 5_000;
+const LIGHTNING_ORDER_RETRY_MAX_MS = 60_000;
 let lastEventArenaCleanupAt = 0;
 const lightningRoundReminderTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const lightningRoundExecutionEvents = new Set<string>();
+let lightningOrderRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let lightningOrderRetryDelayMs = LIGHTNING_ORDER_RETRY_START_MS;
+let lightningOrderExecutionRunning = false;
 
 async function runEventArenaCleanupIfDue(): Promise<void> {
   if (Date.now() - lastEventArenaCleanupAt < EVENT_ARENA_CLEANUP_INTERVAL_MS) return;
@@ -271,10 +277,28 @@ async function prepareScheduledLightningRounds(): Promise<void> {
       "[alert-worker] Lightning Round events prepared",
     );
     scheduleLightningRoundPreparationReminders(events);
+    scheduleLightningRoundStartExecutions(events);
   } catch (err) {
     // Retry on the next worker cycle if the event schema is still being applied
     // or the database is temporarily unavailable.
     logger.warn({ err }, "[alert-worker] Lightning Round preparation failed; will retry");
+  }
+}
+
+function scheduleLightningRoundStartExecutions(
+  events: Array<{ eventId: string; eventType: string; startAtMs: number }>,
+): void {
+  for (const event of events) {
+    if (
+      event.eventType !== "lightning-round"
+      || lightningRoundExecutionEvents.has(event.eventId)
+      || !Number.isFinite(event.startAtMs)
+    ) continue;
+    lightningRoundExecutionEvents.add(event.eventId);
+    const timer = setTimeout(() => {
+      void executeDueLightningRoundOrders();
+    }, Math.max(0, event.startAtMs - Date.now()));
+    timer.unref?.();
   }
 }
 
@@ -295,18 +319,40 @@ function scheduleLightningRoundPreparationReminders(
   }
 }
 
+function scheduleLightningOrderRetry(): void {
+  if (lightningOrderRetryTimer) return;
+  const delayMs = lightningOrderRetryDelayMs;
+  lightningOrderRetryDelayMs = Math.min(delayMs * 2, LIGHTNING_ORDER_RETRY_MAX_MS);
+  lightningOrderRetryTimer = setTimeout(() => {
+    lightningOrderRetryTimer = null;
+    void executeDueLightningRoundOrders();
+  }, delayMs);
+  lightningOrderRetryTimer.unref?.();
+}
+
 async function executeDueLightningRoundOrders(): Promise<void> {
+  if (lightningOrderExecutionRunning) return;
+  lightningOrderExecutionRunning = true;
+  let retrySoon = false;
   try {
     const summary = await processDueLightningRoundOrders(pool, {
       fetchPrice: fetchCurrentPrice,
     });
+    retrySoon = summary.waiting > 0;
     if (summary.events > 0) {
       logger.info({ ...summary }, "[alert-worker] Lightning Round opening orders processed");
     }
   } catch (err) {
-    // The worker retries due events on its next cycle. The execution batch is
-    // transactional and order status is the idempotency guard.
     logger.warn({ err }, "[alert-worker] Lightning Round order execution failed; will retry");
+    retrySoon = true;
+  } finally {
+    lightningOrderExecutionRunning = false;
+  }
+  if (retrySoon) scheduleLightningOrderRetry();
+  else {
+    if (lightningOrderRetryTimer) clearTimeout(lightningOrderRetryTimer);
+    lightningOrderRetryTimer = null;
+    lightningOrderRetryDelayMs = LIGHTNING_ORDER_RETRY_START_MS;
   }
 }
 
@@ -397,7 +443,11 @@ async function main(): Promise<void> {
 
   await waitForSchema();
 
-  // Initial check 30 s after boot, then every 5 minutes.
+  // Arm precise start-time executions as soon as the worker is ready. The
+  // regular cycle below remains a recovery path for missed timers/restarts.
+  await prepareScheduledLightningRounds();
+
+  // Initial alert check 30 s after boot, then every 5 minutes.
   await sleep(30_000);
 
   // eslint-disable-next-line no-constant-condition

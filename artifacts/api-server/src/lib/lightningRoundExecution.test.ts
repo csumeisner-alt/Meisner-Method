@@ -458,6 +458,16 @@ test("Lightning Round worker cannot execute before the official start", async ()
   assert.equal(state.transactions.length, 1);
 });
 
+test("Lightning Round market orders fill at the official event start", async () => {
+  const state = seedState([{}]);
+  const db = new MemoryDatabase(state);
+  const result = await process(db, async () => 150, () => startAt);
+  assert.equal(result.filled, 1);
+  assert.equal(new Date(state.orders[0].filled_at).getTime(), startAt);
+  assert.equal(new Date(state.transactions[1].date).getTime(), startAt);
+  assert.equal(state.participants[0].status, "entered");
+});
+
 test("successful fills update the shared account and retain event identity, then retry idempotently", async () => {
   const state = seedState([{}]);
   const db = new MemoryDatabase(state);

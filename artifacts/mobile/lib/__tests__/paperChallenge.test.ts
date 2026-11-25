@@ -1802,6 +1802,19 @@ test('expired enrollment remains saved until its event summary is finalized', as
   assert.match(source, /retry-paper-event-results/);
 });
 
+test('Lightning prep queues reviewed market buys before submit-time quote and risk checks', async () => {
+  const testDirectory = dirname(fileURLToPath(import.meta.url));
+  const [screenSource, entrySource] = await Promise.all([
+    readFile(resolve(testDirectory, '../../app/(tabs)/paper.tsx'), 'utf8'),
+    readFile(resolve(testDirectory, '../../components/ProfessionalOrderEntry.tsx'), 'utf8'),
+  ]);
+  const preparationBranch = screenSource.indexOf('if (preparingLightningOrder && lightningEnrollment)');
+  const submitQuoteRefresh = screenSource.indexOf('requestPaperPreloadQuote(sym, true)');
+  assert.ok(preparationBranch >= 0 && preparationBranch < submitQuoteRefresh);
+  assert.match(screenSource.slice(preparationBranch, submitQuoteRefresh), /saveOrders\(updatedOrders\)/);
+  assert.match(entrySource, /const riskError = !marketOnly && sharesValid/);
+});
+
 test('upcoming signup withdrawal removes only enrollment and is locked at event start', () => {
   const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
   const enrollment = {

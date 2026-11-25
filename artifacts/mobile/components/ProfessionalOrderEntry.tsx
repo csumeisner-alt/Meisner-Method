@@ -250,7 +250,7 @@ export default function ProfessionalOrderEntry({
   else if (orderType === 'trailing_stop' && !(activeTrailPct || activeTrailAbs)) inputError = 'Enter a positive trailing amount.';
   else if (activeSide === 'sell' && availableSellShares <= 0) inputError = `No ${symbol} shares are available in ${account.name} after pending sells.`;
   else if (activeSide === 'cover' && availableCoverShares <= 0) inputError = `No ${symbol} short shares are available in ${account.name} after pending covers.`;
-  const riskError = sharesValid && !inputError
+  const riskError = !marketOnly && sharesValid && !inputError
     ? checkRisk({
         side: activeSide === 'buy' || activeSide === 'cover' ? 'buy' : 'sell',
         intent: activeSide === 'short' ? 'short' : activeSide === 'cover' ? 'cover' : undefined,

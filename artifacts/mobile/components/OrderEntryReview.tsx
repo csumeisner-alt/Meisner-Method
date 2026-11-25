@@ -181,7 +181,7 @@ export default function OrderEntryReview({
           <View testID="lightning-round-order-review-note" style={styles.warningLine}>
             <Feather name="clock" size={14} color={GOLD} />
             <Text style={styles.warningText}>
-              PENDING — EXECUTES AT EVENT START. Cash, buying power, positions, account equity, and P/L stay unchanged until then. The actual execution price may differ from this estimate.
+              PENDING — EXECUTES AT EVENT START. No buying power is reserved before then. The opening price may differ from this estimate, and orders that exceed available cash can be rejected.
             </Text>
           </View>
         )}
