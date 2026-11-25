@@ -44,6 +44,16 @@ export function getPaperEventDashboardPhase(
   return 'ended';
 }
 
+export function isLightningRoundAccountThemeActive(
+  eventType: string | undefined,
+  startAtMs: number,
+  endAtMs: number,
+  nowMs: number,
+): boolean {
+  return eventType === 'lightning-round'
+    && getPaperEventDashboardPhase(startAtMs, endAtMs, nowMs) === 'active';
+}
+
 export function formatPaperEventCountdown(startAtMs: number, endAtMs: number, nowMs: number) {
   const phase = getPaperEventDashboardPhase(startAtMs, endAtMs, nowMs);
   if (phase === 'unavailable') return 'Schedule unavailable';

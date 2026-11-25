@@ -14,6 +14,7 @@ import {
   AppState,
   Alert,
   KeyboardAvoidingView,
+  ImageBackground,
   Modal,
   Platform,
   Pressable,
@@ -41,12 +42,14 @@ import {
   PaperTradingAction,
 } from '@/components/PaperPortfolioLayout';
 import { PaperEventArenaDashboard } from '@/components/PaperEventArenaDashboard';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import { PaperEventLiveNotice } from '@/components/PaperEventLiveNotice';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
+import { isLightningRoundAccountThemeActive } from '@/lib/paperEventDashboard';
 import {
   AllocationBar,
   DividendBarChart,
@@ -758,6 +761,13 @@ export default function PaperScreen() {
   const selectedEventId = selectedEventEnrollment?.eventId ?? selectedEventSummary?.eventId ?? '';
   const selectedEventStartAtMs = selectedEventEnrollment?.eventStartAtMs ?? selectedEventSummary?.eventStartAtMs ?? Number.NaN;
   const selectedEventEndAtMs = selectedEventEnrollment?.eventEndAtMs ?? selectedEventSummary?.eventEndAtMs ?? Number.NaN;
+  const selectedEventType = selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType ?? 'event-arena';
+  const isActiveLightningEvent = isLightningRoundAccountThemeActive(
+    selectedEventType,
+    selectedEventStartAtMs,
+    selectedEventEndAtMs,
+    challengeNow,
+  );
   const selectedEventDateRange = (() => {
     const start = new Date(selectedEventStartAtMs);
     const end = new Date(selectedEventEndAtMs);
@@ -4102,17 +4112,42 @@ export default function PaperScreen() {
           styles.accountHero,
           screenWidth <= 360 && styles.compactAccountHero,
           isSelectedEventAccount && styles.eventChampionshipHero,
+          isActiveLightningEvent && styles.lightningRoundEventHero,
         ]}
         testID="paper-account-hero"
         accounts={visibleAccounts}
         activeId={activeId}
         onSwitchAccount={(id) => { void switchAccount(id); }}
       >
+        {isActiveLightningEvent && (
+          <>
+            <View
+              testID="paper-lightning-shared-card-background"
+              pointerEvents="none"
+              style={StyleSheet.absoluteFillObject}
+            >
+              <ImageBackground
+                source={EVENT_ARENA_ARTWORK_SOURCES['lightning-round-arena']}
+                resizeMode="cover"
+                imageStyle={{ opacity: 0.34 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </View>
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFillObject, styles.lightningRoundEventScrim]}
+            />
+          </>
+        )}
         {isSelectedEventAccount ? (
           <>
             <View style={styles.eventChampionshipTopline}>
-              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.eventHeroLabel, { flex: 1, minWidth: 0 }]}>
-                {account?.id.startsWith('paper-lightning:') ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[
+                styles.eventHeroLabel,
+                { flex: 1, minWidth: 0 },
+                isActiveLightningEvent && styles.lightningRoundEventLabel,
+              ]}>
+                {isActiveLightningEvent || account?.id.startsWith('paper-lightning:') ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
                 {selectedEventDateRange ? ` · ${selectedEventDateRange}` : ''}
               </Text>
               <TouchableOpacity
@@ -4120,9 +4155,13 @@ export default function PaperScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Switch paper trading account"
                 onPress={() => setShowAccountManagement(true)}
-                style={[styles.editAccountsButton, styles.eventChampionshipSwitchButton]}
+                style={[
+                  styles.editAccountsButton,
+                  styles.eventChampionshipSwitchButton,
+                  isActiveLightningEvent && styles.lightningRoundEventSwitchButton,
+                ]}
               >
-                <Text style={styles.editAccountsText}>SWITCH</Text>
+                <Text style={[styles.editAccountsText, isActiveLightningEvent && styles.lightningRoundEventSwitchText]}>SWITCH</Text>
               </TouchableOpacity>
             </View>
             <PaperEventArenaDashboard
@@ -4133,7 +4172,7 @@ export default function PaperScreen() {
               summary={selectedEventSummary}
               equity={portfolioValue}
               buyingPower={account?.cash ?? 0}
-              eventType={selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType ?? 'event-arena'}
+              eventType={selectedEventType}
               lightningRoundPromotionWindow={lightningRoundPromotionWindow}
               isLightningRoundEnrolled={paperChallenge.lightningEnrollment?.eventId === lightningRoundPromotionWindow?.id}
               onOpenLightningRound={() => router.push('/lightning-round')}
@@ -5690,6 +5729,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(9,10,11,0.98)',
     borderColor: 'rgba(231,198,106,0.68)',
+  },
+  lightningRoundEventHero: {
+    overflow: 'hidden',
+    borderColor: 'rgba(112,218,255,0.9)',
+    backgroundColor: 'rgba(2,15,43,0.96)',
+  },
+  lightningRoundEventScrim: {
+    backgroundColor: 'rgba(2,15,43,0.38)',
+  },
+  lightningRoundEventLabel: {
+    color: '#9be8ff',
+  },
+  lightningRoundEventSwitchButton: {
+    borderColor: 'rgba(198,243,255,0.95)',
+    backgroundColor: 'rgba(10,121,190,0.52)',
+  },
+  lightningRoundEventSwitchText: {
+    color: '#ffffff',
   },
   eventChampionshipTopline: {
     flexDirection: 'row',

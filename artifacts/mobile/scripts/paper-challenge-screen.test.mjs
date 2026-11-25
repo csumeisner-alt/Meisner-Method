@@ -203,6 +203,10 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(lightningRound, /getOrCreateLightningEventArenaAccount\(/);
   assert.match(lightningRound, /accounts: accountSelection\.created\s*\?/);
   assert.match(lightningRound, /No separate Lightning account is created/);
+  assert.match(screen, /isLightningRoundAccountThemeActive\(/);
+  assert.match(screen, /testID="paper-lightning-shared-card-background"/);
+  assert.match(screen, /isActiveLightningEvent \|\| account\?\.id\.startsWith\('paper-lightning:'\)/);
+  assert.match(screen, /isActiveLightningEvent && styles\.lightningRoundEventHero/);
   assert.match(lightningRound, /activeId: accountId/);
   assert.doesNotMatch(lightningRound, /LIGHTNING_ACCOUNT_ID|paper-lightning:\$\{eventId\}/);
   assert.match(lightningRound, /eventId: window\.id/);

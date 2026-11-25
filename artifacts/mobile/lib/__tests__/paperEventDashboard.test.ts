@@ -7,6 +7,7 @@ import {
   getPaperEventDashboardProgress,
   getPaperEventDashboardRank,
   getPaperEventDashboardRankText,
+  isLightningRoundAccountThemeActive,
 } from '../paperEventDashboard.ts';
 
 const start = 1_000_000;
@@ -53,6 +54,14 @@ test('dashboard phase and countdown use the saved event timestamps', () => {
   assert.equal(formatPaperEventCountdown(start, end, start), 'Ends in 1m 40s');
   assert.equal(getPaperEventDashboardPhase(start, end, end), 'ended');
   assert.equal(formatPaperEventCountdown(start, end, end), 'Event complete');
+});
+
+test('shared account uses Lightning styling only during the active Lightning Round', () => {
+  assert.equal(isLightningRoundAccountThemeActive('lightning-round', lightningStart, lightningEnd, lightningStart - 1), false);
+  assert.equal(isLightningRoundAccountThemeActive('lightning-round', lightningStart, lightningEnd, lightningStart), true);
+  assert.equal(isLightningRoundAccountThemeActive('lightning-round', lightningStart, lightningEnd, lightningEnd - 1), true);
+  assert.equal(isLightningRoundAccountThemeActive('lightning-round', lightningStart, lightningEnd, lightningEnd), false);
+  assert.equal(isLightningRoundAccountThemeActive('event-arena', lightningStart, lightningEnd, lightningStart), false);
 });
 
 test('dashboard progress clamps at the event boundaries', () => {
