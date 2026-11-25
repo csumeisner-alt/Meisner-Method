@@ -489,6 +489,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await currentAccount(), "tiger", "A gesture that ends vertically must not switch accounts.");
     assert.equal(await hapticCount(), 5, "A gesture ending vertically must remain silent.");
 
+    await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-content"))})?.scrollTo({ top: 0, behavior: "instant" })`);
     await touch(browser, "paper-account-switch");
     assert.equal(await currentAccount(), "tiger", "Reopening the selector must leave the active account unchanged.");
     await touch(browser, "select-paper-account-tiger");
@@ -562,15 +563,27 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
         top: content.scrollTop,
         height: content.clientHeight,
         contentHeight: content.scrollHeight,
+        contentBounds: bounds('paper-content'),
         hero: bounds('paper-account-hero'),
+        preparation: bounds('lightning-round-preparation-banner'),
+        lastPreparedOrder: bounds('lightning-prepared-order-4'),
         groups: bounds('paper-tab-group-portfolio'),
         overview: bounds('paper-tab-overview'),
         action: bounds('paper-trading-buy-action'),
-        bottom: bounds('bottom-tab-event-arena'),
+        mainTabs: ['bottom-tab-analyze', 'bottom-tab-top-picks', 'bottom-tab-paper',
+          'bottom-tab-portfolio', 'bottom-tab-event-arena'].map(bounds),
+        viewportHeight: window.innerHeight,
       };
     })()`);
     assert.ok(scrollState && scrollState.top > 0,
       `Vertical scrolling in the paper content must remain available: ${JSON.stringify(scrollState)}`);
+    assert.ok(scrollState.preparation && scrollState.lastPreparedOrder
+      && scrollState.lastPreparedOrder.top >= scrollState.contentBounds.top
+      && scrollState.lastPreparedOrder.bottom <= scrollState.contentBounds.bottom,
+    `The last prepared order must be reachable by scrolling the full screen: ${JSON.stringify(scrollState)}`);
+    assert.equal(scrollState.mainTabs.length, 5);
+    assert.ok(scrollState.mainTabs.every((tab) => tab && tab.top >= 0 && tab.bottom <= scrollState.viewportHeight),
+      `All five main tabs must stay visible while screen content scrolls: ${JSON.stringify(scrollState.mainTabs)}`);
     assert.equal(await currentAccount(), "borg", "Scrolling the paper content must not change the active account.");
     assert.equal(await currentReturn(), "-7.50%", "Scrolling must not change the selected account's return.");
 

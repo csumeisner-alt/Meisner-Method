@@ -4090,6 +4090,16 @@ export default function PaperScreen() {
   return (
     <AmericanSteelBackground>
     <SafeAreaView style={[styles.screen, { backgroundColor: 'transparent' }]}>
+      <ScrollView
+        testID="paper-content"
+        ref={paperScroll.ref}
+        onScroll={paperScroll.onScroll}
+        scrollEventThrottle={paperScroll.scrollEventThrottle}
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
+        showsVerticalScrollIndicator
+      >
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
         <MMLogo size={36} />
@@ -4330,14 +4340,10 @@ export default function PaperScreen() {
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.4, marginBottom: 4 }}>
                 PREPARED ORDERS · {lightningPreparedOrders.length}
               </Text>
-              <ScrollView
+              <View
                 testID="lightning-round-prepared-order-list"
                 accessibilityLabel={`${lightningPreparedOrders.length} Lightning Round prepared orders`}
-                style={{ flexGrow: 0, maxHeight: Math.min(300, Math.round(screenHeight * 0.34)) }}
-                contentContainerStyle={{ paddingBottom: 3 }}
-                nestedScrollEnabled
-                scrollEnabled={lightningPreparedOrders.length > 1}
-                showsVerticalScrollIndicator={lightningPreparedOrders.length > 1}
+                style={{ paddingBottom: 3 }}
               >
                 {lightningPreparedOrders.map((order) => {
                   const estimate = quotes[order.symbol]?.price;
@@ -4401,7 +4407,7 @@ export default function PaperScreen() {
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           )}
         </View>
@@ -4481,17 +4487,8 @@ export default function PaperScreen() {
         onSelectTab={(id) => setActiveTab(id as TabId)}
       />
 
-      {/* Content */}
-      <ScrollView
-        testID="paper-content"
-        ref={paperScroll.ref}
-        onScroll={paperScroll.onScroll}
-        scrollEventThrottle={paperScroll.scrollEventThrottle}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
-        showsVerticalScrollIndicator={false}
-      >
+      {/* Selected account content */}
+      <View style={{ paddingTop: 10 }}>
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'positions' && renderPositions()}
         {activeTab === 'orders' && renderOrders()}
@@ -4499,6 +4496,7 @@ export default function PaperScreen() {
         {activeTab === 'analytics' && renderAnalytics()}
         {activeTab === 'dividends' && renderDividends()}
         {activeTab === 'growth' && renderGrowth()}
+      </View>
       </ScrollView>
 
       {/* Integrated action stays in the layout instead of floating over content. */}

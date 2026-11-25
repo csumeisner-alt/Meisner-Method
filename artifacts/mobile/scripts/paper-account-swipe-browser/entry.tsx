@@ -170,6 +170,11 @@ function PaperAccountInteractionFixture() {
 
   return (
     <View style={{ flex: 1, height: '100%', backgroundColor: '#101010' }}>
+      <ScrollView
+        testID="paper-content"
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={{ paddingBottom: 24 }}
+      >
       <View style={{ height: 42, justifyContent: 'center', paddingHorizontal: 16 }}>
         <Text style={{ color: '#fff' }}>Paper Trading</Text>
       </View>
@@ -283,34 +288,17 @@ function PaperAccountInteractionFixture() {
           </View>
         )}
       </PaperAccountSwipeArea>
-      {selectorOpen && (
-        <View testID="paper-account-management">
-          {accounts.map((account) => (
-            <View key={account.id}>
-              <TouchableOpacity
-                testID={`select-paper-account-${account.id}`}
-                onPress={() => {
-                  setActiveId(account.id);
-                  setSelectorOpen(false);
-                }}
-                style={{ minHeight: 44, justifyContent: 'center' }}
-              >
-                <Text style={{ color: '#fff' }}>{account.id}</Text>
-              </TouchableOpacity>
-              {!account.id.startsWith('paper-event:') && (
-                <TouchableOpacity
-                  testID={`reset-paper-account-${account.id}`}
-                  accessibilityRole="button"
-                  onPress={() => resetAccount(account.id)}
-                  style={{ minHeight: 44, justifyContent: 'center' }}
-                >
-                  <Text style={{ color: '#ffd700' }}>Reset {account.id}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
+      <View
+        testID="lightning-round-preparation-banner"
+        style={{ margin: 12, padding: 10, borderWidth: 1, borderColor: '#c5a552' }}
+      >
+        <Text style={{ color: '#fff' }}>LIGHTNING ROUND · PREPARED ORDERS</Text>
+        {Array.from({ length: 5 }, (_, index) => (
+          <View key={index} testID={`lightning-prepared-order-${index}`} style={{ height: 48, justifyContent: 'center' }}>
+            <Text style={{ color: '#fff' }}>Pending order {index + 1}</Text>
+          </View>
+        ))}
+      </View>
       <PaperPortfolioNavigation
         groups={groups}
         tabs={tabs}
@@ -320,7 +308,7 @@ function PaperAccountInteractionFixture() {
         onSelectGroup={(id) => setActiveTab(id)}
         onSelectTab={(id) => setActiveTab(id)}
       />
-      <ScrollView testID="paper-content" style={{ flex: 1, minHeight: 0 }}>
+      <View testID="paper-selected-content">
         <View style={{ padding: 16, gap: 4 }}>
           {activeTab === 'positions' && activeId !== 'paper-event:arena'
             ? activePositions.map((position, index) => {
@@ -349,7 +337,49 @@ function PaperAccountInteractionFixture() {
             <Text style={{ color: '#fff' }}>Scrollable paper content</Text>
           </View>
         </View>
+      </View>
       </ScrollView>
+      {selectorOpen && (
+        <View
+          testID="paper-account-management"
+          style={{
+            position: 'absolute',
+            zIndex: 10,
+            top: 54,
+            left: 12,
+            right: 12,
+            padding: 8,
+            backgroundColor: '#101010',
+            borderWidth: 1,
+            borderColor: '#c5a552',
+          }}
+        >
+          {accounts.map((account) => (
+            <View key={account.id}>
+              <TouchableOpacity
+                testID={`select-paper-account-${account.id}`}
+                onPress={() => {
+                  setActiveId(account.id);
+                  setSelectorOpen(false);
+                }}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <Text style={{ color: '#fff' }}>{account.id}</Text>
+              </TouchableOpacity>
+              {!account.id.startsWith('paper-event:') && (
+                <TouchableOpacity
+                  testID={`reset-paper-account-${account.id}`}
+                  accessibilityRole="button"
+                  onPress={() => resetAccount(account.id)}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
+                >
+                  <Text style={{ color: '#ffd700' }}>Reset {account.id}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
       <PaperTradingAction
         title="Trade"
         hint={`Trade in ${activeId}`}

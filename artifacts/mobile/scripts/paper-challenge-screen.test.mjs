@@ -502,16 +502,34 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: fillResult\.reason/);
 });
 
-test("multiple Lightning Round prepared orders scroll inside their capped list", () => {
+test("the full Paper screen scrolls while prepared orders and all five main tabs stay reachable", () => {
   assert.match(screen, /const lightningPreparedOrders = lightningEnrollmentForDisplay\?\.accountId === activeId[\s\S]*?lightningRoundEventId === lightningEnrollmentForDisplay\.eventId/);
-  const listStart = screen.indexOf('<ScrollView\n                testID="lightning-round-prepared-order-list"');
-  const listEnd = screen.indexOf("</ScrollView>", listStart);
-  assert.ok(listStart >= 0 && listEnd > listStart);
-  const orderList = screen.slice(listStart, listEnd);
-  assert.match(orderList, /maxHeight: Math\.min\(300, Math\.round\(screenHeight \* 0\.34\)\)/);
-  assert.match(orderList, /nestedScrollEnabled/);
-  assert.match(orderList, /scrollEnabled=\{lightningPreparedOrders\.length > 1\}/);
+  const mainScrollStart = screen.indexOf('<ScrollView\n        testID="paper-content"');
+  const mainScrollEnd = screen.indexOf('</ScrollView>', mainScrollStart);
+  const tradeAction = screen.indexOf('<PaperTradingAction', mainScrollEnd);
+  const bottomBar = screen.indexOf('<BottomTabBar />', tradeAction);
+  assert.ok(mainScrollStart >= 0 && mainScrollEnd > mainScrollStart);
+  assert.ok(mainScrollStart < screen.indexOf('{/* Header */', mainScrollStart));
+  assert.ok(mainScrollStart < screen.indexOf('testID="lightning-round-preparation-banner"', mainScrollStart));
+  assert.ok(mainScrollEnd > screen.indexOf('<PaperPortfolioNavigation'));
+  assert.ok(mainScrollEnd > screen.indexOf("activeTab === 'growth'"));
+  assert.ok(tradeAction > mainScrollEnd && bottomBar > tradeAction);
+
+  const orderListStart = screen.indexOf('testID="lightning-round-prepared-order-list"');
+  const orderListEnd = screen.indexOf('<PaperEventLiveNotice', orderListStart);
+  const orderList = screen.slice(orderListStart, orderListEnd);
   assert.match(orderList, /lightningPreparedOrders\.map\(\(order\)/);
+  assert.doesNotMatch(orderList, /<ScrollView|maxHeight|nestedScrollEnabled/);
+
+  for (const testID of [
+    'bottom-tab-analyze',
+    'bottom-tab-top-picks',
+    'bottom-tab-paper',
+    'bottom-tab-portfolio',
+    'bottom-tab-event-arena',
+  ]) {
+    assert.ok(bottomTabBar.includes(testID), `The fixed main tab bar must include ${testID}.`);
+  }
 });
 
 test("Event Arena withdrawal confirms on web and reports save errors without changing the signup", () => {
