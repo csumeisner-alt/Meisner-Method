@@ -62,6 +62,7 @@ test('Event Arena tab selects the matching emblem for all three app themes', () 
   const bar = source('../components/BottomTabBar.tsx');
   assert.match(bar, /themeContext\?\.neonGucciActive[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.neonGucci[\s\S]*?themeContext\?\.isActive[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.patriot[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.default/);
   assert.match(bar, /testID="bottom-tab-event-arena-emblem"[\s\S]*?source=\{eventArenaEmblem\}/);
+  assert.match(bar, /style=\{\{ width: 40, height: 40, borderRadius: 8 \}\}/);
   assert.match(bar, /accessibilityLabel="Event Arena"/);
   assert.match(bar, /accessibilityState=\{\{ selected: isEventArena \}\}/);
   assert.doesNotMatch(bar, /Feather name="award"/);

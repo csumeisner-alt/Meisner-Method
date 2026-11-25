@@ -93,7 +93,7 @@ export function BottomTabBar() {
           accessible={false}
           source={eventArenaEmblem}
           resizeMode="cover"
-          style={{ width: 32, height: 32, borderRadius: 8 }}
+          style={{ width: 40, height: 40, borderRadius: 8 }}
         />
         <Text style={[styles.label, styles.eventArenaLabel, { lineHeight: 11 * fontScale, color: isEventArena ? colors.heading : colors.mutedForeground }]}>
           EVENT{"\n"}ARENA
