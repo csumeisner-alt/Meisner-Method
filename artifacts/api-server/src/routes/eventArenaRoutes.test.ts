@@ -2075,6 +2075,7 @@ test("Lightning leaderboard shows queued opted-in participants without exposing 
     if (sql.includes("SELECT participant.installation_id,participant.alias")) {
       assert.match(sql, /leaderboard_opted_in=TRUE/);
       assert.match(sql, /status IN \('queued','entered'\)/);
+      assert.match(sql, /AND participant\.status='entered'[\s\S]*entry\.is_active=TRUE/);
       assert.deepEqual(values, [lightningEventId, configuration.startAtMs, configuration.endAtMs]);
       return { rows: [{ installation_id: installationId, alias: "MarketFox" }] };
     }

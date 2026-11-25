@@ -1300,6 +1300,7 @@ export function createEventArenaRouter(
                FROM event_arena_leaderboard_entries AS entry
                WHERE entry.event_id=participant.event_id
                  AND entry.installation_id=participant.installation_id
+                  AND participant.status='entered'
                  AND entry.is_active=TRUE
                  AND entry.event_start_at=participant.event_start_at
                  AND entry.event_end_at=participant.event_end_at
