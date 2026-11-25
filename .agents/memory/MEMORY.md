@@ -29,6 +29,7 @@
 - [Yahoo stock-screener paging](yahoo-stock-screener-paging.md) — Yahoo’s most-active screen may return 25 rows per call; use offsets to collect a larger sample.
 - [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID; ambiguous Expo sends are finalized without replay to favor no duplicates.
 - [Event Arena notification policy](event-arena-notification-policy.md) — three scheduled reminders per format; recoverable local toggles and older Android payload compatibility.
+- [Lightning Round Event Arena account](lightning-round-event-account.md) — Lightning keeps its own tab, borrows an Event Arena account, and must not carry its portfolio into the next main event.
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Donation feature pause](donation-feature-pause.md) — donations had no uptake; the creator plans to make the app paid in the future, so retain the donation flow for possible reuse.

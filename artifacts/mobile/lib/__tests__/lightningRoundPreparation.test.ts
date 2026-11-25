@@ -9,12 +9,15 @@ import {
   getLightningRoundPreparationOpensAt,
   getLightningRoundQueuedOrders,
   getLightningRoundStartEquityFromSnapshots,
+  getOrCreateLightningEventArenaAccount,
   getReusableEventArenaAccountId,
+  LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID,
   isLightningRoundPreparationOpen,
   isLightningRoundQualified,
   shouldSyncLightningRoundPreparation,
   shouldOfferLightningRoundTradeEnrollment,
 } from '../lightningRoundPreparation.ts';
+import { ensurePaperChallengeAccount } from '../paperChallenge.ts';
 import type { PaperOrder } from '../paperMath.ts';
 import type { PaperChallengeEnrollment, PaperChallengeWindow } from '../paperChallenge.ts';
 
@@ -260,6 +263,79 @@ test('registration chooses an existing Event Arena account and never invents one
     activeId: 'tiger',
     history: [],
   }), null);
+});
+
+test('first-time Lightning registration creates a shared Event Arena account, not a Lightning account', () => {
+  const result = getOrCreateLightningEventArenaAccount({
+    accounts: [{ id: 'strategy-1', name: 'Strategy 1', cash: 100_000, createdAt: '2026-10-01T00:00:00.000Z' }],
+    activeId: 'strategy-1',
+    history: [],
+    nowMs: Date.parse('2026-11-24T14:00:00.000Z'),
+    startingBalance: 250_000,
+  });
+
+  assert.equal(result.created, true);
+  assert.deepEqual(result.account, {
+    id: LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID,
+    name: 'Event Arena',
+    cash: 250_000,
+    createdAt: '2026-11-24T14:00:00.000Z',
+  });
+  assert.match(result.account.id, /^paper-event:/);
+  assert.doesNotMatch(result.account.id, /^paper-lightning:/);
+});
+
+test('Lightning registration preserves an existing Event Arena account balance and identity', () => {
+  const existing = {
+    id: 'paper-event:2026-11-16',
+    name: 'Event Portfolio',
+    cash: 83_500,
+    createdAt: '2026-11-16T00:00:00.000Z',
+  };
+  const result = getOrCreateLightningEventArenaAccount({
+    accounts: [existing],
+    activeId: 'strategy-1',
+    history: [],
+    nowMs: Date.parse('2026-11-24T14:00:00.000Z'),
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.account, existing);
+});
+
+test('the next main event gets its normal fresh account instead of carrying over the shared Lightning account', () => {
+  const shared = getOrCreateLightningEventArenaAccount({
+    accounts: [{ id: 'strategy-1', name: 'Strategy 1', cash: 100_000, createdAt: '2026-10-01T00:00:00.000Z' }],
+    activeId: 'strategy-1',
+    history: [],
+    nowMs: Date.parse('2026-11-24T14:00:00.000Z'),
+  }).account;
+  const mainStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
+  const mainAccountId = 'paper-event:2026-11-30';
+  const mainState = ensurePaperChallengeAccount({
+    eventId: '2026-11-30',
+    eventType: 'event-arena',
+    startingBalance: 250_000,
+    rankingDirection: 'highest-return',
+    eventStartAtMs: mainStartAtMs,
+    eventEndAtMs: mainStartAtMs + 5 * 24 * 60 * 60 * 1000,
+    joinedAtMs: mainStartAtMs,
+    accountId: mainAccountId,
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  }, {
+    accounts: [shared],
+    positions: [],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+
+  assert.notEqual(mainAccountId, shared.id);
+  assert.equal(mainState.accounts.find((account) => account.id === mainAccountId)?.cash, 250_000);
+  assert.equal(mainState.accounts.find((account) => account.id === shared.id)?.cash, 100_000);
+  assert.deepEqual(mainState.positions, []);
+  assert.deepEqual(mainState.transactions, []);
 });
 
 test('Paper Trading scopes Lightning Round status to its Event Arena account and supports explicit unenrollment', () => {

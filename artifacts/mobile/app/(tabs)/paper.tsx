@@ -4990,7 +4990,7 @@ export default function PaperScreen() {
                         <Text style={[styles.acctName, styles.eventAccountName]}>Event Arena</Text>
                         <Feather name="award" size={15} color={BUY_COLOR} />
                       </View>
-                      <Text style={styles.eventUnavailableHint}>Join an event in Settings to activate this portfolio.</Text>
+                      <Text style={styles.eventUnavailableHint}>Join Event Arena or Lightning Round to activate this portfolio.</Text>
                     </View>
                   </View>
                 )}

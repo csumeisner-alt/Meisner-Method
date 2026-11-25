@@ -28,6 +28,7 @@ import { LIGHTNING_EMBLEMS, LightningRoundHeader, LightningRoundTabButton, Light
 import { getInstallationId } from '@/lib/installation';
 import { formatProviderMarketSession, formatProviderPriceSource } from '@/lib/paperOrderEntry';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
+import { loadOrCreatePaperCache, PAPER_CACHE_KEY } from '@/lib/paperCache';
 import {
   getEventArenaPerformance,
   type EventArenaAccountData,
@@ -36,7 +37,7 @@ import {
   getLightningRoundEventPortfolio,
   getLightningRoundEventTransactions,
   getLightningRoundQueuedOrders,
-  getReusableEventArenaAccountId,
+  getOrCreateLightningEventArenaAccount,
   isLightningRoundPreparationOpen,
 } from '@/lib/lightningRoundPreparation';
 import {
@@ -71,7 +72,6 @@ import {
 } from '@/lib/eventArenaDeviceSync';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
-const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 
 async function syncPairedEventArenaState(): Promise<boolean> {
   if (!await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)) return true;
@@ -176,6 +176,8 @@ async function prepareLightningEvents() {
 }
 
 async function readPaperCache(): Promise<PaperCache> {
+  const initialized = await loadOrCreatePaperCache(AsyncStorage);
+  if (!initialized) throw new Error('Paper account storage is unavailable. Try again.');
   const raw = await AsyncStorage.getItem(PAPER_CACHE_KEY);
   const parsed = raw ? JSON.parse(raw) as PaperCache : {};
   return {
@@ -803,16 +805,16 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         throw new Error('Finish saving the prior Lightning Round result before joining another week.');
       }
       const cache = await readPaperCache();
-      const accountId = getReusableEventArenaAccountId({
+      const accountSelection = getOrCreateLightningEventArenaAccount({
         accounts: cache.accounts ?? [],
         activeId: cache.activeId,
         currentEventEnrollment: latest.enrollment,
         history: latest.history,
+        nowMs: Date.now(),
+        startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
       });
-      const existingAccount = cache.accounts?.find((item) => item.id === accountId);
-      if (!accountId || !existingAccount) {
-        throw new Error('Open Paper Trading once to set up your existing account before joining.');
-      }
+      const existingAccount = accountSelection.account;
+      const accountId = existingAccount.id;
       const joinedAtMs = window.startAtMs;
       const nextEnrollment: PaperChallengeEnrollment = {
         eventId: window.id,
@@ -844,6 +846,9 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       });
       await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
         ...cache,
+        accounts: accountSelection.created
+          ? [...(cache.accounts ?? []), existingAccount]
+          : cache.accounts,
         activeId: accountId,
       }));
       const updated = await updatePaperChallengeStore((current) =>
@@ -1002,7 +1007,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               </View>
               <Text style={{ color: '#FFF5D8', fontFamily: 'Inter_700Bold', fontSize: screenWidth < 370 ? 28 : 34, lineHeight: screenWidth < 370 ? 34 : 39, marginTop: 12 }}>24 hours.{'\n'}One champion.</Text>
               <Text style={{ color: '#E5E8ED', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-                Use your existing Event Arena paper account. The highest percentage return wins.
+                Trade through your Event Arena paper account. If you do not have one yet, it will be set up when you join.
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                 {[
@@ -1133,7 +1138,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               <View style={{ marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Compete in the next round</Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 5 }}>
-                  Join with a competition display name. Your existing Event Arena paper account and its current balance and positions will be used.
+                  Join with a competition display name. Your Event Arena paper account and its current balance and positions will be used; we will set one up if you do not have one yet.
                 </Text>
                 <TouchableOpacity
                   testID="lightning-round-join"
@@ -1303,7 +1308,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>LIGHTNING ROUND ENTRY</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Choose a competition display name</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 6 }}>
-              This name appears on the leaderboard. Your existing Event Arena account is used; no separate balance or trading account is created.
+              This name appears on the leaderboard. Lightning uses your Event Arena paper account; if you do not have one yet, we will set it up for you. No separate Lightning account is created.
             </Text>
             {previousLightningAlias ? (
               <View style={{ marginTop: 10 }}>

@@ -11,6 +11,7 @@ import type {
 } from './paperChallenge.ts';
 
 export const LIGHTNING_ROUND_PREPARATION_WINDOW_MS = 72 * 60 * 60 * 1000;
+export const LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID = 'paper-event:shared';
 const HOUR_MS = 60 * 60 * 1000;
 
 /** Pick an already-existing Event Arena account, never create a Lightning account. */
@@ -39,6 +40,33 @@ export function getReusableEventArenaAccountId(args: {
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
   if (existingEventAccount) return existingEventAccount.id;
   return null;
+}
+
+/** Reuse an Event Arena account, or provision the shared Event Arena account for first-time entrants. */
+export function getOrCreateLightningEventArenaAccount(args: {
+  accounts: PaperAccount[];
+  activeId?: string;
+  currentEventEnrollment?: PaperChallengeEnrollment | null;
+  history: PaperChallengeSummary[];
+  nowMs: number;
+  startingBalance?: number;
+}): { account: PaperAccount; created: boolean } {
+  const reusableId = getReusableEventArenaAccountId(args);
+  const reusableAccount = args.accounts.find((account) => account.id === reusableId);
+  if (reusableAccount) return { account: reusableAccount, created: false };
+
+  const sharedAccount = args.accounts.find(
+    (account) => account.id === LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID,
+  );
+  if (sharedAccount) return { account: sharedAccount, created: false };
+
+  const account: PaperAccount = {
+    id: LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID,
+    name: 'Event Arena',
+    cash: args.startingBalance ?? 100_000,
+    createdAt: new Date(args.nowMs).toISOString(),
+  };
+  return { account, created: true };
 }
 
 /** Recover a missed start baseline from the closest persisted account snapshot. */
