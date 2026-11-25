@@ -1632,6 +1632,11 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
         date: new Date(currentTime).toISOString(),
       },
       {
+        id: "event-dividend", accountId, symbol: "MSFT", companyName: "Microsoft",
+        action: "DIVIDEND", shares: 0, price: 0, total: 1,
+        date: new Date(currentTime).toISOString(),
+      },
+      {
         id: "forged-lightning-trade", accountId, symbol: "AAPL", companyName: "Apple",
         action: "BUY", shares: 50, price: 100, total: 5_000,
         date: new Date(currentTime).toISOString(), lightningRoundEventId: lightningEvent.eventId,
@@ -1672,6 +1677,18 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
     });
     assert.equal(forgedFill.status, 400);
 
+    const invalidTransaction = await fetch(route, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        ...payload,
+        transactions: payload.transactions.map((transaction) =>
+          transaction.id === "ordinary-trade" ? { ...transaction, action: "UNKNOWN" } : transaction,
+        ),
+      }),
+    });
+    assert.equal(invalidTransaction.status, 400);
+
     const response = await fetch(route, { method: "PUT", headers, body: JSON.stringify(payload) });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, eventId: lightningEvent.eventId, accountId });
@@ -1679,8 +1696,10 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
   const transactionDelete = statements.find((item) => item.sql.startsWith("DELETE FROM paper_transactions"));
   assert.match(transactionDelete?.sql ?? "", /lightning_round_event_id IS NULL/);
   const transactionInserts = statements.filter((item) => item.sql.startsWith("INSERT INTO paper_transactions"));
-  assert.equal(transactionInserts.length, 1);
+  assert.equal(transactionInserts.length, 2);
   assert.equal(transactionInserts[0]?.values[0], "ordinary-trade");
+  assert.equal(transactionInserts[1]?.values[0], "event-dividend");
+  assert.equal(transactionInserts[1]?.values[5], "DIVIDEND");
   assert.equal(transactionInserts[0]?.values[14], null);
   assert.ok(statements.some((item) =>
     item.sql.startsWith("DELETE FROM paper_orders")

@@ -59,6 +59,13 @@ type EventSubmission = {
 
 const DAY_MS = 86_400_000;
 const MAX_HOLDINGS = 100;
+const PAPER_TRANSACTION_ACTIONS = new Set([
+  "BUY",
+  "SELL",
+  "SHORT_SELL",
+  "BUY_TO_COVER",
+  "DIVIDEND",
+]);
 const EVENT_ARTWORK_IDS = [
   "stadium",
   "neon-nightclub",
@@ -911,6 +918,9 @@ export function createEventArenaRouter(
         || order.shares <= 0
       ),
     );
+    const invalidTransaction = Array.isArray(transactions) && transactions.some((transaction: any) =>
+      !PAPER_TRANSACTION_ACTIONS.has(transaction?.action),
+    );
     if (
       !account || typeof account !== "object" || Array.isArray(account)
       || accountId.length < 1 || accountId.length > 200
@@ -918,6 +928,7 @@ export function createEventArenaRouter(
       || typeof account.cash !== "number" || !Number.isFinite(account.cash) || account.cash < 0
       || alias.length < 1 || alias.length > 24 || /[\u0000-\u001f\u007f]/.test(alias)
       || !arraysValid
+      || invalidTransaction
       || [...positions, ...transactions, ...orders, ...lots].some((item: any) =>
         !item || typeof item !== "object" || item.accountId !== accountId,
       )
@@ -1046,7 +1057,11 @@ export function createEventArenaRouter(
         return;
       }
       res.json({ ok: true, eventId: req.params.eventId, accountId });
-    } catch {
+    } catch (error) {
+      req.log?.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Failed to save Lightning Round account snapshot",
+      );
       res.status(500).json({ error: "Could not save the Lightning Round account snapshot." });
     }
   });
