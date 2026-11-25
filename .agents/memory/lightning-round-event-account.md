@@ -3,8 +3,8 @@ name: Lightning Round Event Arena account
 description: Account sharing and lifecycle rules between the dedicated Lightning Round and main Event Arena.
 ---
 
-Lightning Round has its own dedicated tab and borrows the user's Event Arena paper account for trading; do not create a separate Lightning trading account. If no Event Arena account exists yet, provision a shared Event Arena paper account so the user can join without visiting Paper Trading first. After Lightning ends, the next scheduled main event uses its normal fresh event account and must not carry Lightning positions, cash, or trades forward.
+Lightning Round has its own dedicated tab and uses the user's shared Event Arena paper account for trading. Joining an upcoming Lightning Round resets that account to $100,000, clears its live positions, regular orders, regular trade history, lots, and account-value snapshots, and preserves transactions/orders tagged to earlier Lightning Rounds. Completed Lightning result archives remain saved. Mark the account as reset for this event so returning to the screen does not reset it again. After Lightning ends, the next scheduled main event uses its normal fresh event account and must not carry Lightning positions, cash, or trades forward.
 
-**Why:** The user clarified that Lightning is a dedicated competition view sharing the Event Arena account, while the next regular event resets according to its scheduled rules.
+**Why:** The user approved resetting the shared Event Arena account after its depleted balance blocked a Lightning opening order, while keeping completed round results.
 
-**How to apply:** Preserve an existing Event Arena account when available. Only create the shared fallback for first-time participants, and keep the next regular event on its standard event-specific account and starting balance.
+**How to apply:** Apply the reset only when joining an upcoming Lightning Round, and persist the event-specific reset marker. Never reset after that round starts or during later visits. Keep completed archive data and the next main event's standard event-specific account untouched.

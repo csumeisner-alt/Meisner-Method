@@ -997,8 +997,10 @@ export function createEventArenaRouter(
           );
         }
         await client.query(
-          "DELETE FROM paper_transactions WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id IS NULL",
-          [installationId, accountId],
+          `DELETE FROM paper_transactions
+           WHERE user_id=$1 AND account_id=$2
+             AND (lightning_round_event_id IS NULL OR lightning_round_event_id=$3)`,
+          [installationId, accountId, req.params.eventId],
         );
         for (const transaction of transactions.filter((item: any) => !item.lightningRoundEventId)) {
           await client.query(

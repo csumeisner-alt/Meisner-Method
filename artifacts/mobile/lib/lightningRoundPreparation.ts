@@ -1,7 +1,9 @@
 import type {
   PaperAccount,
   PaperAccountValueSnapshot,
+  PaperLot,
   PaperOrder,
+  PaperPosition,
   PaperTransaction,
 } from './paperMath.ts';
 import type {
@@ -13,6 +15,43 @@ import type {
 export const LIGHTNING_ROUND_PREPARATION_WINDOW_MS = 72 * 60 * 60 * 1000;
 export const LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID = 'paper-event:shared';
 const HOUR_MS = 60 * 60 * 1000;
+
+/** Reset one shared Event Arena account for a new Lightning Round without touching other accounts or archived rounds. */
+export function resetLightningSharedAccountSnapshot(args: {
+  account: PaperAccount;
+  positions: PaperPosition[];
+  transactions: PaperTransaction[];
+  orders: PaperOrder[];
+  lots: PaperLot[];
+  snapshots: PaperAccountValueSnapshot[];
+  eventId: string;
+  nowMs: number;
+  startingBalance?: number;
+}) {
+  const accountId = args.account.id;
+  return {
+    account: {
+      id: accountId,
+      name: 'Event Arena',
+      cash: args.startingBalance ?? 100_000,
+      shortCollateral: 0,
+      shortCollateralRatio: 1.5,
+      unsettledItems: [],
+      createdAt: new Date(args.nowMs).toISOString(),
+    } satisfies PaperAccount,
+    positions: args.positions.filter((item) => item.accountId !== accountId),
+    transactions: args.transactions.filter((item) =>
+      item.accountId !== accountId
+      || (Boolean(item.lightningRoundEventId) && item.lightningRoundEventId !== args.eventId),
+    ),
+    orders: args.orders.filter((item) =>
+      item.accountId !== accountId
+      || (Boolean(item.lightningRoundEventId) && item.lightningRoundEventId !== args.eventId),
+    ),
+    lots: args.lots.filter((item) => item.accountId !== accountId),
+    snapshots: args.snapshots.filter((item) => item.accountId !== accountId),
+  };
+}
 
 /** Pick an already-existing Event Arena account, never create a Lightning account. */
 export function getReusableEventArenaAccountId(args: {

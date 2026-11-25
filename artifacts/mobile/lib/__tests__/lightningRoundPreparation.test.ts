@@ -14,6 +14,7 @@ import {
   LIGHTNING_SHARED_EVENT_ARENA_ACCOUNT_ID,
   isLightningRoundPreparationOpen,
   isLightningRoundQualified,
+  resetLightningSharedAccountSnapshot,
   shouldSyncLightningRoundPreparation,
   shouldOfferLightningRoundTradeEnrollment,
 } from '../lightningRoundPreparation.ts';
@@ -301,6 +302,55 @@ test('Lightning registration preserves an existing Event Arena account balance a
 
   assert.equal(result.created, false);
   assert.equal(result.account, existing);
+});
+
+test('Lightning account reset starts with fresh buying power and removes only live data for that account', () => {
+  const accountId = 'paper-event:2026-11-16';
+  const eventId = 'lightning-2026-11-27';
+  const otherAccountPosition = { accountId: 'paper-event:other' } as any;
+  const oldPosition = { accountId } as any;
+  const oldTrade = { accountId, action: 'BUY' } as any;
+  const archivedLightningTrade = { accountId, lightningRoundEventId: 'lightning-2026-11-13' } as any;
+  const currentLightningTrade = { accountId, lightningRoundEventId: eventId } as any;
+  const oldOrder = { accountId } as any;
+  const archivedLightningOrder = { accountId, lightningRoundEventId: 'lightning-2026-11-13' } as any;
+  const currentLightningOrder = { accountId, lightningRoundEventId: eventId } as any;
+  const oldLot = { accountId } as any;
+  const oldSnapshot = { accountId } as any;
+  const result = resetLightningSharedAccountSnapshot({
+    account: {
+      id: accountId,
+      name: 'Old Event Portfolio',
+      cash: 98.85,
+      shortCollateral: 500,
+      shortCollateralRatio: 1.7,
+      unsettledItems: [{ amount: 50, settlesAt: '2026-11-28T00:00:00.000Z' }],
+      createdAt: '2026-11-16T00:00:00.000Z',
+    },
+    positions: [oldPosition, otherAccountPosition],
+    transactions: [oldTrade, archivedLightningTrade, currentLightningTrade],
+    orders: [oldOrder, archivedLightningOrder, currentLightningOrder],
+    lots: [oldLot],
+    snapshots: [oldSnapshot],
+    eventId,
+    nowMs: Date.parse('2026-11-25T14:00:00.000Z'),
+    startingBalance: 100_000,
+  });
+
+  assert.deepEqual(result.account, {
+    id: accountId,
+    name: 'Event Arena',
+    cash: 100_000,
+    shortCollateral: 0,
+    shortCollateralRatio: 1.5,
+    unsettledItems: [],
+    createdAt: '2026-11-25T14:00:00.000Z',
+  });
+  assert.deepEqual(result.positions, [otherAccountPosition]);
+  assert.deepEqual(result.transactions, [archivedLightningTrade]);
+  assert.deepEqual(result.orders, [archivedLightningOrder]);
+  assert.deepEqual(result.lots, []);
+  assert.deepEqual(result.snapshots, []);
 });
 
 test('the next main event gets its normal fresh account instead of carrying over the shared Lightning account', () => {

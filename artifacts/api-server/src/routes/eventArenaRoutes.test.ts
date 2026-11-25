@@ -1695,6 +1695,8 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
   }, currentTime);
   const transactionDelete = statements.find((item) => item.sql.startsWith("DELETE FROM paper_transactions"));
   assert.match(transactionDelete?.sql ?? "", /lightning_round_event_id IS NULL/);
+  assert.match(transactionDelete?.sql ?? "", /lightning_round_event_id=\$3/);
+  assert.equal(transactionDelete?.values[2], lightningEvent.eventId);
   const transactionInserts = statements.filter((item) => item.sql.startsWith("INSERT INTO paper_transactions"));
   assert.equal(transactionInserts.length, 2);
   assert.equal(transactionInserts[0]?.values[0], "ordinary-trade");

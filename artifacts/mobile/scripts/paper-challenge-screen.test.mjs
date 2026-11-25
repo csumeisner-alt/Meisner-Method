@@ -202,7 +202,11 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.doesNotMatch(lightningRound, /getLightningRoundWindow\(now\)/);
   assert.match(lightningRound, /getOrCreateLightningEventArenaAccount\(/);
   assert.match(lightningRound, /accounts: accountSelection\.created\s*\?/);
-  assert.match(lightningRound, /No separate Lightning account is created/);
+  assert.match(lightningRound, /resets your shared Event Arena account to \$100,000/);
+  assert.match(lightningRound, /resetLightningSharedAccountSnapshot\(/);
+  assert.match(lightningRound, /sharedAccountResetEventId: window\.id/);
+  assert.match(lightningRound, /RESET ACCOUNT & JOIN/);
+  assert.match(lightningRound, /RESET & PREPARE ORDERS/);
   assert.match(screen, /isLightningRoundAccountThemeActive\(/);
   assert.match(screen, /testID="paper-lightning-shared-card-background"/);
   assert.match(screen, /isActiveLightningEvent \|\| account\?\.id\.startsWith\('paper-lightning:'\)/);

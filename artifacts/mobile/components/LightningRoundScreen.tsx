@@ -39,6 +39,7 @@ import {
   getLightningRoundQueuedOrders,
   getOrCreateLightningEventArenaAccount,
   isLightningRoundPreparationOpen,
+  resetLightningSharedAccountSnapshot,
 } from '@/lib/lightningRoundPreparation';
 import {
   buildPaperChallengeSummary,
@@ -333,6 +334,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const archiveAttemptedEventRef = useRef<string | null>(null);
   const scoreSyncingRef = useRef(false);
   const tradeJoinPromptOpenedRef = useRef(false);
+  const resettingAccountRef = useRef<{ eventId: string; promise: Promise<void> } | null>(null);
 
   const enrollment = store.lightningEnrollment ?? null;
   const previousLightningAlias = useMemo(
@@ -356,6 +358,89 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     phase: window.phase,
   }), [window.endAtMs, window.id, window.phase, window.startAtMs]);
 
+  const resetSharedAccountForLightning = useCallback(async (savedEnrollment: PaperChallengeEnrollment) => {
+    if (
+      savedEnrollment.sharedAccountResetEventId === savedEnrollment.eventId
+      || Date.now() >= savedEnrollment.eventStartAtMs
+    ) return;
+    const inFlight = resettingAccountRef.current;
+    if (inFlight?.eventId === savedEnrollment.eventId) {
+      await inFlight.promise;
+      return;
+    }
+    const resetPromise = (async () => {
+      const nowMs = Date.now();
+      const cache = await readPaperCache();
+      const account = cache.accounts?.find((item) => item.id === savedEnrollment.accountId) ?? {
+        id: savedEnrollment.accountId,
+        name: savedEnrollment.accountName || 'Event Arena',
+        cash: 0,
+        createdAt: new Date(nowMs).toISOString(),
+      };
+      const reset = resetLightningSharedAccountSnapshot({
+        account,
+        positions: cache.positions ?? [],
+        transactions: cache.transactions ?? [],
+        orders: cache.orders ?? [],
+        lots: cache.lots ?? [],
+        snapshots: cache.snapshots ?? [],
+        eventId: savedEnrollment.eventId,
+        nowMs,
+        startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+      });
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+      await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(savedEnrollment.eventId)}/state`, {
+        method: 'PUT',
+        headers: { 'X-Event-Arena-Installation-Id': installationId },
+        body: JSON.stringify({
+          alias: savedEnrollment.leaderboardAlias?.trim() || 'Lightning',
+          account: reset.account,
+          positions: reset.positions.filter((item) => item.accountId === reset.account.id),
+          transactions: reset.transactions.filter((item) => item.accountId === reset.account.id),
+          orders: reset.orders.filter((item) => item.accountId === reset.account.id),
+          lots: reset.lots.filter((item) => item.accountId === reset.account.id),
+        }),
+      });
+      await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
+        ...cache,
+        accounts: cache.accounts?.some((item) => item.id === reset.account.id)
+          ? cache.accounts.map((item) => item.id === reset.account.id ? reset.account : item)
+          : [...(cache.accounts ?? []), reset.account],
+        positions: reset.positions,
+        transactions: reset.transactions,
+        orders: reset.orders,
+        lots: reset.lots,
+        snapshots: reset.snapshots,
+        activeId: reset.account.id,
+      }));
+      const updated = await updatePaperChallengeStore((current) => {
+        const currentEnrollment = current.lightningEnrollment;
+        if (!currentEnrollment || currentEnrollment.eventId !== savedEnrollment.eventId) return current;
+        return {
+          ...current,
+          lightningEnrollment: {
+            ...currentEnrollment,
+            accountName: reset.account.name,
+            sharedAccountResetEventId: savedEnrollment.eventId,
+          },
+        };
+      }, {
+        getItem: (key) => AsyncStorage.getItem(key),
+        setItem: (key, value) => AsyncStorage.setItem(key, value),
+      });
+      setStore(updated);
+      if (!await syncPairedEventArenaState()) {
+        setStoreError('The shared account reset is saved here, but could not sync to the paired device.');
+      }
+    })();
+    resettingAccountRef.current = { eventId: savedEnrollment.eventId, promise: resetPromise };
+    try {
+      await resetPromise;
+    } finally {
+      if (resettingAccountRef.current?.promise === resetPromise) resettingAccountRef.current = null;
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     if (routeParams.tab === 'leaderboard' || routeParams.tab === 'trades' || routeParams.tab === 'past' || routeParams.tab === 'overview') {
       setTab(routeParams.tab);
@@ -370,7 +455,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     ) return;
     tradeJoinPromptOpenedRef.current = true;
     if (store.lightningEnrollment?.eventId === window.id) {
-      router.dismissTo({ pathname: '/paper', params: { challengeAccountId: store.lightningEnrollment.accountId } });
+      void resetSharedAccountForLightning(store.lightningEnrollment).then(() => {
+        router.dismissTo({ pathname: '/paper', params: { challengeAccountId: store.lightningEnrollment!.accountId } });
+      }).catch((error) => {
+        setStoreError(error instanceof Error ? error.message : 'Could not reset the shared Event Arena account.');
+      });
       return;
     }
     if (
@@ -379,7 +468,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     ) {
       setJoinOpen(true);
     }
-  }, [now, routeParams.join, store.lightningEnrollment?.accountId, store.lightningEnrollment?.eventId, storeReady, window.id, window.phase, window.startAtMs]);
+  }, [now, resetSharedAccountForLightning, routeParams.join, store.lightningEnrollment, storeReady, window.id, window.phase, window.startAtMs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -762,10 +851,17 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     : [], [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
   const participantFailureReason = lightningOrders.find((order) => order.rejectionReason)?.rejectionReason
     || serverParticipantFailure;
-  const openAccount = () => router.dismissTo({
-    pathname: '/paper',
-    params: { challengeAccountId: enrollment?.accountId },
-  });
+  const openAccount = async () => {
+    try {
+      if (enrollment?.eventId === window.id) await resetSharedAccountForLightning(enrollment);
+      router.dismissTo({
+        pathname: '/paper',
+        params: { challengeAccountId: enrollment?.accountId },
+      });
+    } catch (error) {
+      setStoreError(error instanceof Error ? error.message : 'Could not reset the shared Event Arena account.');
+    }
+  };
 
   const joinRound = async () => {
     if (joiningRef.current) return;
@@ -793,7 +889,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       ) throw new Error('This event’s saved schedule does not match.');
       const latest = await loadPaperChallengeStore({ getItem: (key) => AsyncStorage.getItem(key) });
       if (latest.lightningEnrollment?.eventId === window.id) {
-        setStore(latest);
+        await resetSharedAccountForLightning(latest.lightningEnrollment);
         setJoinOpen(false);
         router.dismissTo({
           pathname: '/paper',
@@ -813,7 +909,18 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         nowMs: Date.now(),
         startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
       });
-      const existingAccount = accountSelection.account;
+      const reset = resetLightningSharedAccountSnapshot({
+        account: accountSelection.account,
+        positions: cache.positions ?? [],
+        transactions: cache.transactions ?? [],
+        orders: cache.orders ?? [],
+        lots: cache.lots ?? [],
+        snapshots: cache.snapshots ?? [],
+        eventId: window.id,
+        nowMs: Date.now(),
+        startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+      });
+      const existingAccount = reset.account;
       const accountId = existingAccount.id;
       const joinedAtMs = window.startAtMs;
       const nextEnrollment: PaperChallengeEnrollment = {
@@ -827,6 +934,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         joinedAtMs,
         accountId,
         accountName: existingAccount.name,
+        sharedAccountResetEventId: window.id,
         startEquity: null,
         leaderboardAlias: alias.trim(),
         leaderboardOptedIn: true,
@@ -838,17 +946,22 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         body: JSON.stringify({
           alias: alias.trim(),
           account: existingAccount,
-          positions: (cache.positions ?? []).filter((item) => item.accountId === accountId),
-          transactions: (cache.transactions ?? []).filter((item) => item.accountId === accountId),
-          orders: (cache.orders ?? []).filter((item) => item.accountId === accountId),
-          lots: (cache.lots ?? []).filter((item) => item.accountId === accountId),
+          positions: reset.positions.filter((item) => item.accountId === accountId),
+          transactions: reset.transactions.filter((item) => item.accountId === accountId),
+          orders: reset.orders.filter((item) => item.accountId === accountId),
+          lots: reset.lots.filter((item) => item.accountId === accountId),
         }),
       });
       await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
         ...cache,
         accounts: accountSelection.created
           ? [...(cache.accounts ?? []), existingAccount]
-          : cache.accounts,
+          : (cache.accounts ?? []).map((item) => item.id === accountId ? existingAccount : item),
+        positions: reset.positions,
+        transactions: reset.transactions,
+        orders: reset.orders,
+        lots: reset.lots,
+        snapshots: reset.snapshots,
         activeId: accountId,
       }));
       const updated = await updatePaperChallengeStore((current) =>
@@ -1007,7 +1120,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               </View>
               <Text style={{ color: '#FFF5D8', fontFamily: 'Inter_700Bold', fontSize: screenWidth < 370 ? 28 : 34, lineHeight: screenWidth < 370 ? 34 : 39, marginTop: 12 }}>24 hours.{'\n'}One champion.</Text>
               <Text style={{ color: '#E5E8ED', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-                Trade through your Event Arena paper account. If you do not have one yet, it will be set up when you join.
+                Trade through your shared Event Arena account, reset to $100,000 when you join. Completed Lightning Round results remain saved.
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                 {[
@@ -1062,7 +1175,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                     ))}
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 10 }}>
-                    Score starts at $100,000 and counts only fills tagged to this Lightning Round. Your existing Event Arena account is still used for trading.
+                    The shared Event Arena account resets to $100,000 before this round. Only this round’s tagged fills count toward your score; completed round results stay saved.
                   </Text>
                   {participantEntered ? (
                     <Text testID="lightning-round-entry-status" style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, marginTop: 8 }}>
@@ -1082,7 +1195,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                     >
                       <Feather name="trending-up" size={15} color={colors.primaryForeground} />
                       <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                        {window.phase === 'active' ? 'TRADE IN EVENT ARENA' : 'PREPARE YOUR ORDERS'}
+                        {window.phase === 'active'
+                          ? 'TRADE IN EVENT ARENA'
+                          : enrollment?.sharedAccountResetEventId === window.id
+                            ? 'PREPARE YOUR ORDERS'
+                            : 'RESET & PREPARE ORDERS'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -1138,7 +1255,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               <View style={{ marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Compete in the next round</Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 5 }}>
-                  Join with a competition display name. Your Event Arena paper account and its current balance and positions will be used; we will set one up if you do not have one yet.
+                  Join with a competition display name. Your shared Event Arena account resets to $100,000; current positions, regular orders, and regular trade history are cleared. Completed Lightning Round results remain saved.
                 </Text>
                 <TouchableOpacity
                   testID="lightning-round-join"
@@ -1308,7 +1425,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>LIGHTNING ROUND ENTRY</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Choose a competition display name</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 6 }}>
-              This name appears on the leaderboard. Lightning uses your Event Arena paper account; if you do not have one yet, we will set it up for you. No separate Lightning account is created.
+              Joining resets your shared Event Arena account to $100,000 and clears its positions, pending regular orders, and regular trade history. Completed Lightning Round results stay saved.
             </Text>
             {previousLightningAlias ? (
               <View style={{ marginTop: 10 }}>
@@ -1348,7 +1465,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               onPress={() => { void joinRound(); }}
               style={{ minHeight: 48, marginTop: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: joining ? colors.muted : colors.primary }}
             >
-              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{joining ? 'JOINING…' : 'JOIN LIGHTNING ROUND'}</Text>
+               <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{joining ? 'RESETTING & JOINING…' : 'RESET ACCOUNT & JOIN'}</Text>
             </TouchableOpacity>
             <TouchableOpacity accessibilityRole="button" onPress={() => setJoinOpen(false)} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>CANCEL</Text>

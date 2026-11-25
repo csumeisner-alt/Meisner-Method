@@ -237,6 +237,8 @@ export type PaperChallengeEnrollment = {
   joinedAtMs: number;
   accountId: string;
   accountName: string;
+  /** Prevents an older saved enrollment from resetting the shared account repeatedly. */
+  sharedAccountResetEventId?: string;
   startEquity: number | null;
   leaderboardAlias?: string;
   leaderboardOptedIn?: boolean;

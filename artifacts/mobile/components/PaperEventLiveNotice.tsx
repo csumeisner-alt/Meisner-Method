@@ -176,7 +176,7 @@ export function PaperEventLiveNotice({
       </Text>
       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
         {enrollment.eventType === 'lightning-round'
-          ? 'Trades use your existing Event Arena account; no separate Lightning Round balance or portfolio is created. The round closes 24 hours after it opens.'
+          ? 'Your shared Event Arena account was reset to $100,000 before this round. Only this round’s tagged trades count toward its score; completed Lightning results remain saved. The round closes 24 hours after it opens.'
           : enrollment.eventType === 'one-stock-challenge'
             ? ONE_STOCK_CHALLENGE_RULE_COPY
             : `Trade only in your separate ${enrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes Friday at 4:00 p.m. ET.`}
