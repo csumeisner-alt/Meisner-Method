@@ -1,18 +1,31 @@
-import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import React, { useContext } from 'react';
+import { Image, View, TouchableOpacity, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { getMainTabNavigationPlan, type MainTabRoute } from '@/lib/mainTabNavigation';
 import { claimMainTabNavigation } from '@/lib/interactionOwnership';
 
+const EVENT_ARENA_TAB_EMBLEMS = {
+  default: require('../assets/event-arena-tab/default.png'),
+  patriot: require('../assets/event-arena-tab/patriot.png'),
+  neonGucci: require('../assets/event-arena-tab/neon-gucci.png'),
+};
+
 export function BottomTabBar() {
   const colors = useColors();
+  const themeContext = useContext(AmericanModeContext);
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
+  const eventArenaEmblem = themeContext?.neonGucciActive
+    ? EVENT_ARENA_TAB_EMBLEMS.neonGucci
+    : themeContext?.isActive
+      ? EVENT_ARENA_TAB_EMBLEMS.patriot
+      : EVENT_ARENA_TAB_EMBLEMS.default;
 
   const isHome = pathname === '/' || pathname === '';
   const isPicks = pathname.startsWith('/picks');
@@ -75,7 +88,13 @@ export function BottomTabBar() {
         onPress={() => go('/event-arena')}
         activeOpacity={0.7}
       >
-        <Feather name="award" size={21} color={isEventArena ? colors.heading : colors.mutedForeground} />
+        <Image
+          testID="bottom-tab-event-arena-emblem"
+          accessible={false}
+          source={eventArenaEmblem}
+          resizeMode="cover"
+          style={{ width: 32, height: 32, borderRadius: 8 }}
+        />
         <Text style={[styles.label, styles.eventArenaLabel, { lineHeight: 11 * fontScale, color: isEventArena ? colors.heading : colors.mutedForeground }]}>
           EVENT{"\n"}ARENA
         </Text>

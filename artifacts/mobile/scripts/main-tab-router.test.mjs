@@ -58,6 +58,24 @@ test('Analyze tab dismisses heat-map detail routes back to the Analyze screen', 
   assert.match(bar, /if \(plan\.action === 'dismiss'\) \{\s*router\.dismissTo\(plan\.href\)/);
 });
 
+test('Event Arena tab selects the matching emblem for all three app themes', () => {
+  const bar = source('../components/BottomTabBar.tsx');
+  assert.match(bar, /themeContext\?\.neonGucciActive[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.neonGucci[\s\S]*?themeContext\?\.isActive[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.patriot[\s\S]*?EVENT_ARENA_TAB_EMBLEMS\.default/);
+  assert.match(bar, /testID="bottom-tab-event-arena-emblem"[\s\S]*?source=\{eventArenaEmblem\}/);
+  assert.match(bar, /accessibilityLabel="Event Arena"/);
+  assert.match(bar, /accessibilityState=\{\{ selected: isEventArena \}\}/);
+  assert.doesNotMatch(bar, /Feather name="award"/);
+
+  for (const name of ['default', 'patriot', 'neon-gucci']) {
+    const image = readFileSync(new URL(`../assets/event-arena-tab/${name}.png`, import.meta.url));
+    assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal(image.readUInt32BE(16), 192);
+    assert.equal(image.readUInt32BE(20), 192);
+    assert.ok(image.byteLength < 100_000, `${name} tab emblem stays optimized for mobile`);
+    assert.ok(bar.includes(`require('../assets/event-arena-tab/${name}.png')`));
+  }
+});
+
 test('a repeated tab selection and Android back never reorder tab routes', () => {
   const router = createTabs();
   let state = router.getInitialState(options);
