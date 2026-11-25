@@ -189,6 +189,18 @@ async function touch(browser, testID, dx = 0, dy = 0) {
     : []);
 }
 
+async function touchAfterScrollIntoView(browser, testID) {
+  await browser.evaluate(`document.querySelector(${JSON.stringify(selector(testID))})?.scrollIntoView({ block: "center", behavior: "instant" })`);
+  await delay(80);
+  await touch(browser, testID);
+}
+
+async function openAccountSelector(browser) {
+  await touchAfterScrollIntoView(browser, "paper-account-switch");
+  await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("select-paper-account-tiger"))})`,
+    "The account selector must open above the scrollable page.");
+}
+
 test("paper account swipes and screen controls work at a narrow phone viewport", async () => {
   const bundle = await buildFixture();
   const server = createServer((request, response) => {
@@ -260,7 +272,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     );
     assert.equal(await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true,
       "The paper screen must not create horizontal overflow at 320 pixels.");
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     assert.equal(await currentAccount(), "tiger", "Opening the selector must not change the active account.");
     assert.equal(await hapticCount(), 0, "Opening the selector must not trigger a haptic.");
     await touch(browser, "reset-paper-account-tiger");
@@ -346,7 +358,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     const standardEventCardHeight = await browser.evaluate(
       `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
     );
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     await touch(browser, "select-paper-account-fireball");
     await waitFor(browser,
       `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "fireball"`,
@@ -354,7 +366,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     const standardSimulatedCardHeight = await browser.evaluate(
       `document.querySelector(${JSON.stringify(selector("paper-account-hero"))}).getBoundingClientRect().height`,
     );
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     await touch(browser, "select-paper-account-paper-event:arena");
     await waitFor(browser,
       `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent === "paper-event:arena"`,
@@ -489,8 +501,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await currentAccount(), "tiger", "A gesture that ends vertically must not switch accounts.");
     assert.equal(await hapticCount(), 5, "A gesture ending vertically must remain silent.");
 
-    await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-content"))})?.scrollTo({ top: 0, behavior: "instant" })`);
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     assert.equal(await currentAccount(), "tiger", "Reopening the selector must leave the active account unchanged.");
     await touch(browser, "select-paper-account-tiger");
     assert.equal(await currentReturn(), "+0.00%");
@@ -773,13 +784,13 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     });
     await browser.evaluate("window.__setPaperFontScale(1.3)");
     await delay(120);
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     assert.equal(await currentAccount(), "tiger", "Opening account switching must not change the active account.");
     assert.equal(await browser.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true,
       "Opening the account selector with large text must not create horizontal clipping.");
     await touch(browser, "select-paper-account-borg");
     assert.equal(await currentAccount(), "borg", "Account selection must remain usable with large text.");
-    await touch(browser, "paper-account-switch");
+    await openAccountSelector(browser);
     await touch(browser, "select-paper-account-tiger");
     assert.equal(await currentAccount(), "tiger", "Account selection must remain usable with large text.");
     await browser.evaluate("window.__setPaperStressScenario(true)");
@@ -802,7 +813,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
         }), { capture: true });
       }
     })()`);
-    await touch(browser, "paper-tab-group-activity");
+    await touchAfterScrollIntoView(browser, "paper-tab-group-activity");
     const activitySelection = await browser.evaluate(`({
       activeView: document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent ?? null,
       tabs: [...document.querySelectorAll('[data-testid^="paper-tab-group-"]')].map((tab) => ({
@@ -811,15 +822,16 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       events: window.__paperLastTapEvents,
     })`);
     assert.equal(activitySelection.activeView, "orders", JSON.stringify(activitySelection));
-    await touch(browser, "paper-tab-history");
+    await delay(300);
+    await touchAfterScrollIntoView(browser, "paper-tab-history");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "history");
-    await touch(browser, "paper-tab-group-insights");
+    await touchAfterScrollIntoView(browser, "paper-tab-group-insights");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "analytics");
-    await touch(browser, "paper-tab-growth");
+    await touchAfterScrollIntoView(browser, "paper-tab-growth");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "growth");
-    await touch(browser, "paper-tab-group-portfolio");
+    await touchAfterScrollIntoView(browser, "paper-tab-group-portfolio");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "overview");
-    await touch(browser, "paper-tab-positions");
+    await touchAfterScrollIntoView(browser, "paper-tab-positions");
 
     await touch(browser, "paper-current-account", 150, 0);
     await touch(browser, "paper-current-account", 150, 0);
