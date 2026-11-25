@@ -400,6 +400,22 @@ test("Lightning Round championship header preserves accessible actions and bundl
   assert.doesNotMatch(lightningHeader, /https?:|c612e031/);
 });
 
+test("Lightning Round account summary uses the supplied bolt emblem", () => {
+  const summaryStart = lightningRound.indexOf('testID="lightning-round-account-summary"');
+  const accountTitle = lightningRound.indexOf('Your Lightning Round account', summaryStart);
+  assert.ok(summaryStart >= 0 && accountTitle > summaryStart);
+  const accountHeader = lightningRound.slice(summaryStart, accountTitle);
+  assert.match(accountHeader, /testID="lightning-round-account-icon"/);
+  assert.match(accountHeader, /require\('\.\.\/assets\/lightning-round-emblems\/account-bolt\.png'\)/);
+  assert.doesNotMatch(accountHeader, /Feather name="award"/);
+
+  const image = readFileSync(new URL("../assets/lightning-round-emblems/account-bolt.png", import.meta.url));
+  assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(image.readUInt32BE(16), 256);
+  assert.equal(image.readUInt32BE(20), 256);
+  assert.ok(image.byteLength < 150_000);
+});
+
 test("Lightning Round requests a display name and joins the shared account", () => {
   assert.match(challenge, /getLatestLightningRoundAlias/);
   assert.match(lightningRound, /getLatestLightningRoundAlias\(store\.history\)/);

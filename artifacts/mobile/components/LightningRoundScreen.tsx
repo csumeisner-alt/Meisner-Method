@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ImageBackground,
   Modal,
   Platform,
@@ -1158,7 +1159,13 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               <>
                 <View testID="lightning-round-account-summary" style={{ marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Feather name="award" size={16} color={colors.primary} />
+                    <Image
+                      testID="lightning-round-account-icon"
+                      accessible={false}
+                      source={require('../assets/lightning-round-emblems/account-bolt.png')}
+                      resizeMode="cover"
+                      style={{ width: 30, height: 30, borderRadius: 15 }}
+                    />
                     <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Your Lightning Round account</Text>
                     {rank && <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>#{rank}</Text>}
                   </View>
