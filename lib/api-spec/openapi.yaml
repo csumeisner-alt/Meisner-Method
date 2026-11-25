@@ -223,7 +223,7 @@ paths:
                   ok: { type: boolean }
                   eventId: { type: string }
                   accountId: { type: string }
-        "400": { description: The event, installation ID, or snapshot is invalid }
+        "400": { description: "The event, installation ID, or snapshot is invalid" }
         "409": { description: Account preparation for the event has closed }
         "500": { description: The account snapshot could not be saved }
   /event-arena/{eventId}/leaderboard:
@@ -451,7 +451,7 @@ paths:
                 required: [markedRead]
                 properties:
                   markedRead: { type: integer }
-        "400": { description: The event, installation ID, or transfer list is invalid }
+        "400": { description: "The event, installation ID, or transfer list is invalid" }
         "500": { description: The receipt could not be saved }
   /event-arena/device-pairing:
     post:
@@ -2158,7 +2158,7 @@ components:
 
     EventArenaLeaderboardResponse:
       type: object
-      required: [entries, updatedAt]
+      required: [entries, registrations, updatedAt]
       properties:
         entries:
           type: array
@@ -2207,6 +2207,17 @@ components:
               isCurrentUser:
                 type: boolean
                 description: True only for the requesting installation's row; no installation ID is returned.
+        registrations:
+          type: array
+          description: Opted-in Lightning Round participants awaiting a scored entry. Private installation IDs are never returned.
+          items:
+            type: object
+            required: [alias, isCurrentUser]
+            properties:
+              alias: { type: string, minLength: 1, maxLength: 24 }
+              isCurrentUser:
+                type: boolean
+                description: True only for the requesting installation; no installation ID is returned.
         updatedAt: { type: string, format: date-time }
 
     EventArenaLeaderboardHistoryResponse:
