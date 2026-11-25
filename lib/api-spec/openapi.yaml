@@ -210,7 +210,17 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [account, alias, positions, transactions, orders, lots] }
+            schema:
+              type: object
+              required: [account, alias, positions, transactions, orders, lots]
+              additionalProperties: true
+              properties:
+                account: { type: object, additionalProperties: true }
+                alias: { type: string }
+                positions: { type: array, items: {} }
+                transactions: { type: array, items: {} }
+                orders: { type: array, items: {} }
+                lots: { type: array, items: {} }
       responses:
         "200":
           description: The account snapshot was saved
@@ -238,7 +248,7 @@ paths:
     get:
       operationId: getEventArenaLeaderboard
       tags: [eventArena]
-      summary: Get active, opted-in scores for one Event Arena week
+      summary: Get active scores and pending Lightning registrations for one event
       description: Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
       parameters:
         - in: header
@@ -251,7 +261,7 @@ paths:
           description: Anonymous device identifier used only to mark the requesting participant's row. It is never returned.
       responses:
         "200":
-          description: Active scores for the requested event only
+          description: Scores and any opted-in Lightning registrations without a scored entry
           content:
             application/json:
               schema:
@@ -263,7 +273,7 @@ paths:
     post:
       operationId: submitEventArenaScore
       tags: [eventArena]
-      summary: Submit or update an anonymous Event Arena score
+      summary: Submit an Event Arena score or acknowledge a queued Lightning registration
       requestBody:
         required: true
         content:
@@ -272,7 +282,7 @@ paths:
               $ref: "#/components/schemas/EventArenaScoreSubmission"
       responses:
         "200":
-          description: Score saved
+          description: Score saved or queued Lightning registration acknowledged
           content:
             application/json:
               schema:
@@ -1616,6 +1626,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
   /event-arena/lightning-round/{eventId}/participant:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string, pattern: "^lightning-\\d{4}-\\d{2}-\\d{2}$" }
     delete:
       operationId: leaveLightningRoundParticipant
       summary: Remove the current participant from a Lightning Round
@@ -1630,6 +1645,11 @@ paths:
         "200":
           description: Privacy notice page
   /stocks/crypto/{symbol}/supply-history:
+    parameters:
+      - in: path
+        name: symbol
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 24 }
     get:
       operationId: getCryptoSupplyHistoryDefaultRange
       summary: Get cryptocurrency supply history
@@ -1657,6 +1677,11 @@ paths:
         "200":
           description: Price alert created
   /user/alerts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
     delete:
       operationId: deleteUserAlert
       summary: Delete a price alert
@@ -1697,6 +1722,11 @@ paths:
         "200":
           description: Paper trading account created
   /user/paper/accounts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
     put:
       operationId: updatePaperAccount
       summary: Update a paper trading account
@@ -1744,6 +1774,11 @@ paths:
         "200":
           description: Paper trading position saved
   /user/paper/positions/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
     delete:
       operationId: deletePaperPosition
       summary: Delete a paper trading position
@@ -1771,6 +1806,11 @@ paths:
         "200":
           description: Paper trading transaction created
   /user/paper/transactions/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
     delete:
       operationId: deletePaperTransaction
       summary: Delete a paper trading transaction
@@ -1805,6 +1845,11 @@ paths:
         "200":
           description: Watchlist reordered
   /user/watchlist/{symbol}:
+    parameters:
+      - in: path
+        name: symbol
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 24 }
     delete:
       operationId: deleteUserWatchlistSymbol
       summary: Remove a symbol from the user's watchlist

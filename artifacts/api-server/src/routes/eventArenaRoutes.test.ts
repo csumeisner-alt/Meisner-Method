@@ -2000,6 +2000,98 @@ test("submission accepts short direction and an explicitly unavailable allocatio
   }]]);
 });
 
+test("queued Lightning registration is acknowledged without inventing a leaderboard score", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  let registrationUpdated = false;
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("SELECT status,failure_reason,account_id FROM event_arena_lightning_participants")) {
+      return { rows: [{ status: "queued", failure_reason: null, account_id: "lightning-account" }] };
+    }
+    if (sql.includes("UPDATE event_arena_lightning_participants")) {
+      assert.match(sql, /leaderboard_opted_in=TRUE/);
+      assert.deepEqual(values, [lightningEventId, installationId, "MarketFox", Date.parse("2026-11-25T16:00:00.000Z")]);
+      registrationUpdated = true;
+      return { rows: [{ installation_id: installationId }] };
+    }
+    assert.doesNotMatch(sql, /FROM paper_transactions/);
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        installationId,
+        alias: "MarketFox",
+        eventType: configuration.eventType,
+        artworkId: configuration.artworkId,
+        startingBalance: configuration.startingBalance,
+        rankingDirection: configuration.rankingDirection,
+        cashBalance: configuration.startingBalance,
+        appliedTransferIds: [],
+        startEquity: configuration.startingBalance,
+        equity: configuration.startingBalance,
+        returnPercent: 0,
+        tradeCount: 0,
+        holdings: [],
+        eventStartAtMs: configuration.startAtMs,
+        eventEndAtMs: configuration.endAtMs,
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as any).ok, true);
+  }, Date.parse("2026-11-25T16:00:00.000Z"), savedConfigurations);
+  assert.equal(registrationUpdated, true);
+});
+
+test("Lightning leaderboard shows queued opted-in participants without exposing installation IDs", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("SELECT participant.installation_id,participant.alias")) {
+      assert.match(sql, /leaderboard_opted_in=TRUE/);
+      assert.match(sql, /status IN \('queued','entered'\)/);
+      assert.deepEqual(values, [lightningEventId, configuration.startAtMs, configuration.endAtMs]);
+      return { rows: [{ installation_id: installationId, alias: "MarketFox" }] };
+    }
+    if (sql.includes("FROM event_arena_leaderboard_entries")) return { rows: [] };
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
+      headers: { "x-event-arena-installation-id": installationId },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries, []);
+    assert.deepEqual(result.registrations, [{ alias: "MarketFox", isCurrentUser: true }]);
+    assert.equal(JSON.stringify(result).includes(installationId), false);
+  }, Date.parse("2026-11-25T16:00:00.000Z"), savedConfigurations);
+});
+
 test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {
   let queries = 0;
   await withApi(async (sql, values) => {
@@ -2089,7 +2181,9 @@ test("empty event leaderboard returns a successful empty list", async () => {
   await withApi(async (sql) => sql.startsWith("DELETE") ? { rows: [] } : { rows: [] }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json() as any).entries, []);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries, []);
+    assert.deepEqual(result.registrations, []);
   });
 });
 

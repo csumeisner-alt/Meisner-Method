@@ -301,6 +301,9 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(leaderboard, /matchingOwnEntries\.length !== 1/);
   assert.match(leaderboard, /onRankChange\?\.\(matchingOwnEntries\[0\]\?\.rank \?\? null\)/);
   assert.match(leaderboard, /enabled: false/);
+  assert.match(leaderboard, /leaderboardQuery\.data\?\.registrations \?\? \[\]/);
+  assert.match(leaderboard, /entries\.length \+ registrations\.length/);
+  assert.match(leaderboard, /testID="paper-event-registered-participants"/);
   assert.match(paper, /shouldEnsurePaperChallengeAccount\(enrollment, challengeNow\)/);
   assert.match(paper, /Date\.now\(\) < enrollment\.eventStartAtMs/);
 });

@@ -121,6 +121,10 @@ type LeaderboardEntry = {
   updatedAt: string;
   isCurrentUser: boolean;
 };
+type LeaderboardRegistration = {
+  alias: string;
+  isCurrentUser: boolean;
+};
 
 type Props = {
   event: PaperChallengeLeaderboardEventWindow;
@@ -586,6 +590,8 @@ export function PaperChallengeLeaderboard({
     },
   });
   const entries = leaderboardQuery.data?.entries ?? [];
+  const registrations: LeaderboardRegistration[] = leaderboardQuery.data?.registrations ?? [];
+  const participantCount = entries.length + registrations.length;
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
   const podiumSlots = useMemo(() => getEventArenaPodiumSlots(entries), [entries]);
   const eventStatus = getEventArenaStatus(event.startAtMs, event.endAtMs, countdownNow);
@@ -1783,13 +1789,13 @@ export function PaperChallengeLeaderboard({
                         {dateRangeLabel(event.startAtMs, event.endAtMs)}
                       </Text>
                     </View>
-                    <View testID="paper-event-leaderboard-participant-count" accessible accessibilityLabel={`${entries.length} ${entries.length === 1 ? 'competitor' : 'competitors'}`} style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 18, backgroundColor: 'rgba(7,12,20,0.58)', borderWidth: 1, borderColor: 'rgba(216,180,90,0.25)' }}>
+                  <View testID="paper-event-leaderboard-participant-count" accessible accessibilityLabel={`${participantCount} ${participantCount === 1 ? 'competitor' : 'competitors'}`} style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 18, backgroundColor: 'rgba(7,12,20,0.58)', borderWidth: 1, borderColor: 'rgba(216,180,90,0.25)' }}>
                       <Feather name="users" size={13} color="#E8CB7C" />
                       <Text allowFontScaling style={{ color: '#FFF4D7', fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                        {entries.length}
+                        {participantCount}
                       </Text>
                       <Text style={{ color: '#D9D6CE', fontFamily: 'Inter_500Medium', fontSize: 10 }}>
-                        {entries.length === 1 ? 'competitor' : 'competitors'}
+                        {participantCount === 1 ? 'competitor' : 'competitors'}
                       </Text>
                     </View>
                   </View>
@@ -1824,7 +1830,7 @@ export function PaperChallengeLeaderboard({
                   ))}
                   <Text style={{ color: '#D4D5D4', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10, textAlign: 'center' }}>Loading leaderboard…</Text>
                 </View>
-              ) : loadError && entries.length === 0 ? (
+              ) : loadError && entries.length === 0 && registrations.length === 0 ? (
                 <View testID="paper-event-leaderboard-error" style={{ padding: 14, borderRadius: 10, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.94)' : colors.card, borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,190,190,0.72)' : colors.destructive }}>
                   <Text style={{ color: isOneStockChallenge ? '#FFF1EF' : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: isOneStockChallenge ? 18 : undefined }}>{loadError}</Text>
                   <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}>
@@ -1833,7 +1839,7 @@ export function PaperChallengeLeaderboard({
                 </View>
               ) : (
                 <>
-                  {entries.length === 0 && (
+                  {entries.length === 0 && registrations.length === 0 && (
                     <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 18, paddingHorizontal: 12, borderRadius: 16, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.92)' : 'rgba(7,13,20,0.8)', borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.13)' }}>
                       <Feather name="users" size={23} color="#D8B45A" />
                       <Text allowFontScaling style={{ color: '#E2E2DE', fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 10, textAlign: 'center', lineHeight: 18 }}>
@@ -1842,6 +1848,37 @@ export function PaperChallengeLeaderboard({
                       <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
                         <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>REFRESH</Text>
                       </TouchableOpacity>
+                    </View>
+                  )}
+                  {registrations.length > 0 && (
+                    <View testID="paper-event-registered-participants" style={{ marginTop: 8, paddingHorizontal: 13, paddingVertical: 12, borderRadius: 15, backgroundColor: 'rgba(7,13,20,0.9)', borderWidth: 1, borderColor: 'rgba(216,180,90,0.42)' }}>
+                      <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.1, marginBottom: 8 }}>
+                        REGISTERED COMPETITORS
+                      </Text>
+                      {registrations.map((participant, index) => (
+                        <View
+                          key={`${participant.alias}-${index}`}
+                          accessible
+                          accessibilityLabel={`Registered competitor ${participant.alias}${participant.isCurrentUser ? ', you' : ''}`}
+                          style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: 'rgba(255,255,255,0.1)' }}
+                        >
+                          <Feather name="user" size={14} color="#D8B45A" />
+                          <Text numberOfLines={1} style={{ flex: 1, color: '#F4F0E7', fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                            {participant.alias}
+                          </Text>
+                          {participant.isCurrentUser && (
+                            <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 }}>
+                              YOU
+                            </Text>
+                          )}
+                          <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.5 }}>
+                            {event.phase === 'upcoming' ? 'REGISTERED' : 'SCORE PENDING'}
+                          </Text>
+                        </View>
+                      ))}
+                      <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 5 }}>
+                        A ranked score appears after an opening order fills.
+                      </Text>
                     </View>
                   )}
                   <View testID="paper-event-leaderboard-podium" style={{ marginTop: entries.length === 0 ? 7 : 2 }}>
@@ -1944,7 +1981,7 @@ export function PaperChallengeLeaderboard({
                   })()}
                 </View>
               )}
-              {loadError && entries.length > 0 && (
+              {loadError && (entries.length > 0 || registrations.length > 0) && (
                 <View testID="paper-event-leaderboard-stale" style={{ marginTop: 9, padding: 10, borderRadius: 9, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.goldMuted }}>
                   <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
                     {leaderboardQuery.error ? 'Refresh failed · showing the last successful rankings' : loadError}

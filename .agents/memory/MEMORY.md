@@ -97,3 +97,4 @@
 - [PostgreSQL worker test fixtures](postgres-worker-test-fixtures.md) — match production indexes/defaults and seed coherent ledger state in isolated PostgreSQL schemas.
 - [Lightning Round cash transfers](lightning-round-cash-transfers.md) — keep transfers disabled for Lightning Round unless the user changes this rule.
 - [Browser query mocks](browser-query-mock-stability.md) — keep mocked query callbacks referentially stable when components include them in refresh-effect dependencies.
+- [OpenAPI codegen validation](api-spec-codegen.md) — keep path params and object schemas explicit; recheck the generated Zod barrel and library types after Orval runs.

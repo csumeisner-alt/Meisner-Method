@@ -1285,8 +1285,35 @@ export function createEventArenaRouter(
           EVENT_ARENA_RETENTION_DAYS,
         ],
       );
+      const registrations = configuration.eventType === "lightning-round"
+        ? (await db.query(
+          `SELECT participant.installation_id,participant.alias
+           FROM event_arena_lightning_participants AS participant
+           WHERE participant.event_id=$1
+             AND participant.leaderboard_opted_in=TRUE
+             AND participant.status IN ('queued','entered')
+             AND participant.event_start_at=TO_TIMESTAMP($2 / 1000.0)
+             AND participant.event_end_at=TO_TIMESTAMP($3 / 1000.0)
+             AND participant.event_end_at > NOW()
+             AND NOT EXISTS (
+               SELECT 1
+               FROM event_arena_leaderboard_entries AS entry
+               WHERE entry.event_id=participant.event_id
+                 AND entry.installation_id=participant.installation_id
+                 AND entry.is_active=TRUE
+                 AND entry.event_start_at=participant.event_start_at
+                 AND entry.event_end_at=participant.event_end_at
+             )
+           ORDER BY participant.alias ASC,participant.installation_id ASC`,
+          [req.params.eventId, expectedWindow.startAtMs, expectedWindow.endAtMs],
+        )).rows.map((participant: any) => ({
+          alias: String(participant.alias),
+          isCurrentUser: participant.installation_id === requestingInstallationId,
+        }))
+        : [];
       res.json({
         entries: rankEventArenaEntries(rows, requestingInstallationId, configuration.rankingDirection),
+        registrations,
         updatedAt: new Date(now()).toISOString(),
       });
     } catch {
@@ -1396,7 +1423,28 @@ export function createEventArenaRouter(
            WHERE event_id=$1 AND installation_id=$2`,
           [req.params.eventId, submission.installationId],
         );
-        const participant = participantRows[0];
+        let participant = participantRows[0];
+        if (participant?.status === "queued") {
+          const { rows: updatedParticipants } = await db.query(
+            `UPDATE event_arena_lightning_participants
+             SET alias=$3,leaderboard_opted_in=TRUE,updated_at=NOW()
+             WHERE event_id=$1 AND installation_id=$2 AND status='queued'
+               AND event_end_at > TO_TIMESTAMP($4 / 1000.0)
+               AND (event_start_at > TO_TIMESTAMP($4 / 1000.0) OR alias=$3)
+             RETURNING installation_id`,
+            [req.params.eventId, submission.installationId, submission.alias, now()],
+          );
+          if (updatedParticipants[0]) {
+            res.json({ ok: true, updatedAt: new Date(now()).toISOString() });
+            return;
+          }
+          const { rows: latestParticipantRows } = await db.query(
+            `SELECT status,failure_reason,account_id FROM event_arena_lightning_participants
+             WHERE event_id=$1 AND installation_id=$2`,
+            [req.params.eventId, submission.installationId],
+          );
+          participant = latestParticipantRows[0];
+        }
         if (participant?.status !== "entered") {
           res.status(409).json({
             error: participant?.failure_reason
