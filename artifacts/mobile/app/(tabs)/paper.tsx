@@ -606,6 +606,12 @@ export default function PaperScreen() {
     ? savedLightningEnrollment
     : null;
   const lightningEnrollmentForDisplay = activeLightningEnrollment;
+  const lightningPreparedOrders = lightningEnrollmentForDisplay?.accountId === activeId
+    ? orders
+      .filter((order) => order.accountId === lightningEnrollmentForDisplay.accountId
+        && order.lightningRoundEventId === lightningEnrollmentForDisplay.eventId)
+      .sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt))
+    : [];
   const lightningQueuedOrders = lightningEnrollmentForDisplay
     ? getLightningRoundQueuedOrders(
       orders,
@@ -4319,72 +4325,85 @@ export default function PaperScreen() {
           >
             <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>LEAVE LIGHTNING ROUND</Text>
           </TouchableOpacity>
-          {lightningEnrollmentForDisplay.accountId === activeId && orders
-            .filter((order) => order.accountId === lightningEnrollmentForDisplay.accountId
-              && order.lightningRoundEventId === lightningEnrollmentForDisplay.eventId)
-            .sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt))
-            .map((order) => {
-              const estimate = quotes[order.symbol]?.price;
-              const isQueued = getLightningRoundQueuedOrders(
-                [order],
-                lightningEnrollmentForDisplay.eventId,
-                lightningEnrollmentForDisplay.accountId,
-              ).length > 0;
-              return (
-                <View
-                  key={order.id}
-                  testID={`lightning-round-prepared-order-${order.id}`}
-                  style={{ marginTop: 9, padding: 11, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}
-                >
-                  <Text style={{ color: isQueued ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 15 }}>
-                    {isQueued ? 'PENDING — EXECUTES AT EVENT START' : order.rejectionReason ? 'ORDER REJECTED' : order.status.toUpperCase()}
-                  </Text>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 4 }}>
-                    {order.shares} {order.symbol} · estimated {Number.isFinite(estimate) && (estimate ?? 0) > 0
-                      ? $fmt(order.shares * (estimate as number))
-                      : 'value unavailable'}
-                  </Text>
-                  {order.rejectionReason && (
-                    <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
-                      {order.rejectionReason}
-                    </Text>
-                  )}
-                  {isQueued && (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
-                      Estimated value only. Actual execution price may differ.
-                    </Text>
-                  )}
-                  {isQueued && isLightningPreparationAccount && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 }}>
-                      <TouchableOpacity
-                        testID={`edit-lightning-order-${order.id}`}
-                        accessibilityRole="button"
-                        onPress={() => editOrder(order)}
-                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
-                      >
-                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>EDIT QUANTITY</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        testID={`change-lightning-order-symbol-${order.id}`}
-                        accessibilityRole="button"
-                        onPress={() => changeLightningOrderSymbol(order)}
-                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
-                      >
-                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CHANGE SYMBOL</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        testID={`cancel-lightning-order-${order.id}`}
-                        accessibilityRole="button"
-                        onPress={() => requestDeleteOrder(order)}
-                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.destructive }}
-                      >
-                        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CANCEL ORDER</Text>
-                      </TouchableOpacity>
+          {lightningPreparedOrders.length > 0 && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.4, marginBottom: 4 }}>
+                PREPARED ORDERS · {lightningPreparedOrders.length}
+              </Text>
+              <ScrollView
+                testID="lightning-round-prepared-order-list"
+                accessibilityLabel={`${lightningPreparedOrders.length} Lightning Round prepared orders`}
+                style={{ flexGrow: 0, maxHeight: Math.min(300, Math.round(screenHeight * 0.34)) }}
+                contentContainerStyle={{ paddingBottom: 3 }}
+                nestedScrollEnabled
+                scrollEnabled={lightningPreparedOrders.length > 1}
+                showsVerticalScrollIndicator={lightningPreparedOrders.length > 1}
+              >
+                {lightningPreparedOrders.map((order) => {
+                  const estimate = quotes[order.symbol]?.price;
+                  const isQueued = getLightningRoundQueuedOrders(
+                    [order],
+                    lightningEnrollmentForDisplay.eventId,
+                    lightningEnrollmentForDisplay.accountId,
+                  ).length > 0;
+                  return (
+                    <View
+                      key={order.id}
+                      testID={`lightning-round-prepared-order-${order.id}`}
+                      style={{ marginTop: 6, padding: 11, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}
+                    >
+                      <Text style={{ color: isQueued ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 15 }}>
+                        {isQueued ? 'PENDING — EXECUTES AT EVENT START' : order.rejectionReason ? 'ORDER REJECTED' : order.status.toUpperCase()}
+                      </Text>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 4 }}>
+                        {order.shares} {order.symbol} · estimated {Number.isFinite(estimate) && (estimate ?? 0) > 0
+                          ? $fmt(order.shares * (estimate as number))
+                          : 'value unavailable'}
+                      </Text>
+                      {order.rejectionReason && (
+                        <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+                          {order.rejectionReason}
+                        </Text>
+                      )}
+                      {isQueued && (
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                          Estimated value only. Actual execution price may differ.
+                        </Text>
+                      )}
+                      {isQueued && isLightningPreparationAccount && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 }}>
+                          <TouchableOpacity
+                            testID={`edit-lightning-order-${order.id}`}
+                            accessibilityRole="button"
+                            onPress={() => editOrder(order)}
+                            style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>EDIT QUANTITY</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            testID={`change-lightning-order-symbol-${order.id}`}
+                            accessibilityRole="button"
+                            onPress={() => changeLightningOrderSymbol(order)}
+                            style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CHANGE SYMBOL</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            testID={`cancel-lightning-order-${order.id}`}
+                            accessibilityRole="button"
+                            onPress={() => requestDeleteOrder(order)}
+                            style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.destructive }}
+                          >
+                            <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CANCEL ORDER</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-              );
-            })}
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
         </View>
       )}
 
