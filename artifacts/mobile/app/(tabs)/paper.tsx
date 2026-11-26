@@ -4098,7 +4098,7 @@ export default function PaperScreen() {
         style={{ flex: 1, minHeight: 0 }}
         contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={false}
       >
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>

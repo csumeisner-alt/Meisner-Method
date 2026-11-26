@@ -522,9 +522,11 @@ test("the full Paper screen scrolls while prepared orders and all five main tabs
   assert.match(screen, /const lightningPreparedOrders = lightningEnrollmentForDisplay\?\.accountId === activeId[\s\S]*?lightningRoundEventId === lightningEnrollmentForDisplay\.eventId/);
   const mainScrollStart = screen.indexOf('<ScrollView\n        testID="paper-content"');
   const mainScrollEnd = screen.indexOf('</ScrollView>', mainScrollStart);
+  const mainScroll = screen.slice(mainScrollStart, mainScrollEnd);
   const tradeAction = screen.indexOf('<PaperTradingAction', mainScrollEnd);
   const bottomBar = screen.indexOf('<BottomTabBar />', tradeAction);
   assert.ok(mainScrollStart >= 0 && mainScrollEnd > mainScrollStart);
+  assert.match(mainScroll, /showsVerticalScrollIndicator=\{false\}/);
   assert.ok(mainScrollStart < screen.indexOf('{/* Header */', mainScrollStart));
   assert.ok(mainScrollStart < screen.indexOf('testID="lightning-round-preparation-banner"', mainScrollStart));
   assert.ok(mainScrollEnd > screen.indexOf('<PaperPortfolioNavigation'));
