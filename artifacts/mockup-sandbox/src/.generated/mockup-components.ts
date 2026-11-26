@@ -21,6 +21,7 @@ export const modules: ModuleMap = {
   "./components/mockups/leaderboard-story/PennyStockMayhem.tsx": () => import("../components/mockups/leaderboard-story/PennyStockMayhem.tsx"),
   "./components/mockups/meisner-title-flag-story/TitleFlagStory.tsx": () => import("../components/mockups/meisner-title-flag-story/TitleFlagStory.tsx"),
   "./components/mockups/neon-gucci-celebration/Current.tsx": () => import("../components/mockups/neon-gucci-celebration/Current.tsx"),
+  "./components/mockups/neon-gucci-event-arena/MainEventArea.tsx": () => import("../components/mockups/neon-gucci-event-arena/MainEventArea.tsx"),
   "./components/mockups/one-stock-leaderboard/Current.tsx": () => import("../components/mockups/one-stock-leaderboard/Current.tsx"),
   "./components/mockups/one-stock-leaderboard/FullCard.tsx": () => import("../components/mockups/one-stock-leaderboard/FullCard.tsx"),
   "./components/mockups/premium-flag-collection/Current.tsx": () => import("../components/mockups/premium-flag-collection/Current.tsx"),
