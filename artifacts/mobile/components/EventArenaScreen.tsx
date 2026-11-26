@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   AppState,
   DeviceEventEmitter,
+  Image,
   ImageBackground,
   Modal,
   Platform,
@@ -23,6 +24,7 @@ import ViewShot from 'react-native-view-shot';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventArenaLeaderboard } from '@workspace/api-client-react';
+import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { EventArenaOverview } from '@/components/EventArenaOverview';
@@ -157,15 +159,36 @@ async function fetchSavedEventConfiguration(
   return saved as SavedEventConfiguration;
 }
 
-const SECTIONS: { id: Section; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
-  { id: 'competition', label: 'Competition', icon: 'award' },
-  { id: 'leaderboard', label: 'Leaderboard', icon: 'users' },
-  { id: 'trades', label: 'My Trades', icon: 'activity' },
-  { id: 'past', label: 'Past Events', icon: 'archive' },
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'competition', label: 'Competition' },
+  { id: 'leaderboard', label: 'Leaderboard' },
+  { id: 'trades', label: 'My Trades' },
+  { id: 'past', label: 'Past Events' },
 ];
+const EVENT_ARENA_SECTION_ICON_SOURCES = {
+  default: {
+    competition: require('../assets/event-arena-section-tabs/default-competition.png'),
+    leaderboard: require('../assets/event-arena-section-tabs/default-leaderboard.png'),
+    trades: require('../assets/event-arena-section-tabs/default-trades.png'),
+    past: require('../assets/event-arena-section-tabs/default-past.png'),
+  },
+  patriot: {
+    competition: require('../assets/event-arena-section-tabs/patriot-competition.png'),
+    leaderboard: require('../assets/event-arena-section-tabs/patriot-leaderboard.png'),
+    trades: require('../assets/event-arena-section-tabs/patriot-trades.png'),
+    past: require('../assets/event-arena-section-tabs/patriot-past.png'),
+  },
+  neonGucci: {
+    competition: require('../assets/event-arena-section-tabs/neon-gucci-competition.png'),
+    leaderboard: require('../assets/event-arena-section-tabs/neon-gucci-leaderboard.png'),
+    trades: require('../assets/event-arena-section-tabs/neon-gucci-trades.png'),
+    past: require('../assets/event-arena-section-tabs/neon-gucci-past.png'),
+  },
+};
 const SECTION_TAB_GAP = 4;
 const SECTION_TAB_MIN_HEIGHT = 60;
-const SECTION_TAB_ICON_SIZE = 18;
+const SECTION_TAB_ICON_SIZE = 36;
+const SECTION_TAB_NEON_ART_HEIGHT = 56;
 const SECTION_TAB_LABEL_SIZE = 10;
 
 const money = (value: number) =>
@@ -224,6 +247,13 @@ function EventArenaCalendarUnavailable({ message }: { message: string }) {
 
 function EventArenaScreenContent() {
   const colors = useColors();
+  const themeContext = useContext(AmericanModeContext);
+  const sectionTabTheme = themeContext?.neonGucciActive
+    ? 'neonGucci'
+    : themeContext?.isActive
+      ? 'patriot'
+      : 'default';
+  const isNeonGucciTheme = sectionTabTheme === 'neonGucci';
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string | string[]; eventId?: string | string[] }>();
   const insets = useSafeAreaInsets();
@@ -1531,8 +1561,18 @@ function EventArenaScreenContent() {
                 onPress={() => setSection(item.id)}
                 style={{ flex: 1, minWidth: 0, minHeight: SECTION_TAB_MIN_HEIGHT, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 2, borderRadius: 12, backgroundColor: selected ? colors.primary : colors.card, borderWidth: 1, borderColor: selected ? colors.primary : colors.border }}
               >
-                <Feather name={item.icon} size={SECTION_TAB_ICON_SIZE} color={selected ? colors.primaryForeground : colors.mutedForeground} />
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ minWidth: 0, textAlign: 'center', color: selected ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: SECTION_TAB_LABEL_SIZE }}>{item.label}</Text>
+                <Image
+                  testID={`event-arena-tab-image-${item.id}`}
+                  accessible={false}
+                  source={EVENT_ARENA_SECTION_ICON_SOURCES[sectionTabTheme][item.id]}
+                  resizeMode={isNeonGucciTheme ? 'contain' : 'cover'}
+                  style={isNeonGucciTheme
+                    ? { width: '100%', height: SECTION_TAB_NEON_ART_HEIGHT, borderRadius: 8 }
+                    : { width: SECTION_TAB_ICON_SIZE, height: SECTION_TAB_ICON_SIZE, borderRadius: 8 }}
+                />
+                {!isNeonGucciTheme && (
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ minWidth: 0, textAlign: 'center', color: selected ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: SECTION_TAB_LABEL_SIZE }}>{item.label}</Text>
+                )}
               </TouchableOpacity>
             );
           })}

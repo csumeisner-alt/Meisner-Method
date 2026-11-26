@@ -696,23 +696,40 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
   assert.match(sectionTabs, /accessibilityState=\{\{ selected \}\}/);
   assert.match(sectionTabs, /accessibilityLabel=\{item\.label\}/);
   assert.match(sectionTabs, /onPress=\{\(\) => setSection\(item\.id\)\}/);
+  assert.match(sectionTabs, /testID=\{`event-arena-tab-image-\$\{item\.id\}`\}/);
+  assert.match(sectionTabs, /source=\{EVENT_ARENA_SECTION_ICON_SOURCES\[sectionTabTheme\]\[item\.id\]\}/);
+  assert.match(sectionTabs, /!\s*isNeonGucciTheme && \(/);
+  assert.doesNotMatch(sectionTabs, /<Feather name=\{item\.icon\}/);
   assert.match(sectionTabs, /backgroundColor: selected \? colors\.primary : colors\.card/);
   assert.match(sectionTabs, /borderColor: selected \? colors\.primary : colors\.border/);
-  assert.match(sectionTabs, /color=\{selected \? colors\.primaryForeground : colors\.mutedForeground\}/);
   assert.match(sectionTabs, /color: selected \? colors\.primaryForeground : colors\.foreground/);
   assert.match(sectionTabs, /alignItems: 'center', justifyContent: 'center'/);
   assert.match(sectionTabs, /flex: 1, minWidth: 0, minHeight: SECTION_TAB_MIN_HEIGHT/);
-  assert.match(sectionTabs, /size=\{SECTION_TAB_ICON_SIZE\}/);
+  assert.match(sectionTabs, /width: SECTION_TAB_ICON_SIZE, height: SECTION_TAB_ICON_SIZE/);
+  assert.match(sectionTabs, /height: SECTION_TAB_NEON_ART_HEIGHT/);
   assert.match(sectionTabs, /fontSize: SECTION_TAB_LABEL_SIZE/);
   assert.match(sectionTabs, /numberOfLines=\{1\} adjustsFontSizeToFit/);
   assert.match(sectionTabs, /textAlign: 'center'/);
   assert.match(eventArena, /const SECTION_TAB_MIN_HEIGHT = 60/);
-  assert.match(eventArena, /const SECTION_TAB_ICON_SIZE = 18/);
+  assert.match(eventArena, /const SECTION_TAB_ICON_SIZE = 36/);
+  assert.match(eventArena, /const SECTION_TAB_NEON_ART_HEIGHT = 56/);
   assert.match(eventArena, /const SECTION_TAB_LABEL_SIZE = 10/);
   assert.match(eventArena, /flexDirection: 'row', gap: SECTION_TAB_GAP/);
   assert.match(eventArena, /paddingHorizontal: 16, paddingBottom: 4/);
   assert.doesNotMatch(sectionTabs, /<ScrollView/);
   assert.equal((eventArena.match(/\{ id: '(?:competition|leaderboard|trades|past)', label:/g) ?? []).length, 4);
+  const sectionIds = ['competition', 'leaderboard', 'trades', 'past'];
+  for (const [theme, prefix] of [['default', 'default'], ['patriot', 'patriot'], ['neonGucci', 'neon-gucci']]) {
+    for (const sectionId of sectionIds) {
+      const imagePath = `../assets/event-arena-section-tabs/${prefix}-${sectionId}.png`;
+      const image = readFileSync(new URL(imagePath, import.meta.url));
+      assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+      assert.equal(image.readUInt32BE(16), theme === 'neonGucci' ? 256 : 192);
+      assert.equal(image.readUInt32BE(20), theme === 'neonGucci' ? 113 : 192);
+      assert.ok(image.byteLength < 100_000, `${theme} ${sectionId} artwork stays optimized for mobile`);
+      assert.ok(eventArena.includes(`require('../assets/event-arena-section-tabs/${prefix}-${sectionId}.png')`));
+    }
+  }
 
   const gap = Number(eventArena.match(/const SECTION_TAB_GAP = (\d+)/)?.[1]);
   const sidePadding = 16;
