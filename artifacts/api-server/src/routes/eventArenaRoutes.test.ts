@@ -2068,7 +2068,7 @@ test(
   },
 );
 
-test("history reads only an active requesting participant's snapshots for the requested event", async () => {
+test("public history is scoped to the requested event and excludes installation and account identifiers", async () => {
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
     assert.match(sql, /JOIN event_arena_leaderboard_entries AS participant/);
@@ -2078,20 +2078,35 @@ test("history reads only an active requesting participant's snapshots for the re
     assert.match(sql, /NTILE\(120\)/);
     assert.deepEqual(values, [eventId, installationId, startAtMs, endAtMs, 30]);
     return { rows: [
-      { captured_at: new Date("2026-11-16T15:00:00.000Z"), rank: 4, return_percent: 0.25 },
-      { captured_at: new Date("2026-11-18T17:00:00.000Z"), rank: 2, return_percent: 1.75 },
+      {
+        captured_at: new Date("2026-11-16T15:00:00.000Z"),
+        rank: 4,
+        return_percent: 0.25,
+        installation_id: "private-installation",
+        account_id: "private-account",
+      },
+      {
+        captured_at: new Date("2026-11-18T17:00:00.000Z"),
+        rank: 2,
+        return_percent: 1.75,
+        installation_id: "private-installation",
+        account_id: "private-account",
+      },
     ] };
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard/history`, {
       headers: { "x-event-arena-installation-id": installationId },
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
+    const body = await response.json() as unknown;
+    assert.deepEqual(body, {
       snapshots: [
         { capturedAt: "2026-11-16T15:00:00.000Z", rank: 4, returnPercent: 0.25 },
         { capturedAt: "2026-11-18T17:00:00.000Z", rank: 2, returnPercent: 1.75 },
       ],
     });
+    assert.equal(JSON.stringify(body).includes("private-installation"), false);
+    assert.equal(JSON.stringify(body).includes("private-account"), false);
   });
 });
 

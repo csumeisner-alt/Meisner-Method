@@ -616,36 +616,37 @@ test("Lightning Round market orders fill at the official event start", async () 
   assert.equal(state.participants[0].status, "entered");
 });
 
-test("active Lightning history records server scores only after meaningful changes and the minimum interval", async () => {
+test("active Lightning history resumes from persisted snapshots after a worker restart", async () => {
   const state = seedEnteredState();
-  const db = new MemoryDatabase(state);
   const firstAt = startAt + 5 * 60_000;
 
-  await process(db, async () => 110, () => firstAt);
+  await process(new MemoryDatabase(state), async () => 110, () => firstAt);
   assert.equal(state.leaderboardEntries[0]?.equity, 100_020);
   assert.equal(state.snapshots.length, 1);
   assert.equal(state.snapshots[0]?.return_percent, 0.02);
   assert.equal(state.snapshots[0]?.is_final, false);
 
-  await process(db, async () => 120, () => firstAt + 1 * 60_000);
+  // A new database wrapper represents a worker reconnecting with no process-local
+  // history cache. The saved snapshot still controls meaningful-change timing.
+  await process(new MemoryDatabase(state), async () => 120, () => firstAt + 1 * 60_000);
   assert.equal(state.leaderboardEntries[0]?.equity, 100_040);
   assert.equal(state.snapshots.length, 1, "a changed score inside the five-minute window is deferred");
 
-  await process(db, async () => 120, () => firstAt + 6 * 60_000);
+  await process(new MemoryDatabase(state), async () => 120, () => firstAt + 6 * 60_000);
   assert.equal(state.snapshots.length, 2);
   assert.equal(state.snapshots[1]?.return_percent, 0.04);
 
-  await process(db, async () => 120, () => firstAt + 7 * 60_000);
+  await process(new MemoryDatabase(state), async () => 120, () => firstAt + 7 * 60_000);
   assert.equal(state.snapshots.length, 2, "unchanged scores do not create extra history points");
 
-  await process(db, async () => 130, () => endAt + 1000);
+  await process(new MemoryDatabase(state), async () => 130, () => endAt + 1000);
   const finalSnapshot = state.snapshots.find((snapshot) => snapshot.is_final);
   assert.equal(state.snapshots.length, 3);
   assert.equal(finalSnapshot?.return_percent, 0.06);
   const frozenSnapshot = structuredClone(finalSnapshot);
   const frozenResult = structuredClone(state.participants[0]?.final_result);
 
-  await process(db, async () => 999, () => endAt + 60_000);
+  await process(new MemoryDatabase(state), async () => 999, () => endAt + 60_000);
   assert.deepEqual(state.snapshots.find((snapshot) => snapshot.is_final), frozenSnapshot);
   assert.deepEqual(state.participants[0]?.final_result, frozenResult);
 });
