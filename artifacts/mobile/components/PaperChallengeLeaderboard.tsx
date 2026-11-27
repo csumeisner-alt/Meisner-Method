@@ -75,6 +75,7 @@ import {
   getEventArenaStandingsEntries,
   getEventArenaProfitLossTone,
   getEventArenaReturnTone,
+  isEventArenaScoreStale,
   getEventArenaStatus,
 } from '@/lib/eventArenaLeaderboard';
 import {
@@ -680,11 +681,18 @@ export function PaperChallengeLeaderboard({
   const visibleHoldings = detail
     ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
     : [];
-  const detailScoreIsStale = Boolean(
-    event.phase === 'active'
-    && detail
-    && countdownNow - Date.parse(detail.updatedAt) > 5 * 60_000,
-  );
+  const detailScoreIsStale = detail
+    ? isEventArenaScoreStale({
+      phase: event.phase,
+      updatedAt: detail.updatedAt,
+      nowMs: countdownNow,
+      scoreSource: detail.scoreSource,
+      isLightningRound,
+    })
+    : false;
+  const detailStaleWarning = isLightningRound && detail?.scoreSource !== 'server'
+    ? 'The current server score is unavailable; showing the last saved score. Last update:'
+    : 'Rankings may be stale because this score has not refreshed recently. Last update:';
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);
@@ -1527,7 +1535,7 @@ export function PaperChallengeLeaderboard({
                   </Text>
                   {detailScoreIsStale && (
                     <Text testID="paper-event-detail-stale-warning" style={{ color: '#FFB2B2', fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
-                      Rankings may be stale because this score has not refreshed recently. Last update: {timeLabel(detail.updatedAt)}.
+                      {detailStaleWarning} {timeLabel(detail.updatedAt)}.
                     </Text>
                   )}
                 </View>

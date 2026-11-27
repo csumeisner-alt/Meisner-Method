@@ -888,6 +888,29 @@ test("regular event leaderboards submit private account snapshots and force manu
   assert.match(leaderboard, /setInterval\(\(\) => \{ void refresh\(\); \}, REFRESH_INTERVAL_MS\)/);
 });
 
+test("Android Lightning leaderboard refreshes both server scores and selected participant details", () => {
+  const refreshStart = leaderboard.indexOf("const refresh = useCallback(async (forceSubmission = false)");
+  const refreshEnd = leaderboard.indexOf("\n  }, [appIsActive,", refreshStart);
+  const refreshFlow = leaderboard.slice(refreshStart, refreshEnd);
+  const refreshEffectStart = leaderboard.indexOf("useEffect(() => {\n    if (!visible || !appIsActive || !installationIdReady) return;", refreshEnd);
+  const refreshEffectEnd = leaderboard.indexOf("\n  const optIn =", refreshEffectStart);
+  const refreshEffect = leaderboard.slice(refreshEffectStart, refreshEffectEnd);
+
+  assert.ok(refreshStart >= 0 && refreshEnd > refreshStart);
+  assert.ok(refreshEffectStart >= 0 && refreshEffectEnd > refreshEffectStart);
+  assert.match(refreshEffect, /if \(!visible \|\| !appIsActive \|\| !installationIdReady\) return/);
+  assert.match(refreshEffect, /void refresh\(\)/);
+  assert.match(refreshEffect, /setInterval\(\(\) => \{ void refresh\(\); \}, REFRESH_INTERVAL_MS\)/);
+  assert.match(refreshFlow, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
+  assert.match(refreshFlow, /setRefreshing\(false\)[\s\S]*?refreshingRef\.current = false/);
+  assert.match(leaderboard, /entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\) \?\? selectedDetail/);
+  assert.match(leaderboard, /testID="paper-event-detail-equity"[\s\S]*?money\(detail\.equity\)/);
+  assert.match(leaderboard, /Current holdings[\s\S]*?holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
+  assert.match(leaderboard, /isEventArenaScoreStale\(\{[\s\S]*?scoreSource: detail\.scoreSource,[\s\S]*?isLightningRound/);
+  assert.match(leaderboard, /testID="paper-event-detail-freshness"[\s\S]*?STALE SCORE/);
+  assert.match(leaderboard, /The current server score is unavailable; showing the last saved score/);
+});
+
 test("One-Stock empty-state contrast and larger controls do not alter other event styling", () => {
   assert.match(leaderboard, /width: isOneStockChallenge \? 44 : 36[\s\S]*?height: isOneStockChallenge \? 44 : 36/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-loading"[\s\S]*?backgroundColor: isOneStockChallenge \? 'rgba\(8,13,21,0\.92\)' : 'rgba\(8,13,21,0\.84\)'/);
@@ -1023,7 +1046,7 @@ test("participant score detail follows refreshed entries and explains Lightning 
   assert.match(detail, /formatEventHoldingSide\(holding\.side\)/);
   assert.match(detail, /SERVER-VALUED/);
   assert.match(detail, /STALE SCORE/);
-  assert.match(detail, /score has not refreshed recently/);
+  assert.match(leaderboard, /The current server score is unavailable; showing the last saved score/);
   assert.match(detail, /allowFontScaling/);
   assert.match(detail, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /contentContainerStyle=\{\{ width: '100%', maxWidth: 820/);

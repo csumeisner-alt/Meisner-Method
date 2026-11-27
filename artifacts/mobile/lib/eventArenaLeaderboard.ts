@@ -1,5 +1,19 @@
 export type EventArenaPhase = 'upcoming' | 'active' | 'ended';
 export type EventArenaReturnTone = 'positive' | 'negative' | 'neutral';
+export type EventArenaScoreSource = 'participant' | 'server';
+
+export function isEventArenaScoreStale(input: {
+  phase: EventArenaPhase;
+  updatedAt: string;
+  nowMs: number;
+  scoreSource: EventArenaScoreSource;
+  isLightningRound?: boolean;
+}) {
+  if (input.phase !== 'active') return false;
+  if (input.isLightningRound && input.scoreSource !== 'server') return true;
+  const updatedAtMs = Date.parse(input.updatedAt);
+  return !Number.isFinite(updatedAtMs) || input.nowMs - updatedAtMs > 5 * 60_000;
+}
 
 export type EventArenaStatus = {
   phase: EventArenaPhase;

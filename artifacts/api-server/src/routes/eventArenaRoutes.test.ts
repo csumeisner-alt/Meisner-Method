@@ -71,7 +71,7 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
 async function withApi(
   database: TestDatabase | TestDatabase["query"],
   run: (baseUrl: string) => Promise<void>,
-  currentTime = Date.parse("2026-11-18T17:00:00.000Z"),
+  currentTime: number | (() => number) = Date.parse("2026-11-18T17:00:00.000Z"),
   existingConfigurations = new Map<string, any>(),
   fetchLightningPrice?: (symbol: string) => Promise<number | null>,
 ) {
@@ -135,7 +135,7 @@ async function withApi(
   app.use(createEventArenaRouter(
     db,
     (_req, _res, next) => next(),
-    () => currentTime,
+    () => typeof currentTime === "function" ? currentTime() : currentTime,
     fetchLightningPrice,
   ));
   const server = app.listen(0);
@@ -2346,6 +2346,8 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     event_end_at: new Date(configuration.endAtMs),
   }]]);
   const participantIds = ["ryan-installation-12345", "prime-installation-12345"];
+  let currentPrices: Record<string, number> = { SPXL: 120, AAPL: 110 };
+  let currentTime = Date.parse("2026-11-27T14:35:00.000Z");
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
     if (sql.includes("FROM event_arena_leaderboard_entries")) {
@@ -2359,7 +2361,7 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
           cash_balance: 90_000,
           trade_count: 1,
           holdings: [],
-          updated_at: new Date("2026-11-27T14:44:00.000Z"),
+          updated_at: new Date("2026-11-27T14:20:00.000Z"),
         },
         {
           installation_id: participantIds[1],
@@ -2370,7 +2372,7 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
           cash_balance: 90_000,
           trade_count: 1,
           holdings: [],
-          updated_at: new Date("2026-11-27T14:44:00.000Z"),
+          updated_at: new Date("2026-11-27T14:20:00.000Z"),
         },
       ] };
     }
@@ -2419,30 +2421,51 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     }
     return { rows: [] };
   }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
-      headers: { "x-event-arena-installation-id": participantIds[0] },
-    });
-    assert.equal(response.status, 200);
-    const result = await response.json() as any;
-    assert.deepEqual(result.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
+    const readLeaderboard = async () => {
+      const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
+        headers: { "x-event-arena-installation-id": participantIds[0] },
+      });
+      assert.equal(response.status, 200);
+      return await response.json() as any;
+    };
+    const firstRefresh = await readLeaderboard();
+    assert.deepEqual(firstRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
       [1, "Amazon Prime", 1],
       [2, "Ryan", 0.1],
     ]);
-    assert.equal(result.entries[0].equity, 101_000);
-    assert.equal(result.entries[0].cashBalance, 95_000);
-    assert.equal(result.entries[0].tradeCount, 1);
-    assert.deepEqual(result.entries[0].holdings.map((holding: any) => [
+    assert.equal(firstRefresh.entries[0].equity, 101_000);
+    assert.equal(firstRefresh.entries[0].cashBalance, 95_000);
+    assert.equal(firstRefresh.entries[0].tradeCount, 1);
+    assert.deepEqual(firstRefresh.entries[0].holdings.map((holding: any) => [
       holding.symbol,
       holding.marketValue,
       holding.assetType,
     ]), [["SPXL", 6_000, "etf"]]);
-    assert.equal(result.entries[0].updatedAt, "2026-11-27T14:35:00.000Z");
-    assert.equal(result.entries[1].isCurrentUser, true);
-    assert.deepEqual(result.registrations, []);
-    assert.equal(JSON.stringify(result).includes(participantIds[0]), false);
-    assert.equal(JSON.stringify(result).includes(participantIds[1]), false);
-  }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async (symbol) =>
-    symbol === "SPXL" ? 120 : 110,
+    assert.equal(firstRefresh.entries[0].updatedAt, "2026-11-27T14:35:00.000Z");
+    assert.equal(firstRefresh.entries[1].isCurrentUser, true);
+    assert.deepEqual(firstRefresh.registrations, []);
+    assert.equal(JSON.stringify(firstRefresh).includes(participantIds[0]), false);
+    assert.equal(JSON.stringify(firstRefresh).includes(participantIds[1]), false);
+
+    currentPrices = { SPXL: 80, AAPL: 130 };
+    const secondRefresh = await readLeaderboard();
+    assert.deepEqual(secondRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
+      [1, "Ryan", 0.3],
+      [2, "Amazon Prime", -1],
+    ]);
+    assert.equal(secondRefresh.entries[0].holdings[0].marketValue, 1_300);
+    assert.equal(secondRefresh.entries[1].holdings[0].marketValue, 4_000);
+    assert.equal(secondRefresh.entries[1].scoreSource, "server");
+
+    currentPrices = { AAPL: 130 };
+    currentTime = Date.parse("2026-11-27T14:41:00.000Z");
+    const missingQuoteRefresh = await readLeaderboard();
+    const missingScore = missingQuoteRefresh.entries.find((entry: any) => entry.alias === "Amazon Prime");
+    assert.equal(missingScore.equity, 99_578);
+    assert.equal(missingScore.scoreSource, "participant");
+    assert.equal(missingScore.updatedAt, "2026-11-27T14:20:00.000Z");
+  }, () => currentTime, savedConfigurations, async (symbol) =>
+    currentPrices[symbol] ?? null,
   );
 });
 

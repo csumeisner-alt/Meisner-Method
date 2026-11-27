@@ -10,7 +10,38 @@ import {
   getEventArenaReturnTone,
   getEventArenaStandingsEntries,
   getEventArenaStatus,
+  isEventArenaScoreStale,
 } from '../eventArenaLeaderboard.ts';
+
+test('active Lightning scores without a server valuation are always marked stale', () => {
+  assert.equal(isEventArenaScoreStale({
+    phase: 'active',
+    updatedAt: '2026-11-27T14:34:00.000Z',
+    nowMs: Date.parse('2026-11-27T14:35:00.000Z'),
+    scoreSource: 'participant',
+    isLightningRound: true,
+  }), true);
+  assert.equal(isEventArenaScoreStale({
+    phase: 'active',
+    updatedAt: '2026-11-27T14:34:00.000Z',
+    nowMs: Date.parse('2026-11-27T14:35:00.000Z'),
+    scoreSource: 'server',
+    isLightningRound: true,
+  }), false);
+  assert.equal(isEventArenaScoreStale({
+    phase: 'active',
+    updatedAt: '2026-11-27T14:20:00.000Z',
+    nowMs: Date.parse('2026-11-27T14:35:00.000Z'),
+    scoreSource: 'server',
+  }), true);
+  assert.equal(isEventArenaScoreStale({
+    phase: 'ended',
+    updatedAt: 'invalid',
+    nowMs: Date.parse('2026-11-27T14:35:00.000Z'),
+    scoreSource: 'participant',
+    isLightningRound: true,
+  }), false);
+});
 
 test('pre-start registration publishes a zero-return score without creating the event account', () => {
   assert.deepEqual(buildPreStartEventArenaScore({
