@@ -18,3 +18,15 @@ export function resolveSelectedLeaderboardEntry<T extends { participantToken: st
     ? entries.find((entry) => entry.participantToken === selectedEntry.participantToken) ?? selectedEntry
     : null;
 }
+
+export function isSelectedLeaderboardEntryMissing<T extends { participantToken: string }>(
+  entries: readonly T[],
+  selectedEntry: T | null,
+  hasFreshResponse: boolean,
+): boolean {
+  return Boolean(
+    selectedEntry
+    && hasFreshResponse
+    && !entries.some((entry) => entry.participantToken === selectedEntry.participantToken),
+  );
+}

@@ -10,6 +10,7 @@ import {
 import { getPaperTabNavigationAction } from "../lib/paperTabNavigation.ts";
 import {
   canRefreshEventArenaLeaderboard,
+  isSelectedLeaderboardEntryMissing,
   resolveSelectedLeaderboardEntry,
 } from "../lib/eventArenaLeaderboardRefresh.ts";
 
@@ -912,7 +913,13 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   assert.match(refreshFlow, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
   assert.match(refreshFlow, /setRefreshing\(false\)[\s\S]*?refreshingRef\.current = false/);
   assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetail\)/);
-  assert.match(leaderboard, /const detailStaleWarning = isLightningRound && detail\?\.scoreSource !== 'server'/);
+  assert.match(leaderboard, /const detailMissingFromLatestStandings = isSelectedLeaderboardEntryMissing\(/);
+  assert.match(leaderboard, /testID="paper-event-detail-unavailable"[\s\S]*?not current server data/);
+  assert.match(leaderboard, /detailMissingFromLatestStandings\s*\?\s*'SAVED ACCOUNT VALUE'/);
+  assert.match(leaderboard, /detailMissingFromLatestStandings\s*\?\s*'Saved holdings'\s*:\s*'Current holdings'/);
+  assert.match(leaderboard, /detailMissingFromLatestStandings \? 'YOUR LAST SAVED SCORE' : 'YOUR SCORE'/);
+  assert.match(leaderboard, /!detailMissingFromLatestStandings/);
+  assert.match(leaderboard, /const detailStaleWarning = detailMissingFromLatestStandings/);
   assert.match(leaderboard, /detail\.scoreSource === 'server' \? 'SERVER-VALUED' : 'DEVICE UPDATE'/);
   assert.match(leaderboard, /testID="paper-event-detail-equity"[\s\S]*?money\(detail\.equity\)/);
   assert.match(leaderboard, /Current holdings[\s\S]*?holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
@@ -956,6 +963,12 @@ test("Android leaderboard pauses while inactive and resumes with the selected se
   }), false);
   assert.equal(resolveSelectedLeaderboardEntry([], selected)?.scoreSource, "participant");
   assert.equal(resolveSelectedLeaderboardEntry([], selected)?.holdings[0]?.symbol, "SPXL");
+  assert.equal(isSelectedLeaderboardEntryMissing([], selected, false), false);
+  assert.equal(isSelectedLeaderboardEntryMissing([], selected, true), true);
+  assert.equal(isSelectedLeaderboardEntryMissing([selected], selected, true), false);
+  const lastServerEntry = { ...selected, scoreSource: "server" };
+  assert.equal(isSelectedLeaderboardEntryMissing([], lastServerEntry, true), true);
+  assert.equal(resolveSelectedLeaderboardEntry([], lastServerEntry)?.scoreSource, "server");
   assert.deepEqual(resolveSelectedLeaderboardEntry([refreshed], selected), refreshed);
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.rank, 1);
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.equity, 100_900);

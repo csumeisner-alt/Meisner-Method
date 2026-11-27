@@ -85,6 +85,7 @@ import {
 } from '@/lib/eventArenaCompetitiveProgress';
 import {
   canRefreshEventArenaLeaderboard,
+  isSelectedLeaderboardEntryMissing,
   resolveSelectedLeaderboardEntry,
 } from '@/lib/eventArenaLeaderboardRefresh';
 
@@ -622,6 +623,11 @@ export function PaperChallengeLeaderboard({
   });
   const entries = leaderboardQuery.data?.entries ?? [];
   const detail = resolveSelectedLeaderboardEntry(entries, selectedDetail);
+  const detailMissingFromLatestStandings = isSelectedLeaderboardEntryMissing(
+    entries,
+    selectedDetail,
+    leaderboardQuery.data != null && leaderboardQuery.dataUpdatedAt > 0,
+  );
   const registrations: LeaderboardRegistration[] = leaderboardQuery.data?.registrations ?? [];
   const participantCount = entries.length + registrations.length;
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
@@ -683,7 +689,7 @@ export function PaperChallengeLeaderboard({
   const visibleHoldings = detail
     ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
     : [];
-  const detailScoreIsStale = detail
+  const detailScoreIsStale = detailMissingFromLatestStandings || (detail
     ? isEventArenaScoreStale({
       phase: event.phase,
       updatedAt: detail.updatedAt,
@@ -691,10 +697,12 @@ export function PaperChallengeLeaderboard({
       scoreSource: detail.scoreSource,
       isLightningRound,
     })
-    : false;
-  const detailStaleWarning = isLightningRound && detail?.scoreSource !== 'server'
-    ? 'The current server score is unavailable; showing the last saved score. Last update:'
-    : 'Rankings may be stale because this score has not refreshed recently. Last update:';
+    : false);
+  const detailStaleWarning = detailMissingFromLatestStandings
+    ? 'This participant was not included in the latest standings. The details below are saved from their last appearance and may no longer be current. Last seen:'
+    : isLightningRound && detail?.scoreSource !== 'server'
+      ? 'The current server score is unavailable; showing the last saved score. Last update:'
+      : 'Rankings may be stale because this score has not refreshed recently. Last update:';
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);
@@ -1498,18 +1506,24 @@ export function PaperChallengeLeaderboard({
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(214,177,94,0.14)', borderWidth: 1, borderColor: 'rgba(214,177,94,0.42)' }}>
                       <Feather name="award" size={13} color={colors.gold} />
-                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RANK #{detail.rank}</Text>
+                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                        {detailMissingFromLatestStandings ? `LAST KNOWN RANK #${detail.rank}` : `RANK #${detail.rank}`}
+                      </Text>
                     </View>
                     {detail.isCurrentUser && (
-                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR SCORE</Text>
+                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                        {detailMissingFromLatestStandings ? 'YOUR LAST SAVED SCORE' : 'YOUR SCORE'}
+                      </Text>
                     )}
                     <Text
                       testID="paper-event-detail-freshness"
                       accessibilityRole="text"
                       style={{ color: detailScoreIsStale ? '#FF9B9B' : detail.scoreSource === 'server' ? '#63E6BE' : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 }}
                     >
-                      {detailScoreIsStale
-                        ? 'STALE SCORE'
+                      {detailMissingFromLatestStandings
+                        ? 'NOT IN LATEST STANDINGS'
+                        : detailScoreIsStale
+                          ? 'STALE SCORE'
                         : detail.scoreSource === 'server' ? 'SERVER-VALUED' : 'DEVICE UPDATE'}
                     </Text>
                   </View>
@@ -1520,19 +1534,30 @@ export function PaperChallengeLeaderboard({
                   >
                     {detail.alias}
                   </Text>
+                  {detailMissingFromLatestStandings && (
+                    <Text
+                      testID="paper-event-detail-unavailable"
+                      accessibilityRole="alert"
+                      style={{ color: '#FFB2B2', fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 16, marginTop: 9 }}
+                    >
+                      This participant is unavailable in the latest standings. The score and holdings shown here are saved details, not current server data.
+                    </Text>
+                  )}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 20 }}>
                     <Text allowFontScaling style={{ color: '#D6B15E', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>EVENT RETURN</Text>
                     <Text
                       testID="paper-event-detail-return"
                       allowFontScaling
-                      accessibilityLabel={`${returnLabel(detail.returnPercent)} event return`}
+                      accessibilityLabel={`${returnLabel(detail.returnPercent)} ${detailMissingFromLatestStandings ? 'saved' : ''} event return`.trim()}
                       style={{ color: returnColor(detail.returnPercent), fontFamily: 'Inter_700Bold', fontSize: 34 }}
                     >
                       {returnLabel(detail.returnPercent)}
                     </Text>
                   </View>
                   <Text allowFontScaling style={{ color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 }}>
-                    {isLightningRound
+                    {detailMissingFromLatestStandings
+                      ? 'Saved score from this participant’s last appearance; it is not a current server valuation'
+                      : isLightningRound
                       ? 'Calculated from this round’s server-recorded trades and current quotes'
                       : detail.scoreSource === 'server'
                         ? 'Revalued from the latest isolated event-account snapshot and current server quotes'
@@ -1549,7 +1574,9 @@ export function PaperChallengeLeaderboard({
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                     <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
                       <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
-                        {detail.scoreSource === 'server' ? 'CURRENT ACCOUNT VALUE' : 'REPORTED ACCOUNT VALUE'}
+                        {detailMissingFromLatestStandings
+                          ? 'SAVED ACCOUNT VALUE'
+                          : detail.scoreSource === 'server' ? 'CURRENT ACCOUNT VALUE' : 'REPORTED ACCOUNT VALUE'}
                       </Text>
                       <Text testID="paper-event-detail-equity" allowFontScaling style={{ flexShrink: 1, color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 6 }}>
                         {money(detail.equity)}
@@ -1578,10 +1605,14 @@ export function PaperChallengeLeaderboard({
                   <View style={{ marginTop: 17, padding: 15, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.035)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Feather name="briefcase" size={15} color={colors.gold} />
-                      <Text allowFontScaling accessibilityRole="header" style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 15 }}>Current holdings</Text>
+                      <Text allowFontScaling accessibilityRole="header" style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 15 }}>
+                        {detailMissingFromLatestStandings ? 'Saved holdings' : 'Current holdings'}
+                      </Text>
                     </View>
                     <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-                      {isLightningRound
+                      {detailMissingFromLatestStandings
+                        ? 'These holdings and allocations were saved at the participant’s last appearance and may no longer be current.'
+                        : isLightningRound
                         ? 'Positions come from this round’s recorded fills and are valued using the latest available server quotes.'
                         : detail.scoreSource === 'server'
                           ? 'Positions come from the isolated event-account snapshot and are revalued using current server quotes.'
@@ -1649,7 +1680,7 @@ export function PaperChallengeLeaderboard({
                       Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
                     </Text>
                   </View>
-                  {(canSendCash || isTransferLocked) && !detail.isCurrentUser ? (
+                  {(canSendCash || isTransferLocked) && !detail.isCurrentUser && !detailMissingFromLatestStandings ? (
                     <TouchableOpacity
                       testID="event-arena-send-cash"
                       accessibilityRole="button"
