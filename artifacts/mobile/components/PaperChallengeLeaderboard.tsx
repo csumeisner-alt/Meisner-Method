@@ -623,6 +623,7 @@ export function PaperChallengeLeaderboard({
   });
   const entries = leaderboardQuery.data?.entries ?? [];
   const detail = resolveSelectedLeaderboardEntry(entries, selectedDetail);
+  const leaderboardRefreshFailed = Boolean(leaderboardQuery.error && leaderboardQuery.data);
   const detailMissingFromLatestStandings = isSelectedLeaderboardEntryMissing(
     entries,
     selectedDetail,
@@ -689,7 +690,7 @@ export function PaperChallengeLeaderboard({
   const visibleHoldings = detail
     ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
     : [];
-  const detailScoreIsStale = detailMissingFromLatestStandings || (detail
+  const detailScoreIsStale = leaderboardRefreshFailed || detailMissingFromLatestStandings || (detail
     ? isEventArenaScoreStale({
       phase: event.phase,
       updatedAt: detail.updatedAt,
@@ -698,11 +699,13 @@ export function PaperChallengeLeaderboard({
       isLightningRound,
     })
     : false);
-  const detailStaleWarning = detailMissingFromLatestStandings
-    ? 'This participant was not included in the latest standings. The details below are saved from their last appearance and may no longer be current. Last seen:'
-    : isLightningRound && detail?.scoreSource !== 'server'
-      ? 'The current server score is unavailable; showing the last saved score. Last update:'
-      : 'Rankings may be stale because this score has not refreshed recently. Last update:';
+  const detailStaleWarning = leaderboardRefreshFailed
+    ? 'The latest leaderboard refresh failed. These participant details are from the last successful response and may be stale. Last successful update:'
+    : detailMissingFromLatestStandings
+      ? 'This participant was not included in the latest standings. The details below are saved from their last appearance and may no longer be current. Last seen:'
+      : isLightningRound && detail?.scoreSource !== 'server'
+        ? 'The current server score is unavailable; showing the last saved score. Last update:'
+        : 'Rankings may be stale because this score has not refreshed recently. Last update:';
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);

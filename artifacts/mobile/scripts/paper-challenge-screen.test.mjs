@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { QueryClient } from "@tanstack/react-query";
 import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
 import { getEventArenaHeaderColumnWidth } from "../lib/eventArenaHeaderLayout.ts";
 import {
@@ -919,7 +920,7 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   assert.match(leaderboard, /detailMissingFromLatestStandings\s*\?\s*'Saved holdings'\s*:\s*'Current holdings'/);
   assert.match(leaderboard, /detailMissingFromLatestStandings \? 'YOUR LAST SAVED SCORE' : 'YOUR SCORE'/);
   assert.match(leaderboard, /!detailMissingFromLatestStandings/);
-  assert.match(leaderboard, /const detailStaleWarning = detailMissingFromLatestStandings/);
+  assert.match(leaderboard, /const detailStaleWarning = leaderboardRefreshFailed[\s\S]*?detailMissingFromLatestStandings/);
   assert.match(leaderboard, /detail\.scoreSource === 'server' \? 'SERVER-VALUED' : 'DEVICE UPDATE'/);
   assert.match(leaderboard, /testID="paper-event-detail-equity"[\s\S]*?money\(detail\.equity\)/);
   assert.match(leaderboard, /Current holdings[\s\S]*?holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
@@ -977,6 +978,75 @@ test("Android leaderboard pauses while inactive and resumes with the selected se
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings.some((holding) => holding.symbol === "SPXL"), false);
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.marketValue, 2_400);
   assert.equal(resolveSelectedLeaderboardEntry([], selected), selected);
+});
+
+test("a failed resume refresh keeps the last standings and retry updates selected details", async () => {
+  const selected = {
+    participantToken: "participant-a",
+    rank: 2,
+    equity: 99_578,
+    scoreSource: "participant",
+  };
+  const refreshed = {
+    participantToken: "participant-a",
+    rank: 1,
+    equity: 100_900,
+    scoreSource: "server",
+  };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const queryKey = ["event-arena-leaderboard", "resume-recovery-test"];
+  const lastSuccessfulResponse = { entries: [selected] };
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey,
+      queryFn: async () => lastSuccessfulResponse,
+    });
+    await assert.rejects(
+      queryClient.fetchQuery({
+        queryKey,
+        queryFn: async () => { throw new Error("temporary request failure"); },
+      }),
+      /temporary request failure/,
+    );
+
+    const retainedResponse = queryClient.getQueryData(queryKey);
+    assert.deepEqual(retainedResponse, lastSuccessfulResponse);
+    assert.equal(
+      resolveSelectedLeaderboardEntry(retainedResponse.entries, selected)?.equity,
+      99_578,
+    );
+    assert.ok(queryClient.getQueryState(queryKey)?.error);
+
+    const recoveredResponse = await queryClient.fetchQuery({
+      queryKey,
+      queryFn: async () => ({ entries: [refreshed] }),
+    });
+    assert.equal(
+      resolveSelectedLeaderboardEntry(recoveredResponse.entries, selected)?.scoreSource,
+      "server",
+    );
+    assert.equal(
+      resolveSelectedLeaderboardEntry(recoveredResponse.entries, selected)?.rank,
+      1,
+    );
+    assert.equal(
+      resolveSelectedLeaderboardEntry(recoveredResponse.entries, selected)?.equity,
+      100_900,
+    );
+
+    assert.match(leaderboard, /const entries = leaderboardQuery\.data\?\.entries \?\? \[\]/);
+    assert.match(leaderboard, /const leaderboardRefreshFailed = Boolean\(leaderboardQuery\.error && leaderboardQuery\.data\)/);
+    assert.match(leaderboard, /leaderboardRefreshFailed \|\| detailMissingFromLatestStandings/);
+    assert.match(leaderboard, /The latest leaderboard refresh failed[\s\S]*?may be stale/);
+    assert.match(leaderboard, /Refresh failed · showing the last successful rankings/);
+    assert.match(leaderboard, /testID="retry-paper-event-leaderboard"[\s\S]*?void refresh\(true\)/);
+    assert.match(leaderboard, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
+  } finally {
+    queryClient.clear();
+  }
 });
 
 test("One-Stock empty-state contrast and larger controls do not alter other event styling", () => {
