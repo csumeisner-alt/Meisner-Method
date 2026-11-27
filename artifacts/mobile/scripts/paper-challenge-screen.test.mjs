@@ -924,15 +924,19 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
 test("Android leaderboard pauses while inactive and resumes with the selected server entry", () => {
   const selected = {
     participantToken: "participant-a",
-    equity: 100_000,
+    rank: 2,
+    equity: 99_578,
+    cashBalance: 90_000,
     scoreSource: "participant",
-    holdings: [{ symbol: "OLD", marketValue: 1_000 }],
+    holdings: [{ symbol: "SPXL", marketValue: 4_578 }],
   };
   const refreshed = {
     participantToken: "participant-a",
-    equity: 108_500,
+    rank: 1,
+    equity: 100_900,
+    cashBalance: 98_500,
     scoreSource: "server",
-    holdings: [{ symbol: "NEW", marketValue: 8_500 }],
+    holdings: [{ symbol: "NVDA", marketValue: 2_400 }],
   };
 
   assert.equal(canRefreshEventArenaLeaderboard({
@@ -950,10 +954,15 @@ test("Android leaderboard pauses while inactive and resumes with the selected se
     appIsActive: true,
     installationIdReady: true,
   }), false);
+  assert.equal(resolveSelectedLeaderboardEntry([], selected)?.scoreSource, "participant");
+  assert.equal(resolveSelectedLeaderboardEntry([], selected)?.holdings[0]?.symbol, "SPXL");
   assert.deepEqual(resolveSelectedLeaderboardEntry([refreshed], selected), refreshed);
-  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.equity, 108_500);
-  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.symbol, "NEW");
-  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.marketValue, 8_500);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.rank, 1);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.equity, 100_900);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.cashBalance, 98_500);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.symbol, "NVDA");
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings.some((holding) => holding.symbol === "SPXL"), false);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.marketValue, 2_400);
   assert.equal(resolveSelectedLeaderboardEntry([], selected), selected);
 });
 
