@@ -190,6 +190,66 @@ export const SaveEventArenaLightningRoundStateResponse = zod.object({
 
 
 /**
+ * @summary Execute one validated order in the requesting Lightning Round account
+ */
+export const ExecuteEventArenaLightningRoundOrderParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const executeEventArenaLightningRoundOrderHeaderXEventArenaInstallationIdMin = 12;
+export const executeEventArenaLightningRoundOrderHeaderXEventArenaInstallationIdMax = 128;
+
+
+
+export const ExecuteEventArenaLightningRoundOrderHeader = zod.object({
+  "X-Event-Arena-Installation-Id": zod.string().min(executeEventArenaLightningRoundOrderHeaderXEventArenaInstallationIdMin).max(executeEventArenaLightningRoundOrderHeaderXEventArenaInstallationIdMax)
+})
+
+export const executeEventArenaLightningRoundOrderBodyOrderIdMin = 8;
+export const executeEventArenaLightningRoundOrderBodyOrderIdMax = 128;
+
+export const executeEventArenaLightningRoundOrderBodyOrderSharesExclusiveMin = 0;
+
+export const executeEventArenaLightningRoundOrderBodyOrderLimitPriceExclusiveMin = 0;
+
+export const executeEventArenaLightningRoundOrderBodyOrderStopPriceExclusiveMin = 0;
+
+export const executeEventArenaLightningRoundOrderBodyOrderTrailPctExclusiveMin = 0;
+
+export const executeEventArenaLightningRoundOrderBodyOrderTrailAbsExclusiveMin = 0;
+
+export const executeEventArenaLightningRoundOrderBodyOrderTrailRefExclusiveMin = 0;
+
+
+
+export const ExecuteEventArenaLightningRoundOrderBody = zod.object({
+  "order": zod.object({
+  "id": zod.string().min(executeEventArenaLightningRoundOrderBodyOrderIdMin).max(executeEventArenaLightningRoundOrderBodyOrderIdMax),
+  "accountId": zod.string(),
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "orderType": zod.enum(['market', 'limit', 'stop', 'stop_limit', 'trailing_stop']),
+  "side": zod.enum(['buy', 'sell']),
+  "intent": zod.enum(['short', 'cover']).optional(),
+  "shortCollateralRatio": zod.number().optional(),
+  "shares": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderSharesExclusiveMin),
+  "limitPrice": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderLimitPriceExclusiveMin).optional(),
+  "stopPrice": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderStopPriceExclusiveMin).optional(),
+  "trailPct": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderTrailPctExclusiveMin).optional(),
+  "trailAbs": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderTrailAbsExclusiveMin).optional(),
+  "trailRef": zod.number().gt(executeEventArenaLightningRoundOrderBodyOrderTrailRefExclusiveMin).optional(),
+  "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
+  "dividendYield": zod.number().optional(),
+  "dividendRate": zod.number().optional(),
+  "expenseRatio": zod.number().optional(),
+  "sector": zod.string().optional()
+})
+})
+
+export const ExecuteEventArenaLightningRoundOrderResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
  * @summary Get active scores and pending Lightning registrations for one event
  */

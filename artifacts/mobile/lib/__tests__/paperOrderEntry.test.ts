@@ -45,7 +45,7 @@ test('quote status distinguishes provider-backed freshness from missing or stale
   assert.equal(getOrderQuoteState(undefined, now), 'unavailable');
 });
 
-test('closed-market quotes queue market orders and allow eligible limit-order evaluation', () => {
+test('market orders can use a valid available quote while other pending order types retain their rules', () => {
   const now = 1_800_000_000_000;
   const closedStale = {
     price: 100,
@@ -78,8 +78,8 @@ test('closed-market quotes queue market orders and allow eligible limit-order ev
   assert.equal(isClosedMarketQuote(regular), false);
   assert.equal(isRegularMarketQuote(regular), true);
   assert.equal(isRegularMarketQuote(premarket), false);
-  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, closedStale, now), false);
-  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, premarket, now), false);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, closedStale, now), true);
+  assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, premarket, now), true);
   assert.equal(canEvaluatePendingOrderQuote({ orderType: 'market' }, regular, now), true);
   assert.equal(canEvaluatePendingOrderQuote({ orderType: 'limit' }, closedStale, now), true);
   assert.equal(canEvaluatePendingOrderQuote({ orderType: 'stop' }, closedStale, now), false);
@@ -107,7 +107,7 @@ test('Penny Stock Mayhem search eligibility requires verified classification, a 
   assert.equal(getPennyQuoteStatus(undefined, now), 'unavailable');
 });
 
-test('market order quote guard accepts valid fresh and stale references, but not missing or changed prices', () => {
+test('market order quote guard accepts any valid available provider price, but not missing or invalid prices', () => {
   const now = 1_800_000_000_000;
   const fresh = {
     price: 100,
@@ -121,18 +121,16 @@ test('market order quote guard accepts valid fresh and stale references, but not
   assert.equal(getOrderQuoteState(stale, now), 'stale');
 
   for (const quote of [fresh, stale]) {
-    assert.equal(getMarketOrderQuoteError(quote, 100), null);
+    assert.equal(getMarketOrderQuoteError(quote), null);
     assert.equal(getOrderEstimatePrice({ orderType: 'market', currentPrice: quote.price }), 100);
   }
 
-  assert.match(getMarketOrderQuoteError(undefined, 100) ?? '', /quote is unavailable/);
+  assert.equal(getMarketOrderQuoteError({ price: 101 }), null,
+    'A changed provider price is the price the market order should use.');
+  assert.match(getMarketOrderQuoteError(undefined) ?? '', /valid provider price is unavailable/);
   for (const price of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.match(getMarketOrderQuoteError({ price }, 100) ?? '', /quote is unavailable/);
+    assert.match(getMarketOrderQuoteError({ price }) ?? '', /valid provider price is unavailable/);
   }
-  assert.match(getMarketOrderQuoteError({ price: 101 }, 100) ?? '', /changed after review/);
-  assert.equal(getMarketOrderQuoteError({ price: 101 }, 100, true), null,
-    'A closed-market order does not use the reviewed quote as its execution price.');
-  assert.match(getMarketOrderQuoteError({ price: 100 }, Number.NaN) ?? '', /reviewed provider price/);
 });
 
 test('provider sessions display only recognized states', () => {

@@ -109,10 +109,8 @@ import {
 import {
   canEvaluatePendingOrderQuote,
   getMarketOrderQuoteError,
-  getOrderQuoteState,
   getPennyQuoteStatus,
   formatProviderPriceSource,
-  isClosedMarketQuote,
   isPennyStockMayhemEligible,
 } from '@/lib/paperOrderEntry';
 import {
@@ -174,7 +172,7 @@ import {
   syncEventArenaDeviceSnapshot,
   type EventArenaDeviceSyncResponse,
 } from '@/lib/eventArenaDeviceSync';
-import { useApi } from '@/hooks/useApi';
+import { ApiError, useApi } from '@/hooks/useApi';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import {
   buildPaperChallengeSummary,
@@ -833,6 +831,7 @@ export default function PaperScreen() {
   }) => Promise<void>>(async () => {});
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
   const orderSubmissionRef = useRef(false);
+  const lightningOrderSubmissionIdsRef = useRef(new Set<string>());
   const tradeEntryCheckInFlightRef = useRef(false);
   const quoteRefreshCountRef = useRef(0);
   const quoteRefreshPromisesRef = useRef(new Map<string, Promise<Record<string, LiveQuote>>>());
@@ -1867,6 +1866,28 @@ export default function PaperScreen() {
   }, [init, paperChallengeReady]);
   initRef.current = init;
 
+  const requestLightningRoundFill = useCallback(async (eventId: string, order: PaperOrder) => {
+    const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+    const submit = () => apiFetch<{
+      account: PaperAccount;
+      positions: PaperPosition[];
+      lots: PaperLot[];
+      transaction: PaperTransaction;
+      order: PaperOrder;
+    }>(`/api/event-arena/lightning-round/${encodeURIComponent(eventId)}/orders`, {
+      method: 'POST',
+      headers: { 'X-Event-Arena-Installation-Id': installationId },
+      body: JSON.stringify({ order }),
+    });
+    try {
+      return await submit();
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      // Recover an accepted fill if the response was lost after the server committed it.
+      return submit();
+    }
+  }, [apiFetch]);
+
   // ── Pending-order evaluation ──────────────────────────────────────────────
   /**
    * After quotes are refreshed, walk every pending order and auto-fill those
@@ -1898,6 +1919,13 @@ export default function PaperScreen() {
       const matchingLightningEnrollment = isStagedLightningOrder
         && stagedLightningEnrollment?.eventId === order.lightningRoundEventId
         && stagedLightningEnrollment?.accountId === order.accountId
+        ? stagedLightningEnrollment
+        : null;
+      const activeLightningEnrollment =
+        stagedLightningEnrollment?.accountId === order.accountId
+        && Date.now() >= stagedLightningEnrollment.eventStartAtMs
+        && Date.now() < stagedLightningEnrollment.eventEndAtMs
+        && stagedLightningEnrollment.startEquity !== null
         ? stagedLightningEnrollment
         : null;
       const eventPurchaseLimit = matchingLightningEnrollment
@@ -1943,6 +1971,57 @@ export default function PaperScreen() {
           );
           ordersChanged = true;
         }
+        continue;
+      }
+
+      if (activeLightningEnrollment) {
+        if (lightningOrderSubmissionIdsRef.current.size > 0) continue;
+        lightningOrderSubmissionIdsRef.current.add(order.id);
+        const eventOrder = { ...order, lightningRoundEventId: activeLightningEnrollment.eventId };
+        void requestLightningRoundFill(activeLightningEnrollment.eventId, eventOrder)
+          .then(async (serverFill) => {
+            const accountId = serverFill.account.id;
+            await saveAll(
+              accountsRef.current.map((item) => item.id === accountId ? serverFill.account : item),
+              [
+                ...positionsRef.current.filter((item) => item.accountId !== accountId),
+                ...serverFill.positions,
+              ],
+              [
+                ...transactionsRef.current.filter((item) => item.id !== serverFill.transaction.id),
+                serverFill.transaction,
+              ],
+              [
+                ...ordersRef.current.filter((item) => item.id !== serverFill.order.id),
+                serverFill.order,
+              ],
+              [
+                ...lotsRef.current.filter((item) => item.accountId !== accountId),
+                ...serverFill.lots,
+              ],
+              activeIdRef.current,
+            );
+            paperOrderFillAlertNotifierRef.current?.({
+              orderId: serverFill.order.id,
+              symbol: serverFill.order.symbol,
+              shares: serverFill.order.shares,
+              previousStatus: order.status,
+              status: 'filled',
+              isEventAccount: true,
+              isLightningRoundOrder: true,
+            });
+          })
+          .catch(async (error) => {
+            if (error instanceof ApiError && error.status === 422) {
+              await saveOrders(ordersRef.current.map((item) =>
+                item.id === order.id
+                  ? { ...item, status: 'cancelled' as const, rejectionReason: error.message }
+                  : item,
+              ));
+            }
+            console.warn('[paper] Lightning Round order fill was not accepted:', error);
+          })
+          .finally(() => lightningOrderSubmissionIdsRef.current.delete(order.id));
         continue;
       }
 
@@ -2061,7 +2140,7 @@ export default function PaperScreen() {
       // Only trailRef(s) changed — persist orders only to avoid a heavier full-save on every tick
       void saveOrders(updatedOrders);
     }
-  }, [saveAll]);
+  }, [requestLightningRoundFill, saveAll, saveOrders]);
 
   // ── Fetch quotes ──────────────────────────────────────────────────────────
   const fetchQuotes = useCallback((
@@ -2595,12 +2674,16 @@ export default function PaperScreen() {
 
   const handledChallengeRouteRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!isFocused) {
+      handledChallengeRouteRef.current = null;
+      return;
+    }
     const requestedId = typeof routeParams.challengeAccountId === 'string' ? routeParams.challengeAccountId : undefined;
     if (!loaded || !requestedId || handledChallengeRouteRef.current === requestedId) return;
     if (!accounts.some((item) => item.id === requestedId)) return;
     handledChallengeRouteRef.current = requestedId;
     if (activeIdRef.current !== requestedId) void switchAccount(requestedId);
-  }, [accounts, loaded, routeParams.challengeAccountId]);
+  }, [accounts, isFocused, loaded, routeParams.challengeAccountId]);
 
   useEffect(() => {
     if (loaded && routeParams.tab === 'positions') setActiveTab('positions');
@@ -2874,34 +2957,35 @@ export default function PaperScreen() {
         };
       }
 
-      let currentQuote: LiveQuote;
+      let currentQuote: LiveQuote | undefined;
       try {
-        // Account data remains guest-local. Refresh the provider price at submit
-        // time so a cached display quote can never authorize an order.
+        // Use the latest provider quote available at submission. Market orders
+        // can fall back to the visible/reviewed provider price if refresh fails.
         currentQuote = await requestPaperPreloadQuote(sym, true);
-        const shared = mergePaperPreloadQuotes({ [sym]: currentQuote });
-        setQuotes(shared.quotes);
-        void persistPaperPreloadQuotes(AsyncStorage, shared.quotes);
       } catch {
-        return {
-          status: 'rejected',
-          message: 'A fresh provider quote is unavailable. No order was submitted.',
-        };
-      }
-      const marketClosed = isClosedMarketQuote(currentQuote);
-      const marketOrderReferencePrice = marketClosed ? currentQuote.price : args.quotePrice;
-      if (args.orderType === 'market') {
-        if (getOrderQuoteState(currentQuote) !== 'fresh' && !marketClosed) {
-          return {
-            status: 'rejected',
-            message: 'The provider quote is stale. Refresh it and review the updated price before confirming.',
-          };
+        if (args.orderType !== 'market') {
+          return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
         }
-        const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice, marketClosed);
+      }
+      if (args.orderType === 'market') {
+        if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
+          const cachedQuote = quotes[sym];
+          currentQuote = cachedQuote && Number.isFinite(cachedQuote.price) && cachedQuote.price > 0
+            ? cachedQuote
+            : Number.isFinite(args.quotePrice) && args.quotePrice > 0
+              ? { ...(cachedQuote ?? { change: 0, pct: 0 }), price: args.quotePrice }
+              : undefined;
+        }
+        const quoteError = getMarketOrderQuoteError(currentQuote);
         if (quoteError) return { status: 'rejected', message: quoteError };
-      } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
+      }
+      if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
         return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
       }
+      const shared = mergePaperPreloadQuotes({ [sym]: currentQuote });
+      setQuotes(shared.quotes);
+      void persistPaperPreloadQuotes(AsyncStorage, shared.quotes);
+      const marketOrderReferencePrice = currentQuote.price;
       if (
         args.orderType === 'market'
         && priorOrder
@@ -2931,9 +3015,7 @@ export default function PaperScreen() {
             assetType: args.stockInfo?.assetType ?? existingLongForType?.assetType,
           },
           executionQuotePrice: marketOrderReferencePrice,
-          fillPrice: marketClosed
-            ? marketOrderReferencePrice
-            : applySlippage(args.quotePrice, args.shares, direction),
+          fillPrice: applySlippage(marketOrderReferencePrice, args.shares, direction),
           maxPurchasePrice: purchaseLimit,
         });
         if (purchaseLimitRejection) {
@@ -2961,8 +3043,8 @@ export default function PaperScreen() {
       if (riskError) return { status: 'rejected', message: riskError };
 
       const nowISO = new Date().toISOString();
-      if (args.orderType === 'market' && !marketClosed) {
-        const fillPrice = applySlippage(args.quotePrice, args.shares, direction);
+      if (args.orderType === 'market') {
+        const fillPrice = applySlippage(currentQuote.price, args.shares, direction);
         const fillRiskError = checkRisk({
           side: direction,
           intent,
@@ -2991,6 +3073,9 @@ export default function PaperScreen() {
           ...(priorOrder ?? {}),
           id: priorOrder?.id ?? uid(),
           accountId,
+          ...(lightningEnrollment
+            ? { lightningRoundEventId: lightningEnrollment.eventId }
+            : {}),
           symbol: sym,
           companyName,
           orderType: 'market',
@@ -3012,8 +3097,8 @@ export default function PaperScreen() {
         const fillResult = fillOrder({
           order: syntheticOrder,
           fillPrice,
-          executionQuotePrice: args.quotePrice,
-        maxPurchasePrice: purchaseLimit,
+          executionQuotePrice: currentQuote.price,
+          maxPurchasePrice: purchaseLimit,
           oneStockChallenge: enrollment?.eventType === 'one-stock-challenge',
           filledAt: nowISO,
           account: currentAccount,
@@ -3023,16 +3108,62 @@ export default function PaperScreen() {
         });
         if (!fillResult.ok) return { status: 'rejected', message: fillResult.reason };
 
-        const { updatedAccount, updatedPositions, updatedLots, newTransaction } = fillResult;
-        const updatedOrders = priorOrder
+        let updatedAccount = fillResult.updatedAccount;
+        let updatedPositions = fillResult.updatedPositions;
+        let updatedLots = fillResult.updatedLots;
+        let newTransaction = fillResult.newTransaction;
+        let finalFillPrice = fillPrice;
+        let updatedOrders = priorOrder
           ? currentOrders.map((order) => order.id === priorOrder.id
             ? { ...syntheticOrder, status: 'filled' as const, filledPrice: fillPrice, filledAt: nowISO }
             : order)
           : currentOrders;
+        if (lightningEnrollment) {
+          const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+          const submitServerFill = () => apiFetch<{
+            account: PaperAccount;
+            positions: PaperPosition[];
+            lots: PaperLot[];
+            transaction: PaperTransaction;
+            order: PaperOrder;
+          }>(`/api/event-arena/lightning-round/${encodeURIComponent(lightningEnrollment.eventId)}/orders`, {
+            method: 'POST',
+            headers: { 'X-Event-Arena-Installation-Id': installationId },
+            body: JSON.stringify({ order: syntheticOrder }),
+          });
+          let serverFill: Awaited<ReturnType<typeof submitServerFill>>;
+          try {
+            serverFill = await submitServerFill();
+          } catch (error) {
+            if (error instanceof ApiError) throw error;
+            // The server may have committed the fill before the connection
+            // failed. Retry with the same order ID so the endpoint can return
+            // the committed result instead of creating a duplicate trade.
+            serverFill = await submitServerFill();
+          }
+          updatedAccount = serverFill.account;
+          updatedPositions = [
+            ...currentPositions.filter((position) => position.accountId !== accountId),
+            ...serverFill.positions,
+          ];
+          updatedLots = [
+            ...currentLots.filter((lot) => lot.accountId !== accountId),
+            ...serverFill.lots,
+          ];
+          newTransaction = serverFill.transaction;
+          finalFillPrice = serverFill.order.filledPrice ?? fillPrice;
+          updatedOrders = [
+            ...currentOrders.filter((order) => order.id !== serverFill.order.id),
+            serverFill.order,
+          ];
+        }
         await saveAll(
           currentAccounts.map((item) => item.id === accountId ? updatedAccount : item),
           updatedPositions,
-          [...currentTransactions, newTransaction],
+          [
+            ...currentTransactions.filter((transaction) => transaction.id !== newTransaction.id),
+            newTransaction,
+          ],
           updatedOrders,
           updatedLots,
           activeIdRef.current,
@@ -3052,7 +3183,7 @@ export default function PaperScreen() {
             previousStatus: priorOrder.status,
             status: 'filled',
             isEventAccount: isPaperChallengeAccountId(accountId),
-            isLightningRoundOrder: false,
+            isLightningRoundOrder: Boolean(lightningEnrollment),
           });
         }
         if (!args.orderId) {
@@ -3065,7 +3196,7 @@ export default function PaperScreen() {
         return {
           status: 'filled',
           message: `${actionLabel} ${args.shares} ${sym} in ${currentAccount.name}.`,
-          fillPrice,
+          fillPrice: finalFillPrice,
         };
       }
 
@@ -3101,15 +3232,8 @@ export default function PaperScreen() {
         : [...currentOrders, newOrder]);
       if (!args.orderId) {
         void awardAchievement('first-paper-order');
-        if (args.orderType !== 'market') void awardAchievement('first-paper-limit');
+        void awardAchievement('first-paper-limit');
         if (args.side === 'sell') void awardAchievement('first-paper-sell');
-      }
-      if (args.orderType === 'market' && marketClosed) {
-        return {
-          status: 'pending',
-          pendingReason: 'market-open',
-          message: 'The regular market is closed. Your market order is pending market open and will fill when the app next gets a fresh quote after the next regular market open. The final fill price may differ from this estimate.',
-        };
       }
       return {
         status: 'pending',

@@ -30,6 +30,7 @@
 - [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID; ambiguous Expo sends are finalized without replay to favor no duplicates.
 - [Event Arena notification policy](event-arena-notification-policy.md) — three scheduled reminders per format; recoverable local toggles and older Android payload compatibility.
 - [Lightning Round Event Arena account](lightning-round-event-account.md) — reset the shared account to $100,000 on Lightning entry, preserve archived rounds, and keep the next main event separate.
+- [Lightning Round order authority](lightning-round-order-authority.md) — active fills must be server-validated, event-tagged, and persisted atomically so score history includes them.
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Donation feature pause](donation-feature-pause.md) — donations had no uptake; the creator plans to make the app paid in the future, so retain the donation flow for possible reuse.

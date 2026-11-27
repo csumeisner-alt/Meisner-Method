@@ -2093,6 +2093,80 @@ export type SaveEventArenaLightningRoundState200 = {
   accountId: string;
 };
 
+export type ExecuteEventArenaLightningRoundOrderBodyOrderOrderType = typeof ExecuteEventArenaLightningRoundOrderBodyOrderOrderType[keyof typeof ExecuteEventArenaLightningRoundOrderBodyOrderOrderType];
+
+
+export const ExecuteEventArenaLightningRoundOrderBodyOrderOrderType = {
+  market: 'market',
+  limit: 'limit',
+  stop: 'stop',
+  stop_limit: 'stop_limit',
+  trailing_stop: 'trailing_stop',
+} as const;
+
+export type ExecuteEventArenaLightningRoundOrderBodyOrderSide = typeof ExecuteEventArenaLightningRoundOrderBodyOrderSide[keyof typeof ExecuteEventArenaLightningRoundOrderBodyOrderSide];
+
+
+export const ExecuteEventArenaLightningRoundOrderBodyOrderSide = {
+  buy: 'buy',
+  sell: 'sell',
+} as const;
+
+export type ExecuteEventArenaLightningRoundOrderBodyOrderIntent = typeof ExecuteEventArenaLightningRoundOrderBodyOrderIntent[keyof typeof ExecuteEventArenaLightningRoundOrderBodyOrderIntent];
+
+
+export const ExecuteEventArenaLightningRoundOrderBodyOrderIntent = {
+  short: 'short',
+  cover: 'cover',
+} as const;
+
+export type ExecuteEventArenaLightningRoundOrderBodyOrderAssetType = typeof ExecuteEventArenaLightningRoundOrderBodyOrderAssetType[keyof typeof ExecuteEventArenaLightningRoundOrderBodyOrderAssetType];
+
+
+export const ExecuteEventArenaLightningRoundOrderBodyOrderAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  unknown: 'unknown',
+} as const;
+
+export type ExecuteEventArenaLightningRoundOrderBodyOrder = {
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  id: string;
+  accountId: string;
+  symbol: string;
+  companyName: string;
+  orderType: ExecuteEventArenaLightningRoundOrderBodyOrderOrderType;
+  side: ExecuteEventArenaLightningRoundOrderBodyOrderSide;
+  intent?: ExecuteEventArenaLightningRoundOrderBodyOrderIntent;
+  shortCollateralRatio?: number;
+  /** @exclusiveMinimum 0 */
+  shares: number;
+  /** @exclusiveMinimum 0 */
+  limitPrice?: number;
+  /** @exclusiveMinimum 0 */
+  stopPrice?: number;
+  /** @exclusiveMinimum 0 */
+  trailPct?: number;
+  /** @exclusiveMinimum 0 */
+  trailAbs?: number;
+  /** @exclusiveMinimum 0 */
+  trailRef?: number;
+  assetType?: ExecuteEventArenaLightningRoundOrderBodyOrderAssetType;
+  dividendYield?: number;
+  dividendRate?: number;
+  expenseRatio?: number;
+  sector?: string;
+};
+
+export type ExecuteEventArenaLightningRoundOrderBody = {
+  order: ExecuteEventArenaLightningRoundOrderBodyOrder;
+};
+
+export type ExecuteEventArenaLightningRoundOrder200 = { [key: string]: unknown };
+
 export type SubmitEventArenaScore200 = {
   ok: boolean;
   updatedAt: string;

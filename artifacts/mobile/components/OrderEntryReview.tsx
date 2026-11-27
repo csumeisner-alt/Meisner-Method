@@ -171,9 +171,9 @@ export default function OrderEntryReview({
         )}
         {review.marketClosed && review.args.orderType === 'market' && !review.lightningPreparation && (
           <View testID="paper-order-market-open-note" style={styles.warningLine}>
-            <Feather name="clock" size={14} color={GOLD} />
+            <Feather name="info" size={14} color={GOLD} />
             <Text style={styles.warningText}>
-              The regular market is closed. This market order will stay pending until a fresh regular-session quote arrives after the next open; its final fill price may differ from this estimate.
+              The regular market is closed. This simulated market order still fills using the latest available provider quote, which may be a previous close or extended-hours price.
             </Text>
           </View>
         )}
@@ -201,7 +201,9 @@ export default function OrderEntryReview({
         <Text style={styles.reviewQuotePrice}>{money(review.args.quotePrice)}</Text>
         <Text style={styles.smallNote}>{review.quoteNote}</Text>
       </View>
-      <Text style={styles.reviewDisclaimer}>Market fills can differ slightly because the paper engine applies simulated slippage.</Text>
+      <Text style={styles.reviewDisclaimer}>
+        Market orders use the latest available provider quote at submission. Prices may have changed since this estimate, and simulated slippage can affect the final fill.
+      </Text>
       <TouchableOpacity
         testID="paper-order-submit"
         accessibilityRole="button"

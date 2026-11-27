@@ -69,6 +69,8 @@ assert.match(eventLiveNotice, /getPaperEventLiveNoticeDismissalKey\(enrollment\.
 assert.match(eventLiveNotice, /isDismissiblePaperEventLiveNotice\(enrollment\.eventType\)/);
 assert.match(eventLiveNotice, /loadPaperEventLiveNoticeDismissal\(AsyncStorage, dismissalKey\)/);
 assert.match(eventLiveNotice, /persistPaperEventLiveNoticeDismissal\(AsyncStorage, dismissalKey\)/);
+assert.match(eventLiveNotice, /shouldShowPaperEventLiveNotice\(enrollment\.eventType, isEventAccountActive\)/);
+assert.match(eventLiveNotice, /if \(!shouldDisplayNotice \|\| !showNotice\) return null/);
 assert.match(eventLiveNotice, /testID="paper-event-live-banner"/);
 assert.match(eventLiveNotice, /testID="dismiss-paper-event-live-banner"[\s\S]*?accessibilityLabel="Dismiss Event Arena live notice"[\s\S]*?width: 44, height: 44/);
 assert.match(eventLiveNotice, /duration: 180/);
@@ -139,7 +141,7 @@ test("Paper Trading refreshes quotes incrementally without replacing failed valu
   assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
 });
 
-test("offline recovery refreshes prices and closed-market market orders may use a valid provider quote", () => {
+test("market orders use a valid available quote after refresh or from the latest local estimate", () => {
   const orderStart = screen.indexOf("const handleConfirmOrder = async");
   const orderEnd = screen.indexOf("\n  };", orderStart);
   const orderHandler = screen.slice(orderStart, orderEnd);
@@ -151,9 +153,35 @@ test("offline recovery refreshes prices and closed-market market orders may use 
   assert.match(orderHandler, /const currentAccounts = accountsRef\.current/);
   assert.match(orderHandler, /const currentPositions = positionsRef\.current/);
   assert.match(orderHandler, /requestPaperPreloadQuote\(sym, true\)/);
-  assert.match(orderHandler, /getOrderQuoteState\(currentQuote\) !== 'fresh' && !marketClosed/);
+  assert.match(orderHandler, /const marketOrderReferencePrice = currentQuote\.price/);
+  assert.match(orderHandler, /const cachedQuote = quotes\[sym\]/);
+  assert.doesNotMatch(orderHandler, /quote changed after review|provider quote is stale\. Refresh it/);
   assert.doesNotMatch(orderHandler, /getPaperPortfolioPreloadState\(\)\.portfolios/);
   assert.match(screen, /const q = newQuotes\[order\.symbol\];[\s\S]*?canEvaluatePendingOrderQuote\(order, q\)/);
+});
+
+test("active Lightning Round fills use the server event account and retain event identity", () => {
+  const orderStart = screen.indexOf("const handleConfirmOrder = async");
+  const orderEnd = screen.indexOf("\n  };", orderStart);
+  const orderHandler = screen.slice(orderStart, orderEnd);
+  assert.ok(orderStart >= 0 && orderEnd > orderStart);
+  assert.match(orderHandler, /lightningRoundEventId: lightningEnrollment\.eventId/);
+  assert.match(orderHandler, /\/api\/event-arena\/lightning-round\/\$\{encodeURIComponent\(lightningEnrollment\.eventId\)\}\/orders/);
+  assert.match(orderHandler, /X-Event-Arena-Installation-Id': installationId/);
+  assert.match(orderHandler, /updatedAccount = serverFill\.account/);
+  assert.match(orderHandler, /newTransaction = serverFill\.transaction/);
+  assert.match(orderHandler, /updatedOrders = \[[\s\S]*?serverFill\.order/);
+  assert.match(screen, /const activeLightningEnrollment =[\s\S]*?startEquity !== null/);
+  assert.match(screen, /requestLightningRoundFill\(activeLightningEnrollment\.eventId, eventOrder\)/);
+  assert.match(screen, /lightningOrderSubmissionIdsRef\.current\.size > 0/);
+  assert.match(screen, /status: 'cancelled' as const, rejectionReason: error\.message/);
+
+  const routeStart = screen.indexOf("const handledChallengeRouteRef");
+  const routeEnd = screen.indexOf("\n  }, [accounts,", routeStart);
+  const challengeRoute = screen.slice(routeStart, routeEnd);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  assert.match(challengeRoute, /if \(!isFocused\) \{\s*handledChallengeRouteRef\.current = null/);
+  assert.match(screen.slice(routeEnd, routeEnd + 100), /isFocused, loaded, routeParams\.challengeAccountId/);
 });
 
 test("Event Arena hides stale-price disclosures and refreshes after network recovery", () => {
@@ -487,7 +515,7 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   assert.match(screen, /isLightningRoundPreparationOpen\(/);
   assert.match(screen, /canExecuteLightningRoundStagedOrder\(/);
   const stagedSubmitStart = screen.indexOf("if (preparingLightningOrder && lightningEnrollment) {");
-  const stagedSubmitEnd = screen.indexOf("if (args.orderType === 'market' && !marketClosed)", stagedSubmitStart);
+  const stagedSubmitEnd = screen.indexOf("let currentQuote: LiveQuote | undefined;", stagedSubmitStart);
   const stagedSubmit = screen.slice(stagedSubmitStart, stagedSubmitEnd);
   assert.ok(stagedSubmitStart >= 0 && stagedSubmitEnd > stagedSubmitStart);
   assert.match(stagedSubmit, /await saveOrders\(updatedOrders\)/);
@@ -1770,7 +1798,7 @@ test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () =>
   assert.match(eventLiveNotice, /PENNY STOCK MAYHEM/);
   assert.match(eventLiveNotice, /STOCKS & ETFs UNDER \$20/);
   assert.match(screen, /Quote unavailable · eligibility unknown/);
-  assert.match(screen, /executionQuotePrice: args\.quotePrice/);
+  assert.match(screen, /executionQuotePrice: currentQuote\.price/);
   assert.match(screen, /executionQuotePrice: q\.price/);
   assert.match(screen, /maxPurchasePrice: eventPurchaseLimit/);
   assert.match(screen, /getPurchaseLimitRejectionReason/);
@@ -1799,8 +1827,9 @@ test("Event Arena overview shows concise special rules only for restricted event
   assert.match(challenge, /artworkId === 'mountain-summit'[\s\S]*?startingBalance: PAPER_CHALLENGE_STARTING_BALANCE/);
 });
 
-test("One-Stock live reminder can be dismissed and stays scoped to its account and event", () => {
-  assert.match(challenge, /eventType === 'event-arena' \|\| eventType === 'one-stock-challenge'/);
+test("Lightning and One-Stock live notices can be dismissed per event", () => {
+  assert.match(challenge, /eventType === 'event-arena'[\s\S]*eventType === 'one-stock-challenge'[\s\S]*eventType === 'lightning-round'/);
+  assert.match(challenge, /eventType !== 'lightning-round' \|\| !isEventAccountActive/);
   assert.match(eventLiveNotice, /isDismissiblePaperEventLiveNotice\(enrollment\.eventType\)/);
   assert.match(eventLiveNotice, /getPaperEventLiveNoticeDismissalKey\(enrollment\.accountId, enrollment\.eventId\)/);
   assert.match(eventLiveNotice, /testID="dismiss-paper-event-live-banner"/);

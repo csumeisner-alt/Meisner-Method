@@ -47,7 +47,7 @@ const ORDER_TYPES: { type: OrderType; label: string; short: string }[] = [
 ];
 
 const ORDER_TYPE_HINT: Record<OrderType, string> = {
-  market: 'During market hours, it fills at the next quote. When closed, it waits for the next regular market open.',
+  market: 'It fills using the latest available provider quote. Simulated slippage may change the final price.',
   limit: 'Limit orders are not guaranteed to fill. A buy fills at or below your limit; a sell at or above.',
   stop: 'Triggers at your stop price, then executes at the next paper quote.',
   stop_limit: 'Triggers at your stop price and fills only at your limit or better.',

@@ -19,6 +19,7 @@ import {
   ONE_STOCK_CHALLENGE_REJECTION_MESSAGE,
   ONE_STOCK_CHALLENGE_RULE_COPY,
   persistPaperEventLiveNoticeDismissal,
+  shouldShowPaperEventLiveNotice,
   type PaperChallengeEnrollment,
 } from '@/lib/paperChallenge';
 
@@ -46,6 +47,7 @@ export function PaperEventLiveNotice({
   const dismissalKey = isDismissiblePaperEventLiveNotice(enrollment.eventType)
     ? getPaperEventLiveNoticeDismissalKey(enrollment.accountId, enrollment.eventId)
     : null;
+  const shouldDisplayNotice = shouldShowPaperEventLiveNotice(enrollment.eventType, isEventAccountActive);
   const showNotice = dismissalKey === null
     || (loadedKey === dismissalKey && dismissedKey !== dismissalKey);
 
@@ -102,7 +104,7 @@ export function PaperEventLiveNotice({
     });
   };
 
-  if (!showNotice) return null;
+  if (!shouldDisplayNotice || !showNotice) return null;
 
   return (
     <Animated.View

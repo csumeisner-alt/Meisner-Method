@@ -1610,6 +1610,120 @@ test("Lightning Round leaderboard rejects participants without a successful open
   }, lightningEvent.startAtMs + 1, new Map(), async () => 110);
 });
 
+test("active Lightning Round orders fill against the server account and get event tags", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  const accountId = "paper-event:shared";
+  const statements: Array<{ sql: string; values: any[] }> = [];
+  let priceCalls = 0;
+  await withApi(async (sql, values = []) => {
+    statements.push({ sql, values });
+    if (sql.includes("FROM event_arena_lightning_participants")
+      && sql.includes("WHERE event_id=$1 AND installation_id=$2 FOR UPDATE")) {
+      return {
+        rows: [{
+          event_id: lightningEvent.eventId,
+          installation_id: installationId,
+          account_id: accountId,
+          status: "entered",
+          event_start_at: new Date(lightningEvent.startAtMs),
+          event_end_at: new Date(lightningEvent.endAtMs),
+        }],
+      };
+    }
+    if (sql.includes("FROM paper_accounts")) {
+      return {
+        rows: [{
+          id: accountId,
+          name: "Shared Event Arena",
+          cash: 100_000,
+          short_collateral: 0,
+          short_collateral_ratio: 1.5,
+          created_at: new Date(lightningEvent.startAtMs),
+          unsettled_items: [],
+          last_dividend_credit: null,
+        }],
+      };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const route = `${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/orders`;
+    const headers = {
+      "content-type": "application/json",
+      "x-event-arena-installation-id": installationId,
+    };
+    const response = await fetch(route, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        order: {
+          id: "active-order-12345",
+          accountId,
+          symbol: "AAPL",
+          companyName: "Apple",
+          orderType: "market",
+          side: "buy",
+          shares: 2,
+        },
+      }),
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.equal(result.account.id, accountId);
+    assert.equal(result.order.status, "filled");
+    assert.equal(result.order.lightningRoundEventId, lightningEvent.eventId);
+    assert.equal(result.transaction.id, "active-order-12345");
+    assert.equal(result.transaction.lightningRoundEventId, lightningEvent.eventId);
+
+    const limitResponse = await fetch(route, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        order: {
+          id: "active-limit-12345",
+          accountId,
+          symbol: "AAPL",
+          companyName: "Apple",
+          orderType: "limit",
+          side: "buy",
+          shares: 1,
+          limitPrice: 101,
+        },
+      }),
+    });
+    assert.equal(limitResponse.status, 200);
+    const limitResult = await limitResponse.json() as any;
+    assert.equal(limitResult.order.orderType, "limit");
+    assert.equal(limitResult.order.limitPrice, 101);
+    assert.equal(limitResult.transaction.lightningRoundEventId, lightningEvent.eventId);
+
+    const wrongAccount = await fetch(route, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        order: {
+          id: "active-order-67890",
+          accountId: "some-other-account",
+          symbol: "AAPL",
+          companyName: "Apple",
+          orderType: "market",
+          side: "buy",
+          shares: 2,
+        },
+      }),
+    });
+    assert.equal(wrongAccount.status, 422);
+  }, lightningEvent.startAtMs + 1, new Map(), async () => {
+    priceCalls += 1;
+    return 100;
+  });
+  assert.equal(priceCalls, 2, "a mismatched account must be rejected before a price is fetched");
+  const transactionWrite = statements.find((entry) => entry.sql.startsWith("INSERT INTO paper_transactions"));
+  assert.equal(transactionWrite?.values[0], "active-order-12345");
+  assert.equal(transactionWrite?.values[14], lightningEvent.eventId);
+  assert.ok(statements.some((entry) => entry.sql.startsWith("UPDATE paper_accounts")));
+});
+
 test("Lightning Round preparation cannot forge fills and preserves server-tagged history", async () => {
   const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);

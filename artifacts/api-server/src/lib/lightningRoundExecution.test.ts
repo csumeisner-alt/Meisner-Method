@@ -11,6 +11,7 @@ import {
   getLightningRoundScheduleIds,
 } from "../routes/eventArenaRoutes.ts";
 import {
+  executeLightningRoundOrder,
   processDueLightningRoundOrders,
   type LightningExecutionDatabase,
 } from "./lightningRoundExecution.ts";
@@ -200,6 +201,33 @@ class MemoryDatabase implements LightningExecutionDatabase {
         ),
       };
     }
+    if (
+      sql.includes("FROM event_arena_lightning_participants")
+      && sql.includes("WHERE event_id=$1 AND installation_id=$2 FOR UPDATE")
+    ) {
+      return {
+        rows: state.participants.filter((participant) =>
+          participant.event_id === values[0] && participant.installation_id === values[1],
+        ),
+      };
+    }
+    if (sql.includes("FROM paper_orders") && sql.includes("WHERE id=$1 AND user_id=$2 FOR UPDATE")) {
+      return {
+        rows: state.orders.filter((order) =>
+          order.id === values[0] && order.user_id === values[1],
+        ),
+      };
+    }
+    if (sql.includes("FROM paper_transactions") && sql.includes("WHERE id=$1 AND user_id=$2")) {
+      return {
+        rows: state.transactions.filter((transaction) =>
+          transaction.id === values[0]
+          && transaction.user_id === values[1]
+          && transaction.account_id === values[2]
+          && transaction.lightning_round_event_id === values[3],
+        ),
+      };
+    }
     if (sql.includes("FROM paper_transactions")
       && sql.includes("lightning_round_event_id=$3")) {
       return {
@@ -314,6 +342,16 @@ class MemoryDatabase implements LightningExecutionDatabase {
       };
     }
     if (sql.includes("FROM paper_orders")
+      && sql.includes("WHERE user_id=$1 AND account_id=$2 AND status='pending'")) {
+      return {
+        rows: state.orders.filter((order) =>
+          order.user_id === values[0]
+          && order.account_id === values[1]
+          && order.status === "pending",
+        ),
+      };
+    }
+    if (sql.includes("FROM paper_orders")
       && sql.includes("status='pending'")
       && !sql.includes("COUNT(*) FILTER")) {
       return {
@@ -325,11 +363,23 @@ class MemoryDatabase implements LightningExecutionDatabase {
         ),
       };
     }
+    if (sql.includes("FROM paper_positions") && sql.includes("WHERE account_id=$1 AND user_id=$2")) {
+      return {
+        rows: state.positions.filter((position) =>
+          position.account_id === values[0] && position.user_id === values[1],
+        ),
+      };
+    }
     if (sql.includes("FROM paper_positions")) {
       return {
         rows: state.positions.filter((position) =>
           position.user_id === values[0] && position.account_id === values[1],
         ),
+      };
+    }
+    if (sql.includes("FROM paper_lots") && sql.includes("WHERE account_id=$1 AND user_id=$2")) {
+      return {
+        rows: state.lots.filter((lot) => lot.account_id === values[0] && lot.user_id === values[1]),
       };
     }
     if (sql.includes("FROM paper_lots")) {
@@ -354,7 +404,44 @@ class MemoryDatabase implements LightningExecutionDatabase {
     }
     if (sql.startsWith("UPDATE paper_accounts")) {
       const account = state.accounts.find((row) => row.id === values[0] && row.user_id === values[1]);
-      if (account) account.cash = Number(values[2]);
+      if (account) {
+        account.cash = Number(values[2]);
+        if (values.length > 3) {
+          account.short_collateral = Number(values[3]);
+          account.short_collateral_ratio = Number(values[4]);
+          account.unsettled_items = JSON.parse(String(values[5]));
+        }
+      }
+      return { rows: [] };
+    }
+    if (sql.startsWith("INSERT INTO paper_transactions")) {
+      state.transactions.push({
+        id: values[0], user_id: values[1], account_id: values[2], symbol: values[3],
+        company_name: values[4], action: values[5], shares: values[6], price: values[7],
+        total: values[8], date: values[9], fee: values[10], realized_pnl: values[11],
+        cash_delta: values[12], short_collateral_delta: values[13],
+        lightning_round_event_id: values[14],
+      });
+      return { rows: [] };
+    }
+    if (sql.startsWith("INSERT INTO paper_orders")) {
+      state.orders.push({
+        id: values[0], user_id: values[1], account_id: values[2],
+        lightning_round_event_id: values[3], symbol: values[4], company_name: values[5],
+        order_type: values[6], side: values[7], intent: values[8],
+        short_collateral_ratio: values[9], shares: values[10], limit_price: values[11],
+        stop_price: values[12], trail_pct: values[13], trail_abs: values[14],
+        trail_ref: values[15], status: "filled", filled_price: values[16],
+        filled_at: new Date(values[17]), placed_at: new Date(values[18]),
+        rejection_reason: null, asset_type: values[19], dividend_yield: values[20],
+        dividend_rate: values[21], expense_ratio: values[22], sector: values[23],
+      });
+      return { rows: [] };
+    }
+    if (
+      sql.startsWith("UPDATE event_arena_lightning_participants")
+      && sql.includes("SET updated_at=NOW()")
+    ) {
       return { rows: [] };
     }
     if (sql.startsWith("DELETE FROM paper_positions")) {
@@ -544,6 +631,74 @@ test("concurrent worker runs serialize by event and create one fill", async () =
   assert.equal(state.transactions.length, 2);
   assert.equal(state.orders[0].status, "filled");
   assert.equal(state.participants[0].status, "entered");
+});
+
+test("active Lightning market fills are server-recorded and safe to retry", async () => {
+  const state = seedEnteredState();
+  const db = new MemoryDatabase(state);
+  const order = {
+    id: "mobile-order-0001",
+    accountId,
+    symbol: "AAPL",
+    companyName: "Apple",
+    orderType: "market" as const,
+    side: "buy" as const,
+    shares: 2,
+    status: "pending" as const,
+    placedAt: new Date(startAt + 60_000).toISOString(),
+  };
+  const execute = (orderToExecute = order) => executeLightningRoundOrder(db, {
+    eventId,
+    installationId,
+    order: orderToExecute,
+    now: () => startAt + 60_000,
+    fetchPrice: async () => 100,
+    makeId: fixedId,
+  });
+
+  const first = await execute();
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.transaction.id, order.id);
+  assert.equal(first.transaction.lightningRoundEventId, eventId);
+  assert.equal(first.order.status, "filled");
+  assert.ok(first.account.cash < 100_000);
+  assert.equal(first.positions.find((position) => position.symbol === "AAPL")?.shares, 2);
+  assert.equal(state.transactions.find((transaction) => transaction.id === order.id)?.lightning_round_event_id, eventId);
+  assert.equal(state.orders.find((saved) => saved.id === order.id)?.status, "filled");
+
+  const cashAfterFirstFill = state.accounts[0]!.cash;
+  const retry = await execute();
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.replayed, true);
+  assert.equal(retry.transaction.id, order.id);
+  assert.equal(state.transactions.filter((transaction) => transaction.id === order.id).length, 1);
+  assert.equal(state.accounts[0]!.cash, cashAfterFirstFill);
+
+  const limitOrder = {
+    ...order,
+    id: "mobile-limit-0001",
+    orderType: "limit" as const,
+    limitPrice: 100,
+    shares: 1,
+  };
+  const limitFill = await execute(limitOrder);
+  assert.equal(limitFill.ok, true);
+  if (!limitFill.ok) return;
+  assert.equal(limitFill.order.orderType, "limit");
+  assert.ok((limitFill.order.filledPrice ?? Infinity) <= 100);
+  assert.equal(limitFill.transaction.lightningRoundEventId, eventId);
+
+  const untriggeredLimit = {
+    ...limitOrder,
+    id: "mobile-limit-0002",
+    limitPrice: 90,
+  };
+  const skippedLimit = await execute(untriggeredLimit);
+  assert.equal(skippedLimit.ok, false);
+  if (!skippedLimit.ok) assert.equal(skippedLimit.status, 409);
+  assert.equal(state.orders.some((saved) => saved.id === untriggeredLimit.id), false);
 });
 
 test("Lightning Round scoring is derived only from event-tagged transactions", async () => {

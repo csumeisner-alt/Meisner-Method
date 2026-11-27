@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getMarketOrderQuoteError, isClosedMarketQuote } from '../../lib/paperOrderEntry';
+import { getMarketOrderQuoteError } from '../../lib/paperOrderEntry';
 import { applySlippage, getPurchaseLimitRejectionReason } from '../../lib/paperEngine';
 import ProfessionalOrderEntry, { type ConfirmOrderArgs, type OrderIntent } from '../../components/ProfessionalOrderEntry';
 import type { LiveQuote, PaperAccount, PaperOrder, PaperPosition } from '../../lib/paperMath';
@@ -110,32 +110,22 @@ export default function Entry() {
 
   const confirm = async (args: ConfirmOrderArgs) => {
     window.__orderAttempts.push(args);
-    const quoteError = getMarketOrderQuoteError(
-      quote,
-      args.quotePrice,
-      isClosedMarketQuote(quote),
-    );
+    const quoteError = getMarketOrderQuoteError(quote);
     if (quoteError) return { status: 'rejected' as const, message: quoteError };
-    if (args.orderType === 'market' && isClosedMarketQuote(quote)) {
-      return {
-        status: 'pending' as const,
-        pendingReason: 'market-open' as const,
-        message: 'The regular market is closed. Your market order is pending market open and will fill at the next regular market open using the next available quote.',
-      };
-    }
+    const executionArgs = { ...args, quotePrice: quote!.price };
     if (scenario.penny && args.side === 'buy') {
       const purchaseLimitRejection = getPurchaseLimitRejectionReason({
         order: { side: 'buy', assetType: scenario.assetType },
-        executionQuotePrice: args.quotePrice,
-        fillPrice: applySlippage(args.quotePrice, args.shares, 'buy'),
+        executionQuotePrice: executionArgs.quotePrice,
+        fillPrice: applySlippage(executionArgs.quotePrice, args.shares, 'buy'),
         maxPurchasePrice: 20,
       });
       if (purchaseLimitRejection) {
         return { status: 'rejected' as const, message: purchaseLimitRejection };
       }
     }
-    window.__orderFills.push(args);
-    return { status: 'filled' as const, message: 'Order filled.', fillPrice: args.quotePrice };
+    window.__orderFills.push(executionArgs);
+    return { status: 'filled' as const, message: 'Order filled.', fillPrice: executionArgs.quotePrice };
   };
 
   const selectScenario = (side: OrderIntent, accountId: Scenario['accountId']) => {

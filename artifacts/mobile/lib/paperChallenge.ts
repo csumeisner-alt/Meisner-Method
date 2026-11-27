@@ -313,7 +313,16 @@ export function getPaperEventLiveNoticeDismissalKey(accountId: string, eventId: 
 }
 
 export function isDismissiblePaperEventLiveNotice(eventType: PaperChallengeEventType | undefined): boolean {
-  return eventType === 'event-arena' || eventType === 'one-stock-challenge';
+  return eventType === 'event-arena'
+    || eventType === 'one-stock-challenge'
+    || eventType === 'lightning-round';
+}
+
+export function shouldShowPaperEventLiveNotice(
+  eventType: PaperChallengeEventType | undefined,
+  isEventAccountActive: boolean,
+): boolean {
+  return eventType !== 'lightning-round' || !isEventAccountActive;
 }
 
 export async function loadPaperEventLiveNoticeDismissal(

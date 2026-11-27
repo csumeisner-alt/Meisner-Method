@@ -13,6 +13,7 @@ import {
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
 import { fetchYahooChartPrice } from "../lib/marketPrice.ts";
 import { calculateLightningRoundScore } from "../lib/lightningRoundScore.ts";
+import { executeLightningRoundOrder } from "../lib/lightningRoundExecution.ts";
 import {
   isMountainChampionshipTransferLocked,
   LIGHTNING_ROUND_PREPARATION_MS,
@@ -1065,6 +1066,113 @@ export function createEventArenaRouter(
         "Failed to save Lightning Round account snapshot",
       );
       res.status(500).json({ error: "Could not save the Lightning Round account snapshot." });
+    }
+  });
+
+  router.post("/event-arena/lightning-round/:eventId/orders", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    const eventId = req.params.eventId;
+    const configuration = expectedLightningRoundWindow(eventId);
+    if (!validInstallationId(installationId) || !configuration) {
+      res.status(400).json({ error: "A scheduled Lightning Round and valid installation ID are required." });
+      return;
+    }
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? req.body as Record<string, any>
+      : null;
+    const rawOrder = body?.order;
+    const assetType = ["stock", "etf", "unknown"].includes(rawOrder?.assetType)
+      ? rawOrder.assetType
+      : undefined;
+    const validOrderType = ["market", "limit", "stop", "stop_limit", "trailing_stop"].includes(rawOrder?.orderType);
+    const finiteOptional = (value: unknown) =>
+      value === undefined || (typeof value === "number" && Number.isFinite(value));
+    const validTriggers =
+      (!["limit", "stop_limit"].includes(rawOrder?.orderType)
+        || (Number.isFinite(rawOrder.limitPrice) && rawOrder.limitPrice > 0))
+      && (!["stop", "stop_limit"].includes(rawOrder?.orderType)
+        || (Number.isFinite(rawOrder.stopPrice) && rawOrder.stopPrice > 0))
+      && (rawOrder?.orderType !== "trailing_stop"
+        || (Number.isFinite(rawOrder.trailPct) && rawOrder.trailPct > 0)
+        || (Number.isFinite(rawOrder.trailAbs) && rawOrder.trailAbs > 0));
+    if (
+      !rawOrder || typeof rawOrder !== "object" || Array.isArray(rawOrder)
+      || typeof rawOrder.id !== "string"
+      || rawOrder.id.length < 8 || rawOrder.id.length > 128
+      || !/^[A-Za-z0-9_-]+$/.test(rawOrder.id)
+      || typeof rawOrder.accountId !== "string"
+      || typeof rawOrder.symbol !== "string"
+      || typeof rawOrder.companyName !== "string"
+      || !["buy", "sell"].includes(rawOrder.side)
+       || !validOrderType
+      || !finiteOptional(rawOrder.shortCollateralRatio)
+       || !finiteOptional(rawOrder.limitPrice)
+       || !finiteOptional(rawOrder.stopPrice)
+       || !finiteOptional(rawOrder.trailPct)
+       || !finiteOptional(rawOrder.trailAbs)
+       || !finiteOptional(rawOrder.trailRef)
+       || !validTriggers
+      || !finiteOptional(rawOrder.dividendYield)
+      || !finiteOptional(rawOrder.dividendRate)
+      || !finiteOptional(rawOrder.expenseRatio)
+      || typeof rawOrder.shares !== "number" || !Number.isFinite(rawOrder.shares)
+      || rawOrder.shares <= 0
+      || (rawOrder.intent !== undefined && !["short", "cover"].includes(rawOrder.intent))
+      || (rawOrder.side === "buy" && rawOrder.intent === "short")
+      || (rawOrder.side === "sell" && rawOrder.intent === "cover")
+    ) {
+      res.status(400).json({ error: "The Lightning Round order is invalid." });
+      return;
+    }
+    try {
+      const result = await executeLightningRoundOrder(db, {
+        eventId,
+        installationId,
+        order: {
+          id: rawOrder.id,
+          accountId: rawOrder.accountId,
+          symbol: rawOrder.symbol,
+          companyName: rawOrder.companyName.slice(0, 120),
+          orderType: rawOrder.orderType,
+          side: rawOrder.side,
+          ...(rawOrder.intent ? { intent: rawOrder.intent } : {}),
+          ...(Number.isFinite(rawOrder.shortCollateralRatio)
+            ? { shortCollateralRatio: rawOrder.shortCollateralRatio }
+            : {}),
+          shares: rawOrder.shares,
+          ...(Number.isFinite(rawOrder.limitPrice) ? { limitPrice: rawOrder.limitPrice } : {}),
+          ...(Number.isFinite(rawOrder.stopPrice) ? { stopPrice: rawOrder.stopPrice } : {}),
+          ...(Number.isFinite(rawOrder.trailPct) ? { trailPct: rawOrder.trailPct } : {}),
+          ...(Number.isFinite(rawOrder.trailAbs) ? { trailAbs: rawOrder.trailAbs } : {}),
+          ...(Number.isFinite(rawOrder.trailRef) ? { trailRef: rawOrder.trailRef } : {}),
+          status: "pending",
+          placedAt: new Date(now()).toISOString(),
+          ...(assetType ? { assetType } : {}),
+          ...(Number.isFinite(rawOrder.dividendYield)
+            ? { dividendYield: rawOrder.dividendYield }
+            : {}),
+          ...(Number.isFinite(rawOrder.dividendRate)
+            ? { dividendRate: rawOrder.dividendRate }
+            : {}),
+          ...(Number.isFinite(rawOrder.expenseRatio)
+            ? { expenseRatio: rawOrder.expenseRatio }
+            : {}),
+          ...(typeof rawOrder.sector === "string" ? { sector: rawOrder.sector.slice(0, 80) } : {}),
+        },
+        now,
+        fetchPrice: fetchLightningPrice,
+      });
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      req.log?.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Failed to execute Lightning Round market order",
+      );
+      res.status(500).json({ error: "Could not execute the Lightning Round market order." });
     }
   });
 

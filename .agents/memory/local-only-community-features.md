@@ -20,3 +20,9 @@ Lightning Round reuses the existing Event Arena portfolio; it is not a separate 
 **Why:** The user clarified that Lightning Round uses the existing event portfolio, so a separate-portfolio prompt is inaccurate.
 
 **How to apply:** Keep Lightning Round enrollment and history tied to the existing Event Arena account, and avoid UI that implies it needs another portfolio.
+
+During an active Lightning Round, hide the live-event notice on the Lightning event account. On regular paper accounts, the notice may remain but must be dismissible once per event, with the dismissal shared across account views.
+
+**Why:** The user said the gold live banner is redundant during the event and intrusive when repeated across regular portfolio accounts.
+
+**How to apply:** Gate the notice off for the active Lightning event account, and key dismissals to the Lightning event account and event ID rather than the currently selected regular portfolio.

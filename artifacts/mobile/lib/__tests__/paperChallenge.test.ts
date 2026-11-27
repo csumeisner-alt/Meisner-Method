@@ -31,6 +31,7 @@ import {
   isLightningRoundEventId,
   isPaperChallengeAccountId,
   isDismissiblePaperEventLiveNotice,
+  shouldShowPaperEventLiveNotice,
   loadPaperChallengeStore,
   loadPaperEventLiveNoticeDismissal,
   sortPaperChallengeHistory,
@@ -90,11 +91,11 @@ test('Event Arena live notice dismissal persists per account and event only', as
   assert.equal(getPaperEventLiveNoticeDismissalKey('paper-event:account-a', ''), null);
 });
 
-test('standard Event Arena and One-Stock notices can be dismissed', () => {
+test('Lightning and standard Event Arena notices can be dismissed', () => {
   assert.equal(isDismissiblePaperEventLiveNotice('event-arena'), true);
   assert.equal(isDismissiblePaperEventLiveNotice('one-stock-challenge'), true);
+  assert.equal(isDismissiblePaperEventLiveNotice('lightning-round'), true);
   for (const eventType of [
-    'lightning-round',
     'penny-stock-mayhem',
     'green-bull-championship',
     'bear-market-mayhem',
@@ -102,6 +103,13 @@ test('standard Event Arena and One-Stock notices can be dismissed', () => {
   ] as const) {
     assert.equal(isDismissiblePaperEventLiveNotice(eventType), false, `${eventType} stays unchanged`);
   }
+});
+
+test('Lightning live notice is hidden on its active account but available elsewhere', () => {
+  assert.equal(shouldShowPaperEventLiveNotice('lightning-round', true), false);
+  assert.equal(shouldShowPaperEventLiveNotice('lightning-round', false), true);
+  assert.equal(shouldShowPaperEventLiveNotice('event-arena', true), true);
+  assert.equal(shouldShowPaperEventLiveNotice(undefined, true), true);
 });
 
 test('event holding allocation uses absolute market exposure over reported equity', () => {

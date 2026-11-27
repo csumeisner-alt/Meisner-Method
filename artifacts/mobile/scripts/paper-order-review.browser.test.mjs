@@ -274,7 +274,7 @@ async function startBrowser(bundle) {
   }
 }
 
-test("order review discloses freshness, blocks invalid quotes, and requires re-review after price changes", async () => {
+test("market orders fill at the latest provider quote without re-review", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;
   try {
@@ -303,19 +303,10 @@ test("order review discloses freshness, blocks invalid quotes, and requires re-r
     await click(browser, "quote-change");
     await click(browser, "paper-order-submit");
     await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-result"))})`,
-      "A changed quote should return the order to a rejected result.");
-    assert.match(await text("paper-order-result"), /quote changed after review/i);
-    assert.equal(await browser.evaluate("window.__orderFills.length"), 0,
-      "A changed price must not fill using the old review.");
-
-    await click(browser, "paper-order-result-edit");
-    await click(browser, "paper-order-review-button");
-    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
-      "The changed price should be reviewable again after editing.");
-    assert.match(await text("paper-order-review"), /\$101\.00/);
-    await click(browser, "paper-order-submit");
+      "A changed quote should fill the market order using the latest price.");
+    assert.match(await text("paper-order-result"), /Order filled/i);
     await waitFor(browser, `window.__orderFills.length === 1`,
-      "The order should fill only after the updated price is reviewed.");
+      "A changed price should not require re-review.");
     assert.deepEqual(await browser.evaluate(
       "({ side: window.__orderFills[0].side, accountId: window.__orderFills[0].accountId, quotePrice: window.__orderFills[0].quotePrice })",
     ), { side: "buy", accountId: "alpha", quotePrice: 101 });
@@ -911,7 +902,7 @@ test("stale quotes are reviewable with disclosure, but missing and invalid price
   }
 });
 
-test("closed-market market orders remain pending at open after the stale quote changes", async () => {
+test("closed-market market orders fill using the latest available quote", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;
   try {
@@ -923,28 +914,30 @@ test("closed-market market orders remain pending at open after the stale quote c
     await click(browser, "paper-order-review-button");
     await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
       "A closed-market market order should reach review.");
-    assert.match(await text("paper-order-market-open-note"), /pending until a fresh regular-session quote arrives after the next open/i);
+    assert.match(await text("paper-order-market-open-note"), /still fills using the latest available provider quote/i);
 
     await click(browser, "quote-closed-move");
     await click(browser, "paper-order-submit");
     await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-result"))})`,
-      "A closed-market market order should be accepted into the pending queue.");
+      "A closed-market market order should fill using the updated available quote.");
     const result = await text("paper-order-result");
-    assert.match(result, /Pending market open/i);
-    assert.match(result, /next regular market open/i);
+    assert.match(result, /Order filled/i);
     assert.equal(await browser.evaluate("window.__orderAttempts.length"), 1);
-    assert.equal(await browser.evaluate("window.__orderFills.length"), 0,
-      "A queued market order must not fill against the closed-market quote.");
+    assert.equal(await browser.evaluate("window.__orderFills.length"), 1,
+      "A closed-market simulation should still fill from a valid provider quote.");
+    assert.equal(await browser.evaluate("window.__orderFills[0].quotePrice"), 101);
   } finally {
     await fixture.cleanup();
   }
 });
 
-test("the paper screen keeps quote-change and account-position guards in the live submit path", async () => {
+test("the paper screen uses the latest available price and keeps account-position guards", async () => {
   const screen = await readFile(join(mobileDir, "app/(tabs)/paper.tsx"), "utf8");
   const orderEntry = await readFile(join(mobileDir, "components/ProfessionalOrderEntry.tsx"), "utf8");
-  assert.match(screen, /getMarketOrderQuoteError\(currentQuote, args\.quotePrice, marketClosed\)/);
-  assert.match(screen, /if \(getOrderQuoteState\(currentQuote\) !== 'fresh' && !marketClosed\)/);
+  assert.match(screen, /getMarketOrderQuoteError\(currentQuote\)/);
+  assert.match(screen, /const marketOrderReferencePrice = currentQuote\.price/);
+  assert.match(screen, /const fillPrice = applySlippage\(currentQuote\.price, args\.shares, direction\)/);
+  assert.doesNotMatch(screen, /quote changed after review|provider quote is stale\. Refresh it/);
   assert.match(screen, /canEvaluatePendingOrderQuote\(order, q\)/);
   assert.match(screen, /const accountPositions = currentPositions\.filter\(\(position\) => position\.accountId === accountId\)/);
   assert.match(orderEntry, /accountId: account\.id/);

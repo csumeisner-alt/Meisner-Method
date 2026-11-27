@@ -236,6 +236,62 @@ paths:
         "400": { description: "The event, installation ID, or snapshot is invalid" }
         "409": { description: Account preparation for the event has closed }
         "500": { description: The account snapshot could not be saved }
+  /event-arena/lightning-round/{eventId}/orders:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string }
+      - in: header
+        name: X-Event-Arena-Installation-Id
+        required: true
+        schema: { type: string, minLength: 12, maxLength: 128 }
+    post:
+      operationId: executeEventArenaLightningRoundOrder
+      tags: [eventArena]
+      summary: Execute one validated order in the requesting Lightning Round account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: object
+                  required: [id, accountId, symbol, companyName, orderType, side, shares]
+                  properties:
+                    id: { type: string, minLength: 8, maxLength: 128 }
+                    accountId: { type: string }
+                    symbol: { type: string }
+                    companyName: { type: string }
+                    orderType: { type: string, enum: [market, limit, stop, stop_limit, trailing_stop] }
+                    side: { type: string, enum: [buy, sell] }
+                    intent: { type: string, enum: [short, cover] }
+                    shortCollateralRatio: { type: number }
+                    shares: { type: number, exclusiveMinimum: 0 }
+                    limitPrice: { type: number, exclusiveMinimum: 0 }
+                    stopPrice: { type: number, exclusiveMinimum: 0 }
+                    trailPct: { type: number, exclusiveMinimum: 0 }
+                    trailAbs: { type: number, exclusiveMinimum: 0 }
+                    trailRef: { type: number, exclusiveMinimum: 0 }
+                    assetType: { type: string, enum: [stock, etf, unknown] }
+                    dividendYield: { type: number }
+                    dividendRate: { type: number }
+                    expenseRatio: { type: number }
+                    sector: { type: string }
+      responses:
+        "200":
+          description: The server-verified fill and updated account data
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: "The event, installation ID, or order is invalid" }
+        "404": { description: Lightning Round participation was not found }
+        "409": { description: The event is not accepting trades or the price is unavailable }
+        "422": { description: "The order fails account risk checks" }
+        "500": { description: The order could not be executed }
   /event-arena/{eventId}/leaderboard:
     parameters:
       - in: path

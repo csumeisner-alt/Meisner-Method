@@ -44,6 +44,8 @@ import type {
   EventArenaLeaderboardResponse,
   EventArenaReminderPreferenceUpdate,
   EventArenaScoreSubmission,
+  ExecuteEventArenaLightningRoundOrder200,
+  ExecuteEventArenaLightningRoundOrderBody,
   GetEventArenaLeaderboardWeeks200,
   GetEventArenaLightningRoundState200,
   GetEventArenaReminderPreference200,
@@ -703,6 +705,78 @@ export const useSaveEventArenaLightningRoundState = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSaveEventArenaLightningRoundStateMutationOptions(options));
+    }
+
+export const getExecuteEventArenaLightningRoundOrderUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/lightning-round/${eventId}/orders`
+}
+
+/**
+ * @summary Execute one validated order in the requesting Lightning Round account
+ */
+export const executeEventArenaLightningRoundOrder = async (eventId: string,
+    executeEventArenaLightningRoundOrderBody: ExecuteEventArenaLightningRoundOrderBody, options?: RequestInit): Promise<ExecuteEventArenaLightningRoundOrder200> => {
+
+  return customFetch<ExecuteEventArenaLightningRoundOrder200>(getExecuteEventArenaLightningRoundOrderUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(executeEventArenaLightningRoundOrderBody)
+  }
+);}
+
+
+
+
+
+export const getExecuteEventArenaLightningRoundOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>, TError,{eventId: string;data: BodyType<ExecuteEventArenaLightningRoundOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>, TError,{eventId: string;data: BodyType<ExecuteEventArenaLightningRoundOrderBody>}, TContext> => {
+
+const mutationKey = ['executeEventArenaLightningRoundOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>, {eventId: string;data: BodyType<ExecuteEventArenaLightningRoundOrderBody>}> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  executeEventArenaLightningRoundOrder(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExecuteEventArenaLightningRoundOrderMutationResult = NonNullable<Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>>
+    export type ExecuteEventArenaLightningRoundOrderMutationBody = BodyType<ExecuteEventArenaLightningRoundOrderBody>
+    export type ExecuteEventArenaLightningRoundOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Execute one validated order in the requesting Lightning Round account
+ */
+export const useExecuteEventArenaLightningRoundOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>, TError,{eventId: string;data: BodyType<ExecuteEventArenaLightningRoundOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof executeEventArenaLightningRoundOrder>>,
+        TError,
+        {eventId: string;data: BodyType<ExecuteEventArenaLightningRoundOrderBody>},
+        TContext
+      > => {
+      return useMutation(getExecuteEventArenaLightningRoundOrderMutationOptions(options));
     }
 
 export const getGetEventArenaLeaderboardUrl = (eventId: string,) => {

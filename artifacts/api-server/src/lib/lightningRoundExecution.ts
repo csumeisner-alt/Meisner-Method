@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   applyOrderSlippage,
   checkRisk,
+  evaluateOrder,
   fillOrder,
 } from "../../../mobile/lib/paperEngine.ts";
 import type {
@@ -148,7 +149,15 @@ function orderFromRow(row: any): PaperOrder {
     orderType: row.order_type,
     side: row.side,
     ...(row.intent ? { intent: row.intent } : {}),
+    ...(row.short_collateral_ratio != null
+      ? { shortCollateralRatio: Number(row.short_collateral_ratio) }
+      : {}),
     shares: Number(row.shares),
+    ...(row.limit_price != null ? { limitPrice: Number(row.limit_price) } : {}),
+    ...(row.stop_price != null ? { stopPrice: Number(row.stop_price) } : {}),
+    ...(row.trail_pct != null ? { trailPct: Number(row.trail_pct) } : {}),
+    ...(row.trail_abs != null ? { trailAbs: Number(row.trail_abs) } : {}),
+    ...(row.trail_ref != null ? { trailRef: Number(row.trail_ref) } : {}),
     status: row.status,
     placedAt: asIso(row.placed_at),
     ...(row.asset_type ? { assetType: row.asset_type } : {}),
@@ -175,6 +184,10 @@ function transactionFromRow(row: any): PaperTransaction {
     date: asIso(row.date),
     ...(row.fee != null ? { fee: Number(row.fee) } : {}),
     ...(row.realized_pnl != null ? { realizedPnL: Number(row.realized_pnl) } : {}),
+    ...(row.cash_delta != null ? { cashDelta: Number(row.cash_delta) } : {}),
+    ...(row.short_collateral_delta != null
+      ? { shortCollateralDelta: Number(row.short_collateral_delta) }
+      : {}),
     ...(row.lightning_round_event_id
       ? { lightningRoundEventId: row.lightning_round_event_id }
       : {}),
@@ -432,6 +445,342 @@ async function replaceLots(
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [lot.id, userId, accountId, lot.symbol, lot.shares, lot.cost, lot.purchasedAt],
     );
+  }
+}
+
+export type LightningRoundOrderResult =
+  | {
+      ok: true;
+      account: PaperAccount;
+      positions: PaperPosition[];
+      lots: PaperLot[];
+      transaction: PaperTransaction;
+      order: PaperOrder;
+      replayed?: boolean;
+    }
+  | { ok: false; status: 404 | 409 | 422; error: string };
+
+export async function executeLightningRoundOrder(
+  db: LightningExecutionDatabase,
+  args: {
+    eventId: string;
+    installationId: string;
+    order: PaperOrder;
+    now?: () => number;
+    fetchPrice: (symbol: string) => Promise<number | null>;
+    makeId?: () => string;
+  },
+): Promise<LightningRoundOrderResult> {
+  const now = args.now ?? Date.now;
+  const client = db.connect ? await db.connect() : null;
+  const connection: LightningExecutionDatabase = client ?? db;
+  await connection.query("BEGIN");
+  try {
+    await connection.query("SELECT pg_advisory_xact_lock(hashtext($1))", [args.eventId]);
+    const { rows: participantRows } = await connection.query(
+      `SELECT event_id,installation_id,account_id,status,event_start_at,event_end_at
+       FROM event_arena_lightning_participants
+       WHERE event_id=$1 AND installation_id=$2 FOR UPDATE`,
+      [args.eventId, args.installationId],
+    );
+    const participant = participantRows[0];
+    if (!participant) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 404, error: "Lightning Round participation was not found." };
+    }
+    if (participant.status !== "entered") {
+      await connection.query("ROLLBACK");
+      return {
+        ok: false,
+        status: 409,
+        error: "Your Lightning Round opening order must fill before placing live trades.",
+      };
+    }
+
+    const eventStartAtMs = new Date(participant.event_start_at).getTime();
+    const eventEndAtMs = new Date(participant.event_end_at).getTime();
+    const currentTime = now();
+    if (currentTime < eventStartAtMs || currentTime >= eventEndAtMs) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 409, error: "The Lightning Round is not currently accepting trades." };
+    }
+
+    const input = args.order;
+    const symbol = typeof input.symbol === "string" ? input.symbol.trim().toUpperCase() : "";
+    const validId = typeof input.id === "string"
+      && input.id.length >= 8
+      && input.id.length <= 128
+      && /^[A-Za-z0-9_-]+$/.test(input.id);
+    const validSideAndIntent = (input.side === "buy" && (!input.intent || input.intent === "cover"))
+      || (input.side === "sell" && (!input.intent || input.intent === "short"));
+    const validOrderType = ["market", "limit", "stop", "stop_limit", "trailing_stop"].includes(input.orderType);
+    const validOrderTriggers =
+      (!["limit", "stop_limit"].includes(input.orderType)
+        || (Number.isFinite(input.limitPrice) && (input.limitPrice ?? 0) > 0))
+      && (!["stop", "stop_limit"].includes(input.orderType)
+        || (Number.isFinite(input.stopPrice) && (input.stopPrice ?? 0) > 0))
+      && (input.orderType !== "trailing_stop"
+        || (Number.isFinite(input.trailPct) && (input.trailPct ?? 0) > 0)
+        || (Number.isFinite(input.trailAbs) && (input.trailAbs ?? 0) > 0));
+    if (
+      !validId
+      || input.accountId !== participant.account_id
+      || !validOrderType
+      || !validOrderTriggers
+      || !validSideAndIntent
+      || !/^[A-Z0-9.^=-]{1,15}$/.test(symbol)
+      || !Number.isFinite(input.shares)
+      || input.shares <= 0
+    ) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 422, error: "The Lightning Round order is invalid." };
+    }
+
+    const { rows: priorRows } = await connection.query(
+      `SELECT id,account_id,lightning_round_event_id,symbol,company_name,order_type,side,intent,
+              short_collateral_ratio,shares,limit_price,stop_price,trail_pct,trail_abs,trail_ref,
+              status,placed_at,filled_price,filled_at,rejection_reason,asset_type,dividend_yield,
+              dividend_rate,expense_ratio,sector
+       FROM paper_orders
+       WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+      [input.id, args.installationId],
+    );
+    const priorOrderRow = priorRows[0];
+    if (priorOrderRow) {
+      if (
+        priorOrderRow.account_id !== participant.account_id
+        || priorOrderRow.lightning_round_event_id !== args.eventId
+      ) {
+        await connection.query("ROLLBACK");
+        return { ok: false, status: 409, error: "That order ID is already in use." };
+      }
+      if (priorOrderRow.status !== "filled") {
+        await connection.query("ROLLBACK");
+        return { ok: false, status: 409, error: "That Lightning Round order has already been submitted." };
+      }
+      const [accountResult, positionResult, lotResult, transactionResult] = await Promise.all([
+        connection.query(
+          `SELECT id,name,cash,short_collateral,short_collateral_ratio,created_at,unsettled_items,last_dividend_credit
+           FROM paper_accounts WHERE id=$1 AND user_id=$2`,
+          [participant.account_id, args.installationId],
+        ),
+        connection.query(
+          `SELECT id,account_id,symbol,company_name,shares,position_type,collateral_per_share,avg_cost,
+                  opened_at,dividend_yield,dividend_rate,expense_ratio,sector
+           FROM paper_positions WHERE account_id=$1 AND user_id=$2`,
+          [participant.account_id, args.installationId],
+        ),
+        connection.query(
+          `SELECT id,account_id,symbol,shares,cost,purchased_at
+           FROM paper_lots WHERE account_id=$1 AND user_id=$2 ORDER BY purchased_at ASC`,
+          [participant.account_id, args.installationId],
+        ),
+        connection.query(
+          `SELECT id,account_id,symbol,company_name,action,shares,price,total,date,fee,realized_pnl,
+                  cash_delta,short_collateral_delta,lightning_round_event_id
+           FROM paper_transactions WHERE id=$1 AND user_id=$2 AND account_id=$3 AND lightning_round_event_id=$4`,
+          [input.id, args.installationId, participant.account_id, args.eventId],
+        ),
+      ]);
+      const accountRow = accountResult.rows[0];
+      const transactionRow = transactionResult.rows[0];
+      if (!accountRow || !transactionRow) {
+        await connection.query("ROLLBACK");
+        return { ok: false, status: 409, error: "The saved Lightning Round fill could not be recovered." };
+      }
+      const result: LightningRoundOrderResult = {
+        ok: true,
+        account: accountFromRow(accountRow),
+        positions: positionResult.rows.map(positionFromRow),
+        lots: lotResult.rows.map(lotFromRow),
+        transaction: transactionFromRow(transactionRow),
+        order: orderFromRow(priorOrderRow),
+        replayed: true,
+      };
+      await connection.query("COMMIT");
+      return result;
+    }
+
+    let marketPrice: number | null = null;
+    try {
+      marketPrice = await args.fetchPrice(symbol);
+    } catch {
+      marketPrice = null;
+    }
+    if (!Number.isFinite(marketPrice) || (marketPrice ?? 0) <= 0) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 409, error: `A current market price for ${symbol} is unavailable; no trade was made.` };
+    }
+
+    const userId = args.installationId;
+    const accountId = participant.account_id;
+    const [accountResult, positionResult, lotResult, pendingOrderResult] = await Promise.all([
+      connection.query(
+        `SELECT id,name,cash,short_collateral,short_collateral_ratio,created_at,unsettled_items,last_dividend_credit
+         FROM paper_accounts WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+        [accountId, userId],
+      ),
+      connection.query(
+        `SELECT id,account_id,symbol,company_name,shares,position_type,collateral_per_share,avg_cost,
+                opened_at,dividend_yield,dividend_rate,expense_ratio,sector
+         FROM paper_positions WHERE account_id=$1 AND user_id=$2 FOR UPDATE`,
+        [accountId, userId],
+      ),
+      connection.query(
+        `SELECT id,account_id,symbol,shares,cost,purchased_at
+         FROM paper_lots WHERE account_id=$1 AND user_id=$2 ORDER BY purchased_at ASC FOR UPDATE`,
+        [accountId, userId],
+      ),
+      connection.query(
+        `SELECT id,account_id,lightning_round_event_id,symbol,company_name,order_type,side,intent,
+                short_collateral_ratio,shares,limit_price,stop_price,trail_pct,trail_abs,trail_ref,
+                status,placed_at,filled_price,filled_at,rejection_reason,asset_type,dividend_yield,
+                dividend_rate,expense_ratio,sector
+         FROM paper_orders
+         WHERE user_id=$1 AND account_id=$2 AND status='pending'
+         ORDER BY placed_at ASC,id ASC FOR UPDATE`,
+        [userId, accountId],
+      ),
+    ]);
+    const accountRow = accountResult.rows[0];
+    if (!accountRow) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 409, error: "The Lightning Round account is unavailable; no trade was made." };
+    }
+    const account = accountFromRow(accountRow);
+    const positions = positionResult.rows.map(positionFromRow);
+    const lots = lotResult.rows.map(lotFromRow);
+    const order: PaperOrder = {
+      ...input,
+      accountId,
+      lightningRoundEventId: args.eventId,
+      symbol,
+      companyName: typeof input.companyName === "string" ? input.companyName.slice(0, 120) : symbol,
+      status: "pending",
+      placedAt: new Date(currentTime).toISOString(),
+      filledAt: undefined,
+      filledPrice: undefined,
+      rejectionReason: undefined,
+    };
+    if (!evaluateOrder(order, marketPrice!).shouldFill) {
+      await connection.query("ROLLBACK");
+      return {
+        ok: false,
+        status: 409,
+        error: "The current market price no longer meets this order's trigger; it remains pending.",
+      };
+    }
+    const fillPrice = applyOrderSlippage(order, marketPrice!);
+    const riskError = checkRisk({
+      side: order.side,
+      intent: order.intent,
+      shares: order.shares,
+      orderType: order.orderType,
+      limitPrice: order.limitPrice,
+      stopPrice: order.stopPrice,
+      trailPct: order.trailPct,
+      trailAbs: order.trailAbs,
+      symbol,
+      currentPrice: fillPrice,
+      account,
+      accountPositions: positions,
+      quotes: { [symbol]: { price: marketPrice! } },
+      pendingOrders: pendingOrderResult.rows.map(orderFromRow),
+      excludeOrderId: order.id,
+    });
+    if (riskError) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 422, error: riskError };
+    }
+
+    const filledAt = new Date(currentTime).toISOString();
+    const fill = fillOrder({
+      order,
+      fillPrice,
+      executionQuotePrice: marketPrice!,
+      filledAt,
+      account,
+      positions,
+      lots,
+      uid: args.makeId ?? randomUUID,
+    });
+    if (!fill.ok) {
+      await connection.query("ROLLBACK");
+      return { ok: false, status: 422, error: fill.reason };
+    }
+    const transaction: PaperTransaction = {
+      ...fill.newTransaction,
+      id: order.id,
+      lightningRoundEventId: args.eventId,
+    };
+    const filledOrder: PaperOrder = {
+      ...order,
+      status: "filled",
+      filledPrice: fillPrice,
+      filledAt,
+    };
+    await connection.query(
+      `UPDATE paper_accounts
+       SET cash=$3,short_collateral=$4,short_collateral_ratio=$5,unsettled_items=$6::jsonb
+       WHERE id=$1 AND user_id=$2`,
+      [
+        accountId, userId, fill.updatedAccount.cash, fill.updatedAccount.shortCollateral ?? 0,
+        fill.updatedAccount.shortCollateralRatio ?? 1.5,
+        JSON.stringify(fill.updatedAccount.unsettledItems ?? []),
+      ],
+    );
+    await replacePositions(connection, userId, accountId, fill.updatedPositions);
+    await replaceLots(connection, userId, accountId, fill.updatedLots);
+    await connection.query(
+      `INSERT INTO paper_transactions
+        (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,fee,realized_pnl,
+         cash_delta,short_collateral_delta,lightning_round_event_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [
+        transaction.id, userId, accountId, transaction.symbol, transaction.companyName,
+        transaction.action, transaction.shares, transaction.price, transaction.total, transaction.date,
+        transaction.fee ?? 0, transaction.realizedPnL ?? null, transaction.cashDelta ?? null,
+        transaction.shortCollateralDelta ?? null, args.eventId,
+      ],
+    );
+    await connection.query(
+      `INSERT INTO paper_orders
+        (id,user_id,account_id,lightning_round_event_id,symbol,company_name,order_type,side,intent,
+         short_collateral_ratio,shares,limit_price,stop_price,trail_pct,trail_abs,trail_ref,status,
+         filled_price,filled_at,placed_at,rejection_reason,asset_type,dividend_yield,dividend_rate,
+         expense_ratio,sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'filled',$17,$18,$19,NULL,
+               $20,$21,$22,$23,$24)`,
+      [
+        filledOrder.id, userId, accountId, args.eventId, filledOrder.symbol, filledOrder.companyName,
+        filledOrder.orderType, filledOrder.side, filledOrder.intent ?? null,
+        filledOrder.shortCollateralRatio ?? null, filledOrder.shares, filledOrder.limitPrice ?? null,
+        filledOrder.stopPrice ?? null, filledOrder.trailPct ?? null, filledOrder.trailAbs ?? null,
+        filledOrder.trailRef ?? null, filledOrder.filledPrice, filledOrder.filledAt, filledOrder.placedAt,
+        filledOrder.assetType ?? null, filledOrder.dividendYield ?? 0, filledOrder.dividendRate ?? 0,
+        filledOrder.expenseRatio ?? 0, filledOrder.sector ?? null,
+      ],
+    );
+    await connection.query(
+      `UPDATE event_arena_lightning_participants
+       SET updated_at=NOW() WHERE event_id=$1 AND installation_id=$2`,
+      [args.eventId, userId],
+    );
+    const result: LightningRoundOrderResult = {
+      ok: true,
+      account: fill.updatedAccount,
+      positions: fill.updatedPositions.filter((item) => item.accountId === accountId),
+      lots: fill.updatedLots.filter((item) => item.accountId === accountId),
+      transaction,
+      order: filledOrder,
+    };
+    await connection.query("COMMIT");
+    return result;
+  } catch (error) {
+    await connection.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client?.release();
   }
 }
 
