@@ -2056,7 +2056,7 @@ export function createEventArenaRouter(
             rank: entry.rank,
             returnPercent: entry.returnPercent,
           }));
-        if (rankedSnapshots.length > 0) {
+        if (rankedSnapshots.length > 0 && configuration.eventType !== "lightning-round") {
           await client.query(
             `INSERT INTO event_arena_leaderboard_snapshots
               (event_id, participant_token, event_start_at, event_end_at, captured_at, rank, return_percent)

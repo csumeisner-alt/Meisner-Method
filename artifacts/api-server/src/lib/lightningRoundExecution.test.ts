@@ -161,18 +161,17 @@ class MemoryDatabase implements LightningExecutionDatabase {
         rows: state.events.filter((event) =>
           event.event_type === "lightning-round"
           && event.finalized_at == null
-          && event.event_start_at.getTime() <= now
-          && (event.event_end_at.getTime() <= now
-            || state.participants.some((participant) =>
-              participant.event_id === event.event_id
-              && (participant.status === "queued"
-                || (participant.status === "entered" && state.orders.some((order) =>
-                  order.user_id === participant.installation_id
-                  && order.account_id === participant.account_id
-                  && order.lightning_round_event_id === event.event_id
-                  && order.status === "pending",
-                ))),
-            )),
+          && event.event_start_at.getTime() <= now,
+        ),
+      };
+    }
+    if (sql.includes("SELECT event_id,installation_id,account_id,alias,status,leaderboard_opted_in")
+      && !sql.includes("final_result")) {
+      return {
+        rows: state.participants.filter((participant) =>
+          participant.event_id === values[0]
+          && participant.status === "entered"
+          && participant.leaderboard_opted_in !== false,
         ),
       };
     }
@@ -251,6 +250,37 @@ class MemoryDatabase implements LightningExecutionDatabase {
       }
       return { rows: [] };
     }
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")
+      && sql.includes("TO_TIMESTAMP($11 / 1000.0)")) {
+      const [eventId, installation, alias, startEquity, equity, returnPercent, tradeCount,
+        holdings, eventStart, eventEnd, updatedAt, cashBalance] = values;
+      let entry = state.leaderboardEntries.find((row) =>
+        row.event_id === eventId && row.installation_id === installation,
+      );
+      if (!entry) {
+        entry = {
+          event_id: eventId,
+          installation_id: installation,
+          participant_token: `token-${installation}`,
+          is_active: true,
+        };
+        state.leaderboardEntries.push(entry);
+      }
+      Object.assign(entry, {
+        alias,
+        start_equity: startEquity,
+        equity,
+        return_percent: returnPercent,
+        trade_count: tradeCount,
+        holdings: JSON.parse(holdings),
+        event_start_at: new Date(Number(eventStart)),
+        event_end_at: new Date(Number(eventEnd)),
+        updated_at: new Date(Number(updatedAt)),
+        cash_balance: cashBalance,
+        is_active: true,
+      });
+      return { rows: [] };
+    }
     if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
       let entry = state.leaderboardEntries.find((row) =>
         row.event_id === values[0] && row.installation_id === values[1],
@@ -305,9 +335,40 @@ class MemoryDatabase implements LightningExecutionDatabase {
       };
     }
     if (sql.startsWith("INSERT INTO event_arena_leaderboard_snapshots")) {
+      if (sql.includes("FALSE")) {
+        const [event, tokens, ranks, returns, start, end, capturedAt, minInterval] = values;
+        for (let index = 0; index < tokens.length; index += 1) {
+          const previous = state.snapshots
+            .filter((row) => row.event_id === event
+              && row.participant_token === tokens[index]
+              && row.is_final === false)
+            .sort((a, b) => b.captured_at.getTime() - a.captured_at.getTime())[0];
+          const rank = Number(ranks[index]);
+          const returnPercent = Number(returns[index]);
+          const timestamp = Number(capturedAt);
+          const changed = !previous
+            || previous.rank !== rank
+            || previous.return_percent !== returnPercent;
+          if (previous && (!changed
+            || timestamp - previous.captured_at.getTime() < Number(minInterval))) continue;
+          state.snapshots.push({
+            event_id: event,
+            participant_token: tokens[index],
+            rank,
+            return_percent: returnPercent,
+            event_start_at: new Date(Number(start)),
+            event_end_at: new Date(Number(end)),
+            captured_at: new Date(timestamp),
+            is_final: false,
+          });
+        }
+        return { rows: [] };
+      }
       const [event, tokens, ranks, start, end, returns] = values;
       for (let index = 0; index < tokens.length; index += 1) {
-        if (state.snapshots.some((row) => row.event_id === event && row.participant_token === tokens[index])) continue;
+        if (state.snapshots.some((row) => row.event_id === event
+          && row.participant_token === tokens[index]
+          && row.is_final === true)) continue;
         state.snapshots.push({
           event_id: event,
           participant_token: tokens[index],
@@ -553,6 +614,40 @@ test("Lightning Round market orders fill at the official event start", async () 
   assert.equal(new Date(state.orders[0].filled_at).getTime(), startAt);
   assert.equal(new Date(state.transactions[1].date).getTime(), startAt);
   assert.equal(state.participants[0].status, "entered");
+});
+
+test("active Lightning history records server scores only after meaningful changes and the minimum interval", async () => {
+  const state = seedEnteredState();
+  const db = new MemoryDatabase(state);
+  const firstAt = startAt + 5 * 60_000;
+
+  await process(db, async () => 110, () => firstAt);
+  assert.equal(state.leaderboardEntries[0]?.equity, 100_020);
+  assert.equal(state.snapshots.length, 1);
+  assert.equal(state.snapshots[0]?.return_percent, 0.02);
+  assert.equal(state.snapshots[0]?.is_final, false);
+
+  await process(db, async () => 120, () => firstAt + 1 * 60_000);
+  assert.equal(state.leaderboardEntries[0]?.equity, 100_040);
+  assert.equal(state.snapshots.length, 1, "a changed score inside the five-minute window is deferred");
+
+  await process(db, async () => 120, () => firstAt + 6 * 60_000);
+  assert.equal(state.snapshots.length, 2);
+  assert.equal(state.snapshots[1]?.return_percent, 0.04);
+
+  await process(db, async () => 120, () => firstAt + 7 * 60_000);
+  assert.equal(state.snapshots.length, 2, "unchanged scores do not create extra history points");
+
+  await process(db, async () => 130, () => endAt + 1000);
+  const finalSnapshot = state.snapshots.find((snapshot) => snapshot.is_final);
+  assert.equal(state.snapshots.length, 3);
+  assert.equal(finalSnapshot?.return_percent, 0.06);
+  const frozenSnapshot = structuredClone(finalSnapshot);
+  const frozenResult = structuredClone(state.participants[0]?.final_result);
+
+  await process(db, async () => 999, () => endAt + 60_000);
+  assert.deepEqual(state.snapshots.find((snapshot) => snapshot.is_final), frozenSnapshot);
+  assert.deepEqual(state.participants[0]?.final_result, frozenResult);
 });
 
 test("successful fills update the shared account and retain event identity, then retry idempotently", async () => {

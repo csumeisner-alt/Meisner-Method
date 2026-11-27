@@ -340,7 +340,7 @@ async function executeDueLightningRoundOrders(): Promise<void> {
     });
     retrySoon = summary.waiting > 0;
     if (summary.events > 0) {
-      logger.info({ ...summary }, "[alert-worker] Lightning Round opening orders processed");
+      logger.info({ ...summary }, "[alert-worker] Lightning Round scores and orders processed");
     }
   } catch (err) {
     logger.warn({ err }, "[alert-worker] Lightning Round order execution failed; will retry");

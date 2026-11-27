@@ -1508,7 +1508,7 @@ test("accepted score submissions store ranked event snapshots without private id
   assert.equal(JSON.stringify(insertedSnapshotValues).includes("another-private-installation"), false);
 });
 
-test("Lightning Round accepts isolated $100,000 scores and snapshots highest returns first", async () => {
+test("Lightning Round score submissions are server-verified without writing rank history", async () => {
   const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);
   const submittedAt = lightningEvent.startAtMs + 30 * 60_000;
@@ -1577,9 +1577,7 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
       assert.deepEqual(values, [lightningEvent.eventId, lightningEvent.startAtMs, lightningEvent.endAtMs]);
       return { rows: participantRows };
     }
-    assert.match(sql, /INSERT INTO event_arena_leaderboard_snapshots/);
-    snapshotValues.push(values ?? []);
-    return { rows: [] };
+    assert.fail(`Unexpected Lightning Round history write: ${sql}`);
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard`, {
       method: "POST",
@@ -1604,13 +1602,7 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
     });
   }, submittedAt, new Map(), async () => 110);
 
-  assert.equal(snapshotValues.length, 1);
-  assert.deepEqual(snapshotValues[0]?.[1], [
-    "participant-token-lr-current",
-    "participant-token-lr-runner-up",
-  ]);
-  assert.deepEqual(snapshotValues[0]?.[2], [1, 2]);
-  assert.deepEqual(snapshotValues[0]?.[3], [0.02, 0.01]);
+  assert.equal(snapshotValues.length, 0);
 });
 
 test("Lightning Round leaderboard rejects participants without a successful opening fill", async () => {
