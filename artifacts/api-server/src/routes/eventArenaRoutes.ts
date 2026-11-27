@@ -1413,9 +1413,9 @@ export function createEventArenaRouter(
           EVENT_ARENA_RETENTION_DAYS,
         ],
       );
-      const registrations = configuration.eventType === "lightning-round"
+      const registrationRows = configuration.eventType === "lightning-round"
         ? (await db.query(
-          `SELECT participant.installation_id,participant.alias
+          `SELECT participant.installation_id,participant.alias,participant.status,participant.updated_at
            FROM event_arena_lightning_participants AS participant
            WHERE participant.event_id=$1
              AND participant.leaderboard_opted_in=TRUE
@@ -1435,11 +1435,125 @@ export function createEventArenaRouter(
              )
            ORDER BY participant.alias ASC,participant.installation_id ASC`,
           [req.params.eventId, expectedWindow.startAtMs, expectedWindow.endAtMs],
-        )).rows.map((participant: any) => ({
-          alias: String(participant.alias),
-          isCurrentUser: participant.installation_id === requestingInstallationId,
-        }))
+        )).rows
         : [];
+      const enteredRegistrationIds = registrationRows
+        .filter((participant: any) => participant.status === "entered")
+        .map((participant: any) => String(participant.installation_id));
+      const registrationActivityRows = enteredRegistrationIds.length > 0
+        ? (await db.query(
+          `SELECT user_id,symbol,company_name,action,shares,price,total,fee,date,asset_type
+           FROM paper_transactions
+           WHERE lightning_round_event_id=$1
+             AND user_id=ANY($2::text[])
+             AND date >= TO_TIMESTAMP($3 / 1000.0)
+             AND date <= TO_TIMESTAMP($4 / 1000.0)
+           ORDER BY user_id ASC,date ASC,id ASC`,
+          [
+            req.params.eventId,
+            enteredRegistrationIds,
+            expectedWindow.startAtMs,
+            expectedWindow.endAtMs,
+          ],
+        )).rows
+        : [];
+      const activitiesByInstallation = new Map<string, any[]>();
+      for (const row of registrationActivityRows) {
+        const installationId = String(row.user_id);
+        const activity = activitiesByInstallation.get(installationId) ?? [];
+        activity.push(row);
+        activitiesByInstallation.set(installationId, activity);
+      }
+      const registrationSymbols = [...new Set(registrationActivityRows.map((row: any) =>
+        String(row.symbol).trim().toUpperCase(),
+      ))];
+      const registrationPriceResults = await Promise.all(registrationSymbols.map(async (symbol) => {
+        const quote = await resolveLightningPrice(symbol);
+        return [symbol, quote?.price ?? null] as const;
+      }));
+      const registrationPrices: Record<string, number> = {};
+      for (const [symbol, price] of registrationPriceResults) {
+        if (price != null) registrationPrices[symbol] = price;
+      }
+      const registrations = registrationRows.map((participant: any) => {
+        const alias = String(participant.alias);
+        const status = participant.status === "entered" ? "entered" : "queued";
+        const activity = activitiesByInstallation.get(String(participant.installation_id)) ?? [];
+        const score = status === "entered" && activity.length > 0
+          ? calculateLightningRoundScore(
+            activity.map((row: any) => ({
+              symbol: String(row.symbol),
+              company_name: row.company_name,
+              action: String(row.action),
+              shares: Number(row.shares),
+              price: Number(row.price),
+              total: Number(row.total),
+              fee: row.fee == null ? null : Number(row.fee),
+              date: row.date instanceof Date ? row.date.toISOString() : row.date,
+            })),
+            registrationPrices,
+            configuration.startingBalance,
+          )
+          : null;
+        const pendingHoldings = new Map<string, any>();
+        if (!score) {
+          for (const row of activity) {
+            const symbol = String(row.symbol).trim().toUpperCase();
+            if (!/^[A-Z0-9.^=-]{1,15}$/.test(symbol)) continue;
+            const current = pendingHoldings.get(symbol);
+            const shares = Number(row.shares) * (row.action === "BUY" ? 1 : row.action === "SELL" ? -1 : 0);
+            const nextShares = (current?.shares ?? 0) + shares;
+            if (nextShares <= 0.0001) {
+              pendingHoldings.delete(symbol);
+            } else {
+              pendingHoldings.set(symbol, {
+                symbol,
+                companyName: String(row.company_name ?? symbol),
+                shares: nextShares,
+                assetType: row.asset_type === "stock" || row.asset_type === "etf" ? row.asset_type : "unknown",
+              });
+            }
+          }
+        }
+        const scoreHoldings = score
+          ? score.holdings.map((holding) => {
+            const position = score.finalPositions.find((item) => item.symbol === holding.symbol);
+            const activityHolding = activity.find((item: any) => item.symbol === holding.symbol);
+            return {
+              ...holding,
+              marketValue: position?.marketValue ?? null,
+              assetType: activityHolding?.asset_type === "stock" || activityHolding?.asset_type === "etf"
+                ? activityHolding.asset_type
+                : "unknown",
+            };
+          })
+          : [...pendingHoldings.values()].map((holding) => ({
+            symbol: holding.symbol,
+            companyName: holding.companyName,
+            allocationPercent: null,
+            marketValue: null,
+            assetType: holding.assetType,
+            side: "long",
+          }));
+        const startingBalance = configuration.startingBalance;
+        const equity = score?.equity ?? (status === "queued" ? startingBalance : null);
+        const cashBalance = score?.cashBalance ?? (status === "queued" ? startingBalance : null);
+        return {
+          alias,
+          isCurrentUser: participant.installation_id === requestingInstallationId,
+          status,
+          startEquity: startingBalance,
+          equity,
+          profitLoss: equity == null ? null : equity - startingBalance,
+          returnPercent: score?.returnPercent ?? (status === "queued" ? 0 : null),
+          cashBalance,
+          tradeCount: score?.tradeCount ?? (status === "queued" ? 0 : activity.length),
+          holdings: scoreHoldings,
+          updatedAt: participant.updated_at instanceof Date
+            ? participant.updated_at.toISOString()
+            : new Date(participant.updated_at).toISOString(),
+        };
+      });
       res.json({
         entries: rankEventArenaEntries(rows, requestingInstallationId, configuration.rankingDirection),
         registrations,

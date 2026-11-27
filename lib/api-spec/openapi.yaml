@@ -2322,15 +2322,48 @@ components:
                 description: True only for the requesting installation's row; no installation ID is returned.
         registrations:
           type: array
-          description: Opted-in Lightning Round participants awaiting a scored entry. Private installation IDs are never returned.
+          description: Opted-in Lightning Round participants without a ranked entry, including current event-account and holding details when available. Private installation IDs are never returned.
           items:
             type: object
-            required: [alias, isCurrentUser]
+            required: [alias, isCurrentUser, status, startEquity, equity, profitLoss, returnPercent, cashBalance, tradeCount, holdings, updatedAt]
             properties:
               alias: { type: string, minLength: 1, maxLength: 24 }
               isCurrentUser:
                 type: boolean
                 description: True only for the requesting installation; no installation ID is returned.
+              status:
+                type: string
+                enum: [queued, entered]
+                description: Queued participants are waiting for an opening fill; entered participants have at least one fill.
+              startEquity: { type: number }
+              equity: { type: ["number", "null"] }
+              profitLoss: { type: ["number", "null"] }
+              returnPercent: { type: ["number", "null"] }
+              cashBalance: { type: ["number", "null"] }
+              tradeCount: { type: ["integer", "null"], minimum: 0 }
+              holdings:
+                type: array
+                items:
+                  type: object
+                  required: [symbol, companyName, allocationPercent, side]
+                  properties:
+                    symbol: { type: string }
+                    companyName: { type: string }
+                    allocationPercent:
+                      type: ["number", "null"]
+                      minimum: 0
+                      description: Current position allocation when its score is available; otherwise null.
+                    marketValue:
+                      type: ["number", "null"]
+                      minimum: 0
+                      description: Current market value when a usable server quote is available; otherwise null.
+                    assetType:
+                      type: string
+                      enum: [stock, etf, unknown]
+                    side:
+                      type: string
+                      enum: [long, short]
+              updatedAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
     EventArenaLeaderboardHistoryResponse:

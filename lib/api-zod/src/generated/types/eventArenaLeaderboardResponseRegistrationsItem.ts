@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventArenaLeaderboardResponseRegistrationsItemHoldingsItem } from './eventArenaLeaderboardResponseRegistrationsItemHoldingsItem';
+import type { EventArenaLeaderboardResponseRegistrationsItemStatus } from './eventArenaLeaderboardResponseRegistrationsItemStatus';
 
 export type EventArenaLeaderboardResponseRegistrationsItem = {
   /**
@@ -14,4 +16,22 @@ export type EventArenaLeaderboardResponseRegistrationsItem = {
   alias: string;
   /** True only for the requesting installation; no installation ID is returned. */
   isCurrentUser: boolean;
+  /** Queued participants are waiting for an opening fill; entered participants have at least one fill. */
+  status: EventArenaLeaderboardResponseRegistrationsItemStatus;
+  startEquity: number;
+  /** @nullable */
+  equity: number | null;
+  /** @nullable */
+  profitLoss: number | null;
+  /** @nullable */
+  returnPercent: number | null;
+  /** @nullable */
+  cashBalance: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  tradeCount: number | null;
+  holdings: EventArenaLeaderboardResponseRegistrationsItemHoldingsItem[];
+  updatedAt: Date;
 };

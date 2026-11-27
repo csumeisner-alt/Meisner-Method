@@ -291,6 +291,12 @@ export const getEventArenaLeaderboardResponseEntriesItemHoldingsItemMarketValueM
 
 export const getEventArenaLeaderboardResponseRegistrationsItemAliasMax = 24;
 
+export const getEventArenaLeaderboardResponseRegistrationsItemTradeCountMin = 0;
+
+export const getEventArenaLeaderboardResponseRegistrationsItemHoldingsItemAllocationPercentMin = 0;
+
+export const getEventArenaLeaderboardResponseRegistrationsItemHoldingsItemMarketValueMin = 0;
+
 
 
 export const GetEventArenaLeaderboardResponse = zod.object({
@@ -317,8 +323,24 @@ export const GetEventArenaLeaderboardResponse = zod.object({
 })),
   "registrations": zod.array(zod.object({
   "alias": zod.string().min(1).max(getEventArenaLeaderboardResponseRegistrationsItemAliasMax),
-  "isCurrentUser": zod.boolean().describe('True only for the requesting installation; no installation ID is returned.')
-})).describe('Opted-in Lightning Round participants awaiting a scored entry. Private installation IDs are never returned.'),
+  "isCurrentUser": zod.boolean().describe('True only for the requesting installation; no installation ID is returned.'),
+  "status": zod.enum(['queued', 'entered']).describe('Queued participants are waiting for an opening fill; entered participants have at least one fill.'),
+  "startEquity": zod.number(),
+  "equity": zod.number().nullable(),
+  "profitLoss": zod.number().nullable(),
+  "returnPercent": zod.number().nullable(),
+  "cashBalance": zod.number().nullable(),
+  "tradeCount": zod.number().min(getEventArenaLeaderboardResponseRegistrationsItemTradeCountMin).nullable(),
+  "holdings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "allocationPercent": zod.number().min(getEventArenaLeaderboardResponseRegistrationsItemHoldingsItemAllocationPercentMin).nullable().describe('Current position allocation when its score is available; otherwise null.'),
+  "marketValue": zod.number().min(getEventArenaLeaderboardResponseRegistrationsItemHoldingsItemMarketValueMin).nullish().describe('Current market value when a usable server quote is available; otherwise null.'),
+  "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
+  "side": zod.enum(['long', 'short'])
+})),
+  "updatedAt": zod.coerce.date()
+})).describe('Opted-in Lightning Round participants without a ranked entry, including current event-account and holding details when available. Private installation IDs are never returned.'),
   "updatedAt": zod.coerce.date()
 })
 

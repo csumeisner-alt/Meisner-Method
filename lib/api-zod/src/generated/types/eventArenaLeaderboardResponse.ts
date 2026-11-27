@@ -10,7 +10,7 @@ import type { EventArenaLeaderboardResponseRegistrationsItem } from './eventAren
 
 export interface EventArenaLeaderboardResponse {
   entries: EventArenaLeaderboardResponseEntriesItem[];
-  /** Opted-in Lightning Round participants awaiting a scored entry. Private installation IDs are never returned. */
+  /** Opted-in Lightning Round participants without a ranked entry, including current event-account and holding details when available. Private installation IDs are never returned. */
   registrations: EventArenaLeaderboardResponseRegistrationsItem[];
   updatedAt: Date;
 }

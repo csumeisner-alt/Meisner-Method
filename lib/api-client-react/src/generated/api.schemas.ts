@@ -615,6 +615,53 @@ export type EventArenaLeaderboardResponseEntriesItem = {
   isCurrentUser: boolean;
 };
 
+/**
+ * Queued participants are waiting for an opening fill; entered participants have at least one fill.
+ */
+export type EventArenaLeaderboardResponseRegistrationsItemStatus = typeof EventArenaLeaderboardResponseRegistrationsItemStatus[keyof typeof EventArenaLeaderboardResponseRegistrationsItemStatus];
+
+
+export const EventArenaLeaderboardResponseRegistrationsItemStatus = {
+  queued: 'queued',
+  entered: 'entered',
+} as const;
+
+export type EventArenaLeaderboardResponseRegistrationsItemHoldingsItemAssetType = typeof EventArenaLeaderboardResponseRegistrationsItemHoldingsItemAssetType[keyof typeof EventArenaLeaderboardResponseRegistrationsItemHoldingsItemAssetType];
+
+
+export const EventArenaLeaderboardResponseRegistrationsItemHoldingsItemAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  unknown: 'unknown',
+} as const;
+
+export type EventArenaLeaderboardResponseRegistrationsItemHoldingsItemSide = typeof EventArenaLeaderboardResponseRegistrationsItemHoldingsItemSide[keyof typeof EventArenaLeaderboardResponseRegistrationsItemHoldingsItemSide];
+
+
+export const EventArenaLeaderboardResponseRegistrationsItemHoldingsItemSide = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type EventArenaLeaderboardResponseRegistrationsItemHoldingsItem = {
+  symbol: string;
+  companyName: string;
+  /**
+     * Current position allocation when its score is available; otherwise null.
+     * @minimum 0
+     * @nullable
+     */
+  allocationPercent: number | null;
+  /**
+     * Current market value when a usable server quote is available; otherwise null.
+     * @minimum 0
+     * @nullable
+     */
+  marketValue?: number | null;
+  assetType?: EventArenaLeaderboardResponseRegistrationsItemHoldingsItemAssetType;
+  side: EventArenaLeaderboardResponseRegistrationsItemHoldingsItemSide;
+};
+
 export type EventArenaLeaderboardResponseRegistrationsItem = {
   /**
      * @minLength 1
@@ -623,11 +670,29 @@ export type EventArenaLeaderboardResponseRegistrationsItem = {
   alias: string;
   /** True only for the requesting installation; no installation ID is returned. */
   isCurrentUser: boolean;
+  /** Queued participants are waiting for an opening fill; entered participants have at least one fill. */
+  status: EventArenaLeaderboardResponseRegistrationsItemStatus;
+  startEquity: number;
+  /** @nullable */
+  equity: number | null;
+  /** @nullable */
+  profitLoss: number | null;
+  /** @nullable */
+  returnPercent: number | null;
+  /** @nullable */
+  cashBalance: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  tradeCount: number | null;
+  holdings: EventArenaLeaderboardResponseRegistrationsItemHoldingsItem[];
+  updatedAt: string;
 };
 
 export interface EventArenaLeaderboardResponse {
   entries: EventArenaLeaderboardResponseEntriesItem[];
-  /** Opted-in Lightning Round participants awaiting a scored entry. Private installation IDs are never returned. */
+  /** Opted-in Lightning Round participants without a ranked entry, including current event-account and holding details when available. Private installation IDs are never returned. */
   registrations: EventArenaLeaderboardResponseRegistrationsItem[];
   updatedAt: string;
 }
