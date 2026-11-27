@@ -193,6 +193,8 @@ async function runSchemaMigrations(): Promise<void> {
       start_equity DOUBLE PRECISION NOT NULL,
       equity DOUBLE PRECISION NOT NULL,
       cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000,
+      valuation_snapshot JSONB,
+      valuation_snapshot_updated_at TIMESTAMPTZ,
       return_percent DOUBLE PRECISION NOT NULL,
       trade_count INTEGER,
       holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -239,6 +241,12 @@ async function runSchemaMigrations(): Promise<void> {
   );
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS valuation_snapshot JSONB",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS valuation_snapshot_updated_at TIMESTAMPTZ",
   );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_lightning_participants (

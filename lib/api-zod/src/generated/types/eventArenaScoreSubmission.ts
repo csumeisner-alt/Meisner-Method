@@ -9,6 +9,7 @@ import type { EventArenaScoreSubmissionArtworkId } from './eventArenaScoreSubmis
 import type { EventArenaScoreSubmissionEventType } from './eventArenaScoreSubmissionEventType';
 import type { EventArenaScoreSubmissionHoldingsItem } from './eventArenaScoreSubmissionHoldingsItem';
 import type { EventArenaScoreSubmissionRankingDirection } from './eventArenaScoreSubmissionRankingDirection';
+import type { EventArenaScoreSubmissionValuationSnapshot } from './eventArenaScoreSubmissionValuationSnapshot';
 
 export interface EventArenaScoreSubmission {
   /**
@@ -34,6 +35,8 @@ export interface EventArenaScoreSubmission {
      * @minimum 0
      */
   cashBalance?: number;
+  /** True when the participant manually requests an immediate score and account-snapshot update. */
+  forceRefresh?: boolean;
   /**
      * Event transfer references already applied to the local account cash balance.
      * @maxItems 500
@@ -55,6 +58,8 @@ export interface EventArenaScoreSubmission {
   tradeCount: number;
   /** @maxItems 100 */
   holdings: EventArenaScoreSubmissionHoldingsItem[];
+  /** Private event-account valuation data used to refresh opted-in regular-event scores. Never returned by leaderboard reads. */
+  valuationSnapshot?: EventArenaScoreSubmissionValuationSnapshot;
   eventStartAtMs: number;
   eventEndAtMs: number;
 }

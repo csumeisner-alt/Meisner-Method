@@ -258,7 +258,7 @@ export const ExecuteEventArenaLightningRoundOrderResponse = zod.record(zod.strin
 
 
 /**
- * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+ * Active Lightning Round scores are recalculated from event-tagged server fills. Active regular-event entries with a private event-account snapshot are revalued using current server quotes. Raw share counts and private account snapshots are never returned. Older entries remain based on their last participant submission until a current mobile client uploads a snapshot. Ranking uses percentage return from event equity and starting equity.
  * @summary Get active scores and pending Lightning registrations for one event
  */
 export const getEventArenaLeaderboardPathEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
@@ -310,15 +310,16 @@ export const GetEventArenaLeaderboardResponse = zod.object({
   "returnPercent": zod.number().describe('Percentage return calculated from event equity and starting equity.'),
   "tradeCount": zod.number().min(getEventArenaLeaderboardResponseEntriesItemTradeCountMin).nullable(),
   "cashBalance": zod.number().min(getEventArenaLeaderboardResponseEntriesItemCashBalanceMin).describe('Self-reported remaining event-account cash after recorded transfers.'),
+  "scoreSource": zod.enum(['participant', 'server']).describe('Whether this row was revalued from server-held event data or is still based on its last participant submission.'),
   "holdings": zod.array(zod.object({
   "symbol": zod.string(),
   "companyName": zod.string(),
-  "allocationPercent": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin).nullable().describe('Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.'),
-  "marketValue": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemMarketValueMin).nullish().describe('Self-reported current market value of the open position.'),
+  "allocationPercent": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin).nullable().describe('Absolute market exposure as a percentage of current event account equity; null when unavailable.'),
+  "marketValue": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemMarketValueMin).nullish().describe('Current market value of the open position.'),
   "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
   "side": zod.enum(['long', 'short'])
 })),
-  "updatedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().describe('Most conservative timestamp between the participant\'s latest event-account snapshot and the current server quote observations.'),
   "isCurrentUser": zod.boolean().describe('True only for the requesting installation\'s row; no installation ID is returned.')
 })),
   "registrations": zod.array(zod.object({
@@ -385,6 +386,16 @@ export const submitEventArenaScoreBodyHoldingsItemMarketValueMin = 0;
 
 export const submitEventArenaScoreBodyHoldingsMax = 100;
 
+export const submitEventArenaScoreBodyValuationSnapshotShortCollateralMin = 0;
+
+export const submitEventArenaScoreBodyValuationSnapshotPositionsItemSymbolMax = 15;
+
+export const submitEventArenaScoreBodyValuationSnapshotPositionsItemCompanyNameMax = 120;
+
+export const submitEventArenaScoreBodyValuationSnapshotPositionsItemSharesExclusiveMin = 0;
+
+export const submitEventArenaScoreBodyValuationSnapshotPositionsMax = 500;
+
 
 
 export const SubmitEventArenaScoreBody = zod.object({
@@ -396,6 +407,7 @@ export const SubmitEventArenaScoreBody = zod.object({
   "purchaseLimit": zod.number().gt(submitEventArenaScoreBodyPurchaseLimitExclusiveMin).optional(),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
   "cashBalance": zod.number().min(submitEventArenaScoreBodyCashBalanceMin).optional().describe('Self-reported cash in the separate event account, used to reconcile transfer receipts.'),
+  "forceRefresh": zod.boolean().optional().describe('True when the participant manually requests an immediate score and account-snapshot update.'),
   "appliedTransferIds": zod.array(zod.string().min(submitEventArenaScoreBodyAppliedTransferIdsItemMin).max(submitEventArenaScoreBodyAppliedTransferIdsItemMax).regex(submitEventArenaScoreBodyAppliedTransferIdsItemRegExp)).max(submitEventArenaScoreBodyAppliedTransferIdsMax).optional().describe('Event transfer references already applied to the local account cash balance.'),
   "startEquity": zod.number().gt(submitEventArenaScoreBodyStartEquityExclusiveMin),
   "equity": zod.number().min(submitEventArenaScoreBodyEquityMin),
@@ -409,6 +421,17 @@ export const SubmitEventArenaScoreBody = zod.object({
   "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
   "side": zod.enum(['long', 'short'])
 })).max(submitEventArenaScoreBodyHoldingsMax),
+  "valuationSnapshot": zod.object({
+  "unsettledCash": zod.number(),
+  "shortCollateral": zod.number().min(submitEventArenaScoreBodyValuationSnapshotShortCollateralMin),
+  "positions": zod.array(zod.object({
+  "symbol": zod.string().min(1).max(submitEventArenaScoreBodyValuationSnapshotPositionsItemSymbolMax),
+  "companyName": zod.string().min(1).max(submitEventArenaScoreBodyValuationSnapshotPositionsItemCompanyNameMax),
+  "shares": zod.number().gt(submitEventArenaScoreBodyValuationSnapshotPositionsItemSharesExclusiveMin),
+  "assetType": zod.enum(['stock', 'etf', 'unknown']),
+  "side": zod.enum(['long', 'short'])
+})).max(submitEventArenaScoreBodyValuationSnapshotPositionsMax)
+}).optional().describe('Private event-account valuation data used to refresh opted-in regular-event scores. Never returned by leaderboard reads.'),
   "eventStartAtMs": zod.number(),
   "eventEndAtMs": zod.number()
 })

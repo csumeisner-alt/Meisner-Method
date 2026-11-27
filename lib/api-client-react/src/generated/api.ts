@@ -788,7 +788,7 @@ export const getGetEventArenaLeaderboardUrl = (eventId: string,) => {
 }
 
 /**
- * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+ * Active Lightning Round scores are recalculated from event-tagged server fills. Active regular-event entries with a private event-account snapshot are revalued using current server quotes. Raw share counts and private account snapshots are never returned. Older entries remain based on their last participant submission until a current mobile client uploads a snapshot. Ranking uses percentage return from event equity and starting equity.
  * @summary Get active scores and pending Lightning registrations for one event
  */
 export const getEventArenaLeaderboard = async (eventId: string, options?: RequestInit): Promise<EventArenaLeaderboardResponse> => {

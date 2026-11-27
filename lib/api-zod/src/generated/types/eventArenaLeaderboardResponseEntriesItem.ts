@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EventArenaLeaderboardResponseEntriesItemHoldingsItem } from './eventArenaLeaderboardResponseEntriesItemHoldingsItem';
+import type { EventArenaLeaderboardResponseEntriesItemScoreSource } from './eventArenaLeaderboardResponseEntriesItemScoreSource';
 
 export type EventArenaLeaderboardResponseEntriesItem = {
   /** @minimum 1 */
@@ -30,7 +31,10 @@ export type EventArenaLeaderboardResponseEntriesItem = {
      * @minimum 0
      */
   cashBalance: number;
+  /** Whether this row was revalued from server-held event data or is still based on its last participant submission. */
+  scoreSource: EventArenaLeaderboardResponseEntriesItemScoreSource;
   holdings: EventArenaLeaderboardResponseEntriesItemHoldingsItem[];
+  /** Most conservative timestamp between the participant's latest event-account snapshot and the current server quote observations. */
   updatedAt: Date;
   /** True only for the requesting installation's row; no installation ID is returned. */
   isCurrentUser: boolean;

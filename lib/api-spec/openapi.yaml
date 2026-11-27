@@ -317,7 +317,7 @@ paths:
       operationId: getEventArenaLeaderboard
       tags: [eventArena]
       summary: Get active scores and pending Lightning registrations for one event
-      description: Scores are self-reported except during Lightning Rounds, where the API recalculates every opted-in entered participant from this event's server-recorded fills and current server quotes. Ranking uses percentage return from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+      description: Active Lightning Round scores are recalculated from event-tagged server fills. Active regular-event entries with a private event-account snapshot are revalued using current server quotes. Raw share counts and private account snapshots are never returned. Older entries remain based on their last participant submission until a current mobile client uploads a snapshot. Ranking uses percentage return from event equity and starting equity.
       parameters:
         - in: header
           name: X-Event-Arena-Installation-Id
@@ -2198,6 +2198,9 @@ components:
           type: number
           minimum: 0
           description: Self-reported cash in the separate event account, used to reconcile transfer receipts.
+        forceRefresh:
+          type: boolean
+          description: True when the participant manually requests an immediate score and account-snapshot update.
         appliedTransferIds:
           type: array
           maxItems: 500
@@ -2237,6 +2240,25 @@ components:
               side:
                 type: string
                 enum: [long, short]
+        valuationSnapshot:
+          type: object
+          description: Private event-account valuation data used to refresh opted-in regular-event scores. Never returned by leaderboard reads.
+          required: [unsettledCash, shortCollateral, positions]
+          properties:
+            unsettledCash: { type: number }
+            shortCollateral: { type: number, minimum: 0 }
+            positions:
+              type: array
+              maxItems: 500
+              items:
+                type: object
+                required: [symbol, companyName, shares, assetType, side]
+                properties:
+                  symbol: { type: string, minLength: 1, maxLength: 15 }
+                  companyName: { type: string, minLength: 1, maxLength: 120 }
+                  shares: { type: number, exclusiveMinimum: 0 }
+                  assetType: { type: string, enum: [stock, etf, unknown] }
+                  side: { type: string, enum: [long, short] }
         eventStartAtMs: { type: integer }
         eventEndAtMs: { type: integer }
 
@@ -2277,7 +2299,7 @@ components:
           type: array
           items:
             type: object
-            required: [rank, alias, participantToken, startEquity, equity, profitLoss, returnPercent, tradeCount, holdings, cashBalance, updatedAt, isCurrentUser]
+            required: [rank, alias, participantToken, startEquity, equity, profitLoss, returnPercent, tradeCount, holdings, cashBalance, scoreSource, updatedAt, isCurrentUser]
             properties:
               rank: { type: integer, minimum: 1 }
               alias: { type: string }
@@ -2292,6 +2314,10 @@ components:
               returnPercent: { type: number, description: Percentage return calculated from event equity and starting equity. }
               tradeCount: { type: integer, nullable: true, minimum: 0 }
               cashBalance: { type: number, minimum: 0, description: Self-reported remaining event-account cash after recorded transfers. }
+              scoreSource:
+                type: string
+                enum: [participant, server]
+                description: Whether this row was revalued from server-held event data or is still based on its last participant submission.
               holdings:
                 type: array
                 items:
@@ -2304,19 +2330,22 @@ components:
                       type: number
                       nullable: true
                       minimum: 0
-                      description: Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+                      description: Absolute market exposure as a percentage of current event account equity; null when unavailable.
                     marketValue:
                       type: number
                       nullable: true
                       minimum: 0
-                      description: Self-reported current market value of the open position.
+                      description: Current market value of the open position.
                     assetType:
                       type: string
                       enum: [stock, etf, unknown]
                     side:
                       type: string
                       enum: [long, short]
-              updatedAt: { type: string, format: date-time }
+              updatedAt:
+                type: string
+                format: date-time
+                description: Most conservative timestamp between the participant's latest event-account snapshot and the current server quote observations.
               isCurrentUser:
                 type: boolean
                 description: True only for the requesting installation's row; no installation ID is returned.

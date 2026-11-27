@@ -176,6 +176,8 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
       start_equity DOUBLE PRECISION NOT NULL,
       equity DOUBLE PRECISION NOT NULL,
       cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000,
+      valuation_snapshot JSONB,
+      valuation_snapshot_updated_at TIMESTAMPTZ,
       return_percent DOUBLE PRECISION NOT NULL,
       trade_count INTEGER,
       holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -206,6 +208,12 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
   );
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS valuation_snapshot JSONB",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS valuation_snapshot_updated_at TIMESTAMPTZ",
   );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_snapshots (
@@ -1338,12 +1346,17 @@ test("submission rejects private fields, inconsistent scores, malformed holdings
 
 test("valid anonymous submission stores only event-scoped score and public holding summary", async () => {
   let storedValues: any[] | undefined;
+  let privateSnapshotValues: any[] | undefined;
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
     if (sql.startsWith("SELECT installation_id")) return { rows: [] };
+    if (sql.startsWith("UPDATE event_arena_leaderboard_entries") && sql.includes("valuation_snapshot")) {
+      privateSnapshotValues = values;
+      return { rows: [] };
+    }
     assert.match(sql, /ON CONFLICT \(event_id, installation_id\)/);
-    assert.match(sql, /updated_at <= NOW\(\) - INTERVAL '15 seconds'/);
+    assert.match(sql, /updated_at <= NOW\(\)[\s\S]*CASE WHEN \$13::boolean THEN 3 ELSE 15 END/);
     assert.match(sql, /event_start_at > NOW\(\)[\s\S]*alias = EXCLUDED\.alias/);
     assert.match(sql, /trade_count=EXCLUDED\.trade_count/);
     storedValues = values;
@@ -1352,7 +1365,14 @@ test("valid anonymous submission stores only event-scoped score and public holdi
     const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(validSubmission()),
+      body: JSON.stringify(validSubmission({
+        forceRefresh: true,
+        valuationSnapshot: {
+          unsettledCash: 120,
+          shortCollateral: 0,
+          positions: [{ symbol: "AAPL", companyName: "Apple Inc.", shares: 12, assetType: "stock", side: "long" }],
+        },
+      })),
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, updatedAt: "2026-11-18T17:00:00.000Z" });
@@ -1361,6 +1381,13 @@ test("valid anonymous submission stores only event-scoped score and public holdi
   assert.equal(storedValues?.[1], installationId);
   assert.equal(storedValues?.[6], 3);
   assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }]);
+  assert.equal(storedValues?.[12], true);
+  assert.deepEqual(privateSnapshotValues?.slice(0, 2), [eventId, installationId]);
+  assert.deepEqual(JSON.parse(privateSnapshotValues?.[2]), {
+    unsettledCash: 120,
+    shortCollateral: 0,
+    positions: [{ symbol: "AAPL", companyName: "Apple Inc.", shares: 12, assetType: "stock", side: "long" }],
+  });
 });
 
 test("Penny Stock Mayhem submissions must match the saved exclusive purchase limit", async () => {
@@ -2427,6 +2454,88 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
   );
 });
 
+test("regular leaderboards revalue every participant from private event snapshots on each refresh", async () => {
+  const rows = [
+    {
+      installation_id: "participant-alpha-123456",
+      participant_token: "participant-token-alpha-123456",
+      alias: "Alpha",
+      start_equity: 100_000,
+      equity: 99_000,
+      cash_balance: 80_000,
+      trade_count: 4,
+      holdings: [],
+      valuation_snapshot: {
+        unsettledCash: 0,
+        shortCollateral: 0,
+        positions: [{ symbol: "ALPHA", companyName: "Alpha Co.", shares: 100, assetType: "stock", side: "long" }],
+      },
+      valuation_snapshot_updated_at: new Date("2026-11-18T16:00:00.000Z"),
+      updated_at: new Date("2026-11-18T16:00:00.000Z"),
+    },
+    {
+      installation_id: "participant-beta-123456",
+      participant_token: "participant-token-beta-123456",
+      alias: "Beta",
+      start_equity: 100_000,
+      equity: 101_000,
+      cash_balance: 80_000,
+      trade_count: 2,
+      holdings: [],
+      valuation_snapshot: {
+        unsettledCash: 0,
+        shortCollateral: 0,
+        positions: [{ symbol: "BETA", companyName: "Beta Co.", shares: 100, assetType: "etf", side: "long" }],
+      },
+      valuation_snapshot_updated_at: new Date("2026-11-18T16:00:00.000Z"),
+      updated_at: new Date("2026-11-18T16:00:00.000Z"),
+    },
+  ];
+  const readLeaderboard = async (prices: Record<string, number>, nowMs: number) => {
+    let responseBody: any;
+    await withApi(async (sql) => {
+      if (sql.startsWith("DELETE")) return { rows: [] };
+      if (sql.includes("FROM event_arena_leaderboard_entries")) return { rows };
+      return { rows: [] };
+    }, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
+      assert.equal(response.status, 200);
+      responseBody = await response.json();
+    }, nowMs, new Map(), async (symbol) => prices[symbol] ?? null);
+    return responseBody;
+  };
+
+  const firstRefresh = await readLeaderboard(
+    { ALPHA: 200, BETA: 100 },
+    Date.parse("2026-11-18T17:00:00.000Z"),
+  );
+  assert.deepEqual(firstRefresh.entries.map((entry: any) => entry.alias), ["Alpha", "Beta"]);
+  assert.equal(firstRefresh.entries[0].equity, 100_000);
+  assert.equal(firstRefresh.entries[0].scoreSource, "server");
+  assert.equal(firstRefresh.entries[0].holdings[0].marketValue, 20_000);
+  assert.equal(firstRefresh.entries[0].holdings[0].allocationPercent, 20);
+  assert.equal(firstRefresh.entries[0].updatedAt, "2026-11-18T16:00:00.000Z");
+  assert.equal(JSON.stringify(firstRefresh).includes('"shares"'), false);
+  assert.equal(JSON.stringify(firstRefresh).includes("valuation_snapshot"), false);
+
+  const nextRefresh = await readLeaderboard(
+    { ALPHA: 50, BETA: 200 },
+    Date.parse("2026-11-18T17:02:00.000Z"),
+  );
+  assert.deepEqual(nextRefresh.entries.map((entry: any) => entry.alias), ["Beta", "Alpha"]);
+  assert.equal(nextRefresh.entries[0].equity, 100_000);
+  assert.equal(nextRefresh.entries[0].scoreSource, "server");
+
+  const quoteUnavailable = await readLeaderboard(
+    { ALPHA: 0, BETA: 200 },
+    Date.parse("2026-11-18T17:10:00.000Z"),
+  );
+  const alphaFallback = quoteUnavailable.entries.find((entry: any) => entry.alias === "Alpha");
+  assert.equal(alphaFallback.equity, 99_000);
+  assert.equal(alphaFallback.scoreSource, "participant");
+  assert.equal(alphaFallback.updatedAt, "2026-11-18T16:00:00.000Z");
+});
+
 test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {
   let queries = 0;
   await withApi(async (sql, values) => {
@@ -2457,7 +2566,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     });
     assert.equal(response.status, 200);
     const result = await response.json() as any;
-    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "participantToken", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "cashBalance", "holdings", "updatedAt", "isCurrentUser"]);
+    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "participantToken", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "cashBalance", "holdings", "scoreSource", "updatedAt", "isCurrentUser"]);
     assert.equal(result.entries[0].participantToken, "public-event-token-123456");
     assert.equal(result.entries[0].returnPercent, 1.25);
     assert.equal(result.entries[0].profitLoss, 1_250);

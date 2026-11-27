@@ -12,12 +12,12 @@ export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
   symbol: string;
   companyName: string;
   /**
-     * Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+     * Absolute market exposure as a percentage of current event account equity; null when unavailable.
      * @minimum 0
      */
   allocationPercent: number | null;
   /**
-     * Self-reported current market value of the open position.
+     * Current market value of the open position.
      * @minimum 0
      */
   marketValue?: number | null;

@@ -875,6 +875,19 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.ok(podiumIndex > stadiumStart && standingsIndex > podiumIndex && positionIndex > standingsIndex);
 });
 
+test("regular event leaderboards submit private account snapshots and force manual refreshes", () => {
+  assert.match(leaderboard, /valuationSnapshot:\s*\{/);
+  assert.match(leaderboard, /unsettledCash:\s*Number\.isFinite\(account\.unsettledCash\)/);
+  assert.match(leaderboard, /shortCollateral:\s*Number\.isFinite\(account\.shortCollateral\)/);
+  assert.match(leaderboard, /positions:\s*positions\.map\(\(position\)/);
+  assert.match(leaderboard, /const refresh = useCallback\(async \(forceSubmission = false\)/);
+  assert.match(leaderboard, /forceRefresh\s*\}/);
+  assert.match(leaderboard, /testID="refresh-paper-event-leaderboard"[\s\S]*?refresh\(true\)/);
+  assert.match(leaderboard, /scoreSource:\s*'participant' \| 'server'/);
+  assert.match(leaderboard, /SERVER-VALUED/);
+  assert.match(leaderboard, /setInterval\(\(\) => \{ void refresh\(\); \}, REFRESH_INTERVAL_MS\)/);
+});
+
 test("One-Stock empty-state contrast and larger controls do not alter other event styling", () => {
   assert.match(leaderboard, /width: isOneStockChallenge \? 44 : 36[\s\S]*?height: isOneStockChallenge \? 44 : 36/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-loading"[\s\S]*?backgroundColor: isOneStockChallenge \? 'rgba\(8,13,21,0\.92\)' : 'rgba\(8,13,21,0\.84\)'/);
@@ -1008,9 +1021,9 @@ test("participant score detail follows refreshed entries and explains Lightning 
   assert.match(detail, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);
   assert.match(detail, /holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
   assert.match(detail, /formatEventHoldingSide\(holding\.side\)/);
-  assert.match(detail, /LIVE SERVER SCORE/);
+  assert.match(detail, /SERVER-VALUED/);
   assert.match(detail, /STALE SCORE/);
-  assert.match(detail, /current quote was unavailable/);
+  assert.match(detail, /score has not refreshed recently/);
   assert.match(detail, /allowFontScaling/);
   assert.match(detail, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /contentContainerStyle=\{\{ width: '100%', maxWidth: 820/);

@@ -118,6 +118,7 @@ type LeaderboardEntry = {
   cashBalance: number;
   tradeCount: number | null;
   holdings: HoldingName[];
+  scoreSource: 'participant' | 'server';
   updatedAt: string;
   isCurrentUser: boolean;
 };
@@ -376,6 +377,9 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     }))
     : accountPositions;
   const positions = eventPositions;
+  if (!isLightningRound && positions.length > 500) {
+    throw new Error('This event account has too many open positions to refresh its leaderboard score.');
+  }
   const shareablePositions = positions.slice(0, 100);
   const symbols = [...new Set(positions.map((position) => position.symbol.trim().toUpperCase()))];
   const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
@@ -482,6 +486,19 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       cashBalance: isLightningRound
         ? eventPortfolio?.cashBalance ?? startEquity
     : Number(account?.cash || 0),
+      ...(!isLightningRound && account ? {
+        valuationSnapshot: {
+          unsettledCash: Number.isFinite(account.unsettledCash) ? Number(account.unsettledCash) : 0,
+          shortCollateral: Number.isFinite(account.shortCollateral) ? Number(account.shortCollateral) : 0,
+          positions: positions.map((position) => ({
+            symbol: position.symbol.trim().toUpperCase(),
+            companyName: (position.companyName || position.symbol).trim().slice(0, 120),
+            shares: Math.abs(position.shares),
+            assetType: ('assetType' in position ? position.assetType : undefined) ?? 'unknown',
+            side: isShortPosition(position) ? 'short' as const : 'long' as const,
+          })),
+        },
+      } : {}),
       appliedTransferIds: !isLightningRound && Array.isArray(cache.eventArenaAppliedTransferIds)
         ? cache.eventArenaAppliedTransferIds.slice(-500)
         : [],
@@ -664,8 +681,7 @@ export function PaperChallengeLeaderboard({
     ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
     : [];
   const detailScoreIsStale = Boolean(
-    isLightningRound
-    && event.phase === 'active'
+    event.phase === 'active'
     && detail
     && countdownNow - Date.parse(detail.updatedAt) > 5 * 60_000,
   );
@@ -819,9 +835,13 @@ export function PaperChallengeLeaderboard({
     onEnrollmentChange(getEventEnrollment(updated, event.eventType ?? 'event-arena'));
   }, [event.eventType, event.id, onEnrollmentChange]);
 
-  const submitEntry = useCallback(async (targetEnrollment: PaperChallengeEnrollment, alias: string) => {
+  const submitEntry = useCallback(async (
+    targetEnrollment: PaperChallengeEnrollment,
+    alias: string,
+    forceRefresh = false,
+  ) => {
     const submission = await buildEventSubmission({ ...targetEnrollment, leaderboardAlias: alias }, event);
-    await submitEventArenaScore(event.id, submission.payload);
+    await submitEventArenaScore(event.id, { ...submission.payload, forceRefresh });
     averageCostFallbackSubmittedEventsRef.current.add(event.id);
     setAverageCostFallbackByEvent((current) => ({ ...current, [event.id]: submission.usesAverageCost }));
     try {
@@ -835,7 +855,7 @@ export function PaperChallengeLeaderboard({
     await AsyncStorage.setItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`, String(Date.now()));
   }, [event.id, event.startAtMs, event.endAtMs]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceSubmission = false) => {
     if (refreshingRef.current || !visible || !appIsActive || !installationIdReady) return;
     const targetEventId = event.id;
     refreshingRef.current = true;
@@ -851,9 +871,17 @@ export function PaperChallengeLeaderboard({
       ) {
         const rawLastSubmission = await AsyncStorage.getItem(`${LAST_SUBMISSION_KEY_PREFIX}${targetEventId}`);
         const lastSubmission = Number(rawLastSubmission || 0);
-        if (!Number.isFinite(lastSubmission) || Date.now() - lastSubmission >= REFRESH_INTERVAL_MS) {
+        if (
+          forceSubmission
+          || !Number.isFinite(lastSubmission)
+          || Date.now() - lastSubmission >= REFRESH_INTERVAL_MS
+        ) {
           try {
-            await submitEntry(currentEnrollment, currentEnrollment.leaderboardAlias ?? '');
+            await submitEntry(
+              currentEnrollment,
+              currentEnrollment.leaderboardAlias ?? '',
+              forceSubmission,
+            );
           } catch {
             setError('Your score could not be updated. It will retry when you refresh.');
           }
@@ -1462,15 +1490,15 @@ export function PaperChallengeLeaderboard({
                     {detail.isCurrentUser && (
                       <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR SCORE</Text>
                     )}
-                    {isLightningRound && (
-                      <Text
-                        testID="paper-event-detail-freshness"
-                        accessibilityRole="text"
-                        style={{ color: detailScoreIsStale ? '#FF9B9B' : '#63E6BE', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 }}
-                      >
-                        {detailScoreIsStale ? 'STALE SCORE' : 'LIVE SERVER SCORE'}
-                      </Text>
-                    )}
+                    <Text
+                      testID="paper-event-detail-freshness"
+                      accessibilityRole="text"
+                      style={{ color: detailScoreIsStale ? '#FF9B9B' : detail.scoreSource === 'server' ? '#63E6BE' : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 }}
+                    >
+                      {detailScoreIsStale
+                        ? 'STALE SCORE'
+                        : detail.scoreSource === 'server' ? 'SERVER-VALUED' : 'DEVICE UPDATE'}
+                    </Text>
                   </View>
                   <Text
                     allowFontScaling
@@ -1493,11 +1521,13 @@ export function PaperChallengeLeaderboard({
                   <Text allowFontScaling style={{ color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 }}>
                     {isLightningRound
                       ? 'Calculated from this round’s server-recorded trades and current quotes'
-                      : 'Self-reported competition performance'}
+                      : detail.scoreSource === 'server'
+                        ? 'Revalued from the latest isolated event-account snapshot and current server quotes'
+                        : 'Last score submitted by this participant’s device'}
                   </Text>
                   {detailScoreIsStale && (
                     <Text testID="paper-event-detail-stale-warning" style={{ color: '#FFB2B2', fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
-                      A current quote was unavailable for one or more holdings. Rankings may be stale; last complete score: {timeLabel(detail.updatedAt)}.
+                      Rankings may be stale because this score has not refreshed recently. Last update: {timeLabel(detail.updatedAt)}.
                     </Text>
                   )}
                 </View>
@@ -1505,7 +1535,9 @@ export function PaperChallengeLeaderboard({
                 <View style={{ padding: 16 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                     <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>REPORTED ACCOUNT VALUE</Text>
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                        {detail.scoreSource === 'server' ? 'CURRENT ACCOUNT VALUE' : 'REPORTED ACCOUNT VALUE'}
+                      </Text>
                       <Text testID="paper-event-detail-equity" allowFontScaling style={{ flexShrink: 1, color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 6 }}>
                         {money(detail.equity)}
                       </Text>
@@ -1538,7 +1570,9 @@ export function PaperChallengeLeaderboard({
                     <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
                       {isLightningRound
                         ? 'Positions come from this round’s recorded fills and are valued using the latest available server quotes.'
-                        : 'Self-reported allocation is absolute market exposure as a percentage of reported event account equity.'}
+                        : detail.scoreSource === 'server'
+                          ? 'Positions come from the isolated event-account snapshot and are revalued using current server quotes.'
+                          : 'Positions and allocations come from the participant’s last device submission.'}
                     </Text>
                     {detail.holdings.length === 0 ? (
                       <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }}>No current holdings reported.</Text>
@@ -1716,7 +1750,7 @@ export function PaperChallengeLeaderboard({
                     accessibilityRole="button"
                     accessibilityLabel="Refresh event leaderboard"
                     accessibilityState={{ busy: refreshing }}
-                    onPress={() => { void refresh(); }}
+                    onPress={() => { void refresh(true); }}
                     style={{ width: isOneStockChallenge ? 44 : 36, height: isOneStockChallenge ? 44 : 36, alignItems: 'center', justifyContent: 'center', borderRadius: isOneStockChallenge ? 22 : 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: isOneStockChallenge ? 'rgba(7,12,20,0.76)' : 'rgba(7,12,20,0.62)' }}
                   >
                     <Feather name="refresh-cw" size={16} color="#F1EEE7" />
@@ -1872,7 +1906,7 @@ export function PaperChallengeLeaderboard({
               ) : loadError && entries.length === 0 && registrations.length === 0 ? (
                 <View testID="paper-event-leaderboard-error" style={{ padding: 14, borderRadius: 10, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.94)' : colors.card, borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,190,190,0.72)' : colors.destructive }}>
                   <Text style={{ color: isOneStockChallenge ? '#FFF1EF' : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: isOneStockChallenge ? 18 : undefined }}>{loadError}</Text>
-                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}>
+                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(true); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}>
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
                   </TouchableOpacity>
                 </View>
@@ -1884,7 +1918,7 @@ export function PaperChallengeLeaderboard({
                       <Text allowFontScaling style={{ color: '#E2E2DE', fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 10, textAlign: 'center', lineHeight: 18 }}>
                         No participants have opted in for this event yet.
                       </Text>
-                      <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
+                      <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(true); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
                         <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>REFRESH</Text>
                       </TouchableOpacity>
                     </View>
@@ -2062,7 +2096,7 @@ export function PaperChallengeLeaderboard({
                       Last successful update: {timeLabel(lastUpdated)}
                     </Text>
                   )}
-                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ alignSelf: 'flex-start', paddingVertical: 7 }}>
+                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(true); }} style={{ alignSelf: 'flex-start', paddingVertical: 7 }}>
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY</Text>
                   </TouchableOpacity>
                 </View>

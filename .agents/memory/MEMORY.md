@@ -99,3 +99,4 @@
 - [Lightning Round cash transfers](lightning-round-cash-transfers.md) — keep transfers disabled for Lightning Round unless the user changes this rule.
 - [Browser query mocks](browser-query-mock-stability.md) — keep mocked query callbacks referentially stable when components include them in refresh-effect dependencies.
 - [OpenAPI codegen validation](api-spec-codegen.md) — keep path params and object schemas explicit; recheck the generated Zod barrel and library types after Orval runs.
+- [Live Event Arena leaderboards](event-arena-live-leaderboards.md) — opted-in standings should refresh every two minutes and on manual refresh, for all visible participants.

@@ -449,6 +449,51 @@ export type EventArenaScoreSubmissionHoldingsItem = {
   side: EventArenaScoreSubmissionHoldingsItemSide;
 };
 
+export type EventArenaScoreSubmissionValuationSnapshotPositionsItemAssetType = typeof EventArenaScoreSubmissionValuationSnapshotPositionsItemAssetType[keyof typeof EventArenaScoreSubmissionValuationSnapshotPositionsItemAssetType];
+
+
+export const EventArenaScoreSubmissionValuationSnapshotPositionsItemAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  unknown: 'unknown',
+} as const;
+
+export type EventArenaScoreSubmissionValuationSnapshotPositionsItemSide = typeof EventArenaScoreSubmissionValuationSnapshotPositionsItemSide[keyof typeof EventArenaScoreSubmissionValuationSnapshotPositionsItemSide];
+
+
+export const EventArenaScoreSubmissionValuationSnapshotPositionsItemSide = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type EventArenaScoreSubmissionValuationSnapshotPositionsItem = {
+  /**
+     * @minLength 1
+     * @maxLength 15
+     */
+  symbol: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  companyName: string;
+  /** @exclusiveMinimum 0 */
+  shares: number;
+  assetType: EventArenaScoreSubmissionValuationSnapshotPositionsItemAssetType;
+  side: EventArenaScoreSubmissionValuationSnapshotPositionsItemSide;
+};
+
+/**
+ * Private event-account valuation data used to refresh opted-in regular-event scores. Never returned by leaderboard reads.
+ */
+export type EventArenaScoreSubmissionValuationSnapshot = {
+  unsettledCash: number;
+  /** @minimum 0 */
+  shortCollateral: number;
+  /** @maxItems 500 */
+  positions: EventArenaScoreSubmissionValuationSnapshotPositionsItem[];
+};
+
 export interface EventArenaScoreSubmission {
   /**
      * Anonymous device identifier; never returned by leaderboard reads.
@@ -473,6 +518,8 @@ export interface EventArenaScoreSubmission {
      * @minimum 0
      */
   cashBalance?: number;
+  /** True when the participant manually requests an immediate score and account-snapshot update. */
+  forceRefresh?: boolean;
   /**
      * Event transfer references already applied to the local account cash balance.
      * @maxItems 500
@@ -494,6 +541,8 @@ export interface EventArenaScoreSubmission {
   tradeCount: number;
   /** @maxItems 100 */
   holdings: EventArenaScoreSubmissionHoldingsItem[];
+  /** Private event-account valuation data used to refresh opted-in regular-event scores. Never returned by leaderboard reads. */
+  valuationSnapshot?: EventArenaScoreSubmissionValuationSnapshot;
   eventStartAtMs: number;
   eventEndAtMs: number;
 }
@@ -552,6 +601,17 @@ export interface LightningRoundPreparationResponse {
   events: EventArenaConfiguration[];
 }
 
+/**
+ * Whether this row was revalued from server-held event data or is still based on its last participant submission.
+ */
+export type EventArenaLeaderboardResponseEntriesItemScoreSource = typeof EventArenaLeaderboardResponseEntriesItemScoreSource[keyof typeof EventArenaLeaderboardResponseEntriesItemScoreSource];
+
+
+export const EventArenaLeaderboardResponseEntriesItemScoreSource = {
+  participant: 'participant',
+  server: 'server',
+} as const;
+
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType];
 
 
@@ -573,12 +633,12 @@ export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
   symbol: string;
   companyName: string;
   /**
-     * Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+     * Absolute market exposure as a percentage of current event account equity; null when unavailable.
      * @minimum 0
      */
   allocationPercent: number | null;
   /**
-     * Self-reported current market value of the open position.
+     * Current market value of the open position.
      * @minimum 0
      */
   marketValue?: number | null;
@@ -609,7 +669,10 @@ export type EventArenaLeaderboardResponseEntriesItem = {
      * @minimum 0
      */
   cashBalance: number;
+  /** Whether this row was revalued from server-held event data or is still based on its last participant submission. */
+  scoreSource: EventArenaLeaderboardResponseEntriesItemScoreSource;
   holdings: EventArenaLeaderboardResponseEntriesItemHoldingsItem[];
+  /** Most conservative timestamp between the participant's latest event-account snapshot and the current server quote observations. */
   updatedAt: string;
   /** True only for the requesting installation's row; no installation ID is returned. */
   isCurrentUser: boolean;

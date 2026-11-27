@@ -53,17 +53,31 @@ type EventSubmission = {
   purchaseLimit?: number;
   cashBalance: number;
   appliedTransferIds: string[];
+  forceRefresh: boolean;
   startEquity: number;
   equity: number;
   returnPercent: number;
   tradeCount: number | null;
   holdings: HoldingIdentifier[];
+  valuationSnapshot?: EventArenaValuationSnapshot;
   eventStartAtMs: number;
   eventEndAtMs: number;
+};
+type EventArenaValuationSnapshot = {
+  unsettledCash: number;
+  shortCollateral: number;
+  positions: Array<{
+    symbol: string;
+    companyName: string;
+    shares: number;
+    assetType: "stock" | "etf" | "unknown";
+    side: "long" | "short";
+  }>;
 };
 
 const DAY_MS = 86_400_000;
 const MAX_HOLDINGS = 100;
+const MAX_VALUATION_POSITIONS = 500;
 const PAPER_TRANSACTION_ACTIONS = new Set([
   "BUY",
   "SELL",
@@ -484,6 +498,61 @@ export function isValidEventArenaWindow(
   return !!expected && startAtMs === expected.startAtMs && endAtMs === expected.endAtMs;
 }
 
+function parseEventArenaValuationSnapshot(value: unknown): EventArenaValuationSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, unknown>;
+  if (
+    Object.keys(snapshot).some((key) => !["unsettledCash", "shortCollateral", "positions"].includes(key))
+    || typeof snapshot.unsettledCash !== "number"
+    || !Number.isFinite(snapshot.unsettledCash)
+    || Math.abs(snapshot.unsettledCash) > 10_000_000
+    || typeof snapshot.shortCollateral !== "number"
+    || !Number.isFinite(snapshot.shortCollateral)
+    || snapshot.shortCollateral < 0
+    || snapshot.shortCollateral > 10_000_000
+    || !Array.isArray(snapshot.positions)
+    || snapshot.positions.length > MAX_VALUATION_POSITIONS
+  ) return null;
+
+  const positions: EventArenaValuationSnapshot["positions"] = [];
+  const seenSymbols = new Set<string>();
+  for (const value of snapshot.positions) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const position = value as Record<string, unknown>;
+    const symbol = typeof position.symbol === "string" ? position.symbol.trim().toUpperCase() : "";
+    const companyName = typeof position.companyName === "string" ? position.companyName.trim() : "";
+    if (
+      Object.keys(position).some((key) =>
+        !["symbol", "companyName", "shares", "assetType", "side"].includes(key),
+      )
+      || !/^[A-Z0-9.^=-]{1,15}$/.test(symbol)
+      || companyName.length < 1
+      || companyName.length > 120
+      || /[\u0000-\u001f\u007f]/.test(companyName)
+      || typeof position.shares !== "number"
+      || !Number.isFinite(position.shares)
+      || position.shares <= 0
+      || position.shares > 100_000_000
+      || (position.assetType !== "stock" && position.assetType !== "etf" && position.assetType !== "unknown")
+      || (position.side !== "long" && position.side !== "short")
+      || seenSymbols.has(symbol)
+    ) return null;
+    seenSymbols.add(symbol);
+    positions.push({
+      symbol,
+      companyName,
+      shares: position.shares,
+      assetType: position.assetType,
+      side: position.side,
+    });
+  }
+  return {
+    unsettledCash: snapshot.unsettledCash,
+    shortCollateral: snapshot.shortCollateral,
+    positions,
+  };
+}
+
 function parseSubmission(body: unknown): EventSubmission | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
@@ -497,11 +566,13 @@ function parseSubmission(body: unknown): EventSubmission | null {
     "purchaseLimit",
     "cashBalance",
     "appliedTransferIds",
+    "forceRefresh",
     "startEquity",
     "equity",
     "returnPercent",
     "tradeCount",
     "holdings",
+    "valuationSnapshot",
     "eventStartAtMs",
     "eventEndAtMs",
   ]);
@@ -519,6 +590,9 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const tradeCount = value.tradeCount;
   const holdings = value.holdings;
   const cashBalance = value.cashBalance;
+  const valuationSnapshot = value.valuationSnapshot === undefined
+    ? undefined
+    : parseEventArenaValuationSnapshot(value.valuationSnapshot);
   const appliedTransferIds = value.appliedTransferIds ?? [];
   if (
     !validInstallationId(value.installationId)
@@ -548,6 +622,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || !Array.isArray(appliedTransferIds)
     || appliedTransferIds.length > 500
     || appliedTransferIds.some((id) => !validTransferId(id))
+    || (value.forceRefresh !== undefined && typeof value.forceRefresh !== "boolean")
     || typeof startEquity !== "number"
     || !Number.isFinite(startEquity)
     || startEquity <= 0
@@ -564,6 +639,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
       && (typeof tradeCount !== "number" || !Number.isInteger(tradeCount) || tradeCount < 0 || tradeCount > 100_000))
     || !Array.isArray(holdings)
     || holdings.length > MAX_HOLDINGS
+    || (value.valuationSnapshot !== undefined && !valuationSnapshot)
     || typeof value.eventStartAtMs !== "number"
     || typeof value.eventEndAtMs !== "number"
   ) return null;
@@ -626,12 +702,14 @@ function parseSubmission(body: unknown): EventSubmission | null {
     ...(purchaseLimit !== undefined ? { purchaseLimit } : {}),
     cashBalance: typeof cashBalance === "number" ? cashBalance : startEquity,
     appliedTransferIds: [...new Set(appliedTransferIds as string[])],
+    forceRefresh: value.forceRefresh === true,
     startEquity,
     equity,
     // Score returns are self-reported but must be internally consistent.
     returnPercent: ((equity - startEquity) / startEquity) * 100,
     tradeCount: typeof tradeCount === "number" ? tradeCount : null,
     holdings: cleanHoldings,
+    ...(valuationSnapshot ? { valuationSnapshot } : {}),
     eventStartAtMs: value.eventStartAtMs,
     eventEndAtMs: value.eventEndAtMs,
   };
@@ -686,6 +764,7 @@ function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
       : null,
     cashBalance: Number.isFinite(Number(row.cash_balance)) ? Number(row.cash_balance) : 0,
     holdings: cleanHoldings,
+    scoreSource: row.score_source === "server" ? "server" : "participant",
     updatedAt,
     isCurrentUser,
   };
@@ -1398,7 +1477,7 @@ export function createEventArenaRouter(
         : "";
       const { rows } = await db.query(
         `SELECT
-           installation_id, participant_token, alias, start_equity, equity, cash_balance, trade_count, holdings, updated_at
+           installation_id, participant_token, alias, start_equity, equity, cash_balance, trade_count, holdings, valuation_snapshot, valuation_snapshot_updated_at, updated_at
          FROM event_arena_leaderboard_entries
          WHERE event_id=$1
            AND is_active=TRUE
@@ -1562,12 +1641,15 @@ export function createEventArenaRouter(
         if (score) participantsWithCurrentScores.add(String(participant.installation_id));
       }
       const activeEntryInstallationIds = new Set(rows.map((row: any) => String(row.installation_id)));
-      const scoredRows = configuration.eventType === "lightning-round"
+      let scoredRows = configuration.eventType === "lightning-round"
         ? rows.map((row: any) => {
           const details = participantDetails.get(String(row.installation_id));
-          if (!details || !participantsWithCurrentScores.has(String(row.installation_id))) return row;
+          if (!details || !participantsWithCurrentScores.has(String(row.installation_id))) {
+            return { ...row, score_source: "participant" };
+          }
           return {
             ...row,
+            score_source: "server",
             alias: details.alias,
             start_equity: details.startEquity,
             equity: details.equity,
@@ -1578,7 +1660,78 @@ export function createEventArenaRouter(
             updated_at: new Date(details.updatedAt),
           };
         })
-        : rows;
+        : rows.map((row: any) => ({ ...row, score_source: "participant" }));
+      if (configuration.eventType !== "lightning-round" && now() < expectedWindow.endAtMs) {
+        const snapshotsByInstallation = new Map<string, EventArenaValuationSnapshot>();
+        for (const row of rows) {
+          const snapshot = parseEventArenaValuationSnapshot(row.valuation_snapshot);
+          if (snapshot) snapshotsByInstallation.set(String(row.installation_id), snapshot);
+        }
+        const valuationSymbols = [...new Set([...snapshotsByInstallation.values()].flatMap((snapshot) =>
+          snapshot.positions.map((position) => position.symbol),
+        ))];
+        const valuationPriceResults = await Promise.all(valuationSymbols.map(async (symbol) => {
+          const quote = await resolveLightningPrice(symbol);
+          return [symbol, quote] as const;
+        }));
+        const valuationPrices = new Map<string, number>();
+        const valuationPriceObservedAt = new Map<string, number>();
+        for (const [symbol, quote] of valuationPriceResults) {
+          if (!quote) continue;
+          valuationPrices.set(symbol, quote.price);
+          valuationPriceObservedAt.set(symbol, quote.observedAtMs);
+        }
+        scoredRows = rows.map((row: any) => {
+          const snapshot = snapshotsByInstallation.get(String(row.installation_id));
+          if (!snapshot) return { ...row, score_source: "participant" };
+          const priceTimes = snapshot.positions.map((position) =>
+            valuationPriceObservedAt.get(position.symbol),
+          );
+          if (priceTimes.some((value) => value == null)) {
+            return { ...row, score_source: "participant" };
+          }
+          const cashBalance = Number(row.cash_balance);
+          const equity = cashBalance
+            + snapshot.unsettledCash
+            + snapshot.shortCollateral
+            + snapshot.positions.reduce((sum, position) => {
+              const price = valuationPrices.get(position.symbol)!;
+              return sum + position.shares * price * (position.side === "short" ? -1 : 1);
+            }, 0);
+          if (!Number.isFinite(equity) || equity < 0 || equity > 10_000_000) {
+            return { ...row, score_source: "participant" };
+          }
+          const holdings = snapshot.positions.map((position) => {
+            const price = valuationPrices.get(position.symbol)!;
+            const marketValue = position.shares * price;
+            return {
+              symbol: position.symbol,
+              companyName: position.companyName,
+              marketValue,
+              allocationPercent: equity > 0 ? marketValue / equity * 100 : null,
+              assetType: position.assetType,
+              side: position.side,
+            };
+          });
+          const quoteObservedAtMs = priceTimes.length > 0
+            ? Math.min(...priceTimes.filter((value): value is number => value != null))
+            : now();
+          const snapshotUpdatedAtMs = row.valuation_snapshot_updated_at instanceof Date
+            ? row.valuation_snapshot_updated_at.getTime()
+            : Date.parse(row.valuation_snapshot_updated_at);
+          const observedAtMs = Number.isFinite(snapshotUpdatedAtMs)
+            ? Math.min(snapshotUpdatedAtMs, quoteObservedAtMs)
+            : quoteObservedAtMs;
+          return {
+            ...row,
+            score_source: "server",
+            equity,
+            return_percent: ((equity - Number(row.start_equity)) / Number(row.start_equity)) * 100,
+            holdings,
+            updated_at: new Date(observedAtMs),
+          };
+        });
+      }
       const registrations = participantRows
         .filter((participant: any) =>
           !activeEntryInstallationIds.has(String(participant.installation_id)),
@@ -1824,7 +1977,8 @@ export function createEventArenaRouter(
            event_arena_leaderboard_entries.event_start_at > NOW()
            OR event_arena_leaderboard_entries.alias = EXCLUDED.alias
          )
-         AND event_arena_leaderboard_entries.updated_at <= NOW() - INTERVAL '15 seconds'
+          AND event_arena_leaderboard_entries.updated_at <= NOW()
+            - (CASE WHEN $13::boolean THEN 3 ELSE 15 END * INTERVAL '1 second')
          RETURNING alias, start_equity, equity, return_percent, trade_count, holdings, updated_at`,
         [
           req.params.eventId,
@@ -1839,6 +1993,7 @@ export function createEventArenaRouter(
           verifiedSubmission.eventEndAtMs,
           verifiedSubmission.cashBalance,
           verifiedSubmission.appliedTransferIds,
+           verifiedSubmission.forceRefresh,
         ],
       );
         if (!rows[0]) {
@@ -1860,6 +2015,17 @@ export function createEventArenaRouter(
              SET leaderboard_opted_in=TRUE
              WHERE event_id=$1 AND installation_id=$2`,
             [req.params.eventId, submission.installationId],
+          );
+        } else if (verifiedSubmission.valuationSnapshot) {
+          await client.query(
+            `UPDATE event_arena_leaderboard_entries
+             SET valuation_snapshot=$3::jsonb, valuation_snapshot_updated_at=NOW()
+             WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,
+            [
+              req.params.eventId,
+              verifiedSubmission.installationId,
+              JSON.stringify(verifiedSubmission.valuationSnapshot),
+            ],
           );
         }
         const { rows: currentParticipants } = await client.query(
@@ -1971,6 +2137,8 @@ export function createEventArenaRouter(
                return_percent=0,
                trade_count=NULL,
                holdings='[]'::jsonb,
+               valuation_snapshot=NULL,
+               valuation_snapshot_updated_at=NULL,
                updated_at=NOW()
            WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,
           [req.params.eventId, req.query.installationId],
