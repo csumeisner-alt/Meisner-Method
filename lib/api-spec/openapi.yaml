@@ -317,7 +317,7 @@ paths:
       operationId: getEventArenaLeaderboard
       tags: [eventArena]
       summary: Get active scores and pending Lightning registrations for one event
-      description: Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+      description: Scores are self-reported except during Lightning Rounds, where the API recalculates every opted-in entered participant from this event's server-recorded fills and current server quotes. Ranking uses percentage return from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
       parameters:
         - in: header
           name: X-Event-Arena-Installation-Id

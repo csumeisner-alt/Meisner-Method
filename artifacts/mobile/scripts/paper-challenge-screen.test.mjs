@@ -985,11 +985,12 @@ test("leaderboard names and large values remain readable and announced on compac
   }
 });
 
-test("participant score detail uses selected-entry values without changing leaderboard sections", () => {
+test("participant score detail follows refreshed entries and explains Lightning data freshness", () => {
   const detailStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-detail"');
   const detailEnd = leaderboard.indexOf("</ScrollView>\n          ) : (", detailStart);
   const detail = leaderboard.slice(detailStart, detailEnd);
 
+  assert.match(leaderboard, /const detail = selectedDetail[\s\S]*entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\)/);
   assert.ok(detailStart >= 0 && detailEnd > detailStart);
   assert.match(detail, /\{detail\.rank\}/);
   assert.match(detail, /\{detail\.alias\}/);
@@ -1005,7 +1006,11 @@ test("participant score detail uses selected-entry values without changing leade
   assert.match(detail, /holding\.symbol/);
   assert.match(detail, /holding\.companyName/);
   assert.match(detail, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);
+  assert.match(detail, /holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
   assert.match(detail, /formatEventHoldingSide\(holding\.side\)/);
+  assert.match(detail, /LIVE SERVER SCORE/);
+  assert.match(detail, /STALE SCORE/);
+  assert.match(detail, /current quote was unavailable/);
   assert.match(detail, /allowFontScaling/);
   assert.match(detail, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /contentContainerStyle=\{\{ width: '100%', maxWidth: 820/);

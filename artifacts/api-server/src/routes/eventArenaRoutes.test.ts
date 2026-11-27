@@ -2194,7 +2194,7 @@ test("Lightning leaderboard shows queued opted-in participants without exposing 
     if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
       assert.match(sql, /leaderboard_opted_in=TRUE/);
       assert.match(sql, /status IN \('queued','entered'\)/);
-      assert.match(sql, /AND participant\.status='entered'[\s\S]*entry\.is_active=TRUE/);
+      assert.doesNotMatch(sql, /NOT EXISTS[\s\S]*event_arena_leaderboard_entries/);
       assert.deepEqual(values, [lightningEventId, configuration.startAtMs, configuration.endAtMs]);
       return { rows: [{
         installation_id: installationId,
@@ -2303,13 +2303,128 @@ test("Lightning leaderboard includes event-tagged account details for entered pa
         marketValue: 1_100,
         assetType: "stock",
       }],
-      updatedAt: "2026-11-27T14:33:00.000Z",
+      updatedAt: "2026-11-27T14:35:00.000Z",
     });
     assert.equal(JSON.stringify(result).includes(installationId), false);
   }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async (symbol) => {
     assert.equal(symbol, "AAPL");
     return 110;
   });
+});
+
+test("Lightning leaderboard refreshes ranked participants from server fills and current prices", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const participantIds = ["ryan-installation-12345", "prime-installation-12345"];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("FROM event_arena_leaderboard_entries")) {
+      return { rows: [
+        {
+          installation_id: participantIds[0],
+          participant_token: "ryan-public-token-123456",
+          alias: "Ryan",
+          start_equity: 100_000,
+          equity: 100_042,
+          cash_balance: 90_000,
+          trade_count: 1,
+          holdings: [],
+          updated_at: new Date("2026-11-27T14:44:00.000Z"),
+        },
+        {
+          installation_id: participantIds[1],
+          participant_token: "prime-public-token-123456",
+          alias: "Amazon Prime",
+          start_equity: 100_000,
+          equity: 99_578,
+          cash_balance: 90_000,
+          trade_count: 1,
+          holdings: [],
+          updated_at: new Date("2026-11-27T14:44:00.000Z"),
+        },
+      ] };
+    }
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      return { rows: participantIds.map((installation_id, index) => ({
+        installation_id,
+        alias: index === 0 ? "Ryan" : "Amazon Prime",
+        status: "entered",
+        updated_at: new Date("2026-11-27T14:44:00.000Z"),
+      })) };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      assert.deepEqual(values, [
+        lightningEventId,
+        participantIds,
+        configuration.startAtMs,
+        configuration.endAtMs,
+      ]);
+      assert.match(sql, /participant\.account_id=trade\.account_id/);
+      return { rows: [
+        {
+          user_id: participantIds[0],
+          symbol: "AAPL",
+          company_name: "Apple Inc.",
+          action: "BUY",
+          shares: 10,
+          price: 100,
+          total: 1_000,
+          fee: 0,
+          date: new Date("2026-11-27T14:31:00.000Z"),
+          asset_type: "stock",
+        },
+        {
+          user_id: participantIds[1],
+          symbol: "SPXL",
+          company_name: "Direxion Daily S&P 500 Bull 3X Shares",
+          action: "BUY",
+          shares: 50,
+          price: 100,
+          total: 5_000,
+          fee: 0,
+          date: new Date("2026-11-27T14:31:00.000Z"),
+          asset_type: "etf",
+        },
+      ] };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
+      headers: { "x-event-arena-installation-id": participantIds[0] },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
+      [1, "Amazon Prime", 1],
+      [2, "Ryan", 0.1],
+    ]);
+    assert.equal(result.entries[0].equity, 101_000);
+    assert.equal(result.entries[0].cashBalance, 95_000);
+    assert.equal(result.entries[0].tradeCount, 1);
+    assert.deepEqual(result.entries[0].holdings.map((holding: any) => [
+      holding.symbol,
+      holding.marketValue,
+      holding.assetType,
+    ]), [["SPXL", 6_000, "etf"]]);
+    assert.equal(result.entries[0].updatedAt, "2026-11-27T14:35:00.000Z");
+    assert.equal(result.entries[1].isCurrentUser, true);
+    assert.deepEqual(result.registrations, []);
+    assert.equal(JSON.stringify(result).includes(participantIds[0]), false);
+    assert.equal(JSON.stringify(result).includes(participantIds[1]), false);
+  }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async (symbol) =>
+    symbol === "SPXL" ? 120 : 110,
+  );
 });
 
 test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {

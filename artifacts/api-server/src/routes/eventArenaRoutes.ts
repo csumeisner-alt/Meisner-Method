@@ -1474,6 +1474,7 @@ export function createEventArenaRouter(
         }
       }
       const participantDetails = new Map<string, any>();
+      const participantsWithCurrentScores = new Set<string>();
       for (const participant of participantRows) {
         const alias = String(participant.alias);
         const status = participant.status === "entered" ? "entered" : "queued";
@@ -1557,14 +1558,14 @@ export function createEventArenaRouter(
           tradeCount: score?.tradeCount ?? (status === "queued" ? 0 : activity.length),
           holdings: scoreHoldings,
           updatedAt: new Date(updatedAtMs).toISOString(),
-          hasCurrentScore: Boolean(score),
         });
+        if (score) participantsWithCurrentScores.add(String(participant.installation_id));
       }
       const activeEntryInstallationIds = new Set(rows.map((row: any) => String(row.installation_id)));
       const scoredRows = configuration.eventType === "lightning-round"
         ? rows.map((row: any) => {
           const details = participantDetails.get(String(row.installation_id));
-          if (!details?.hasCurrentScore) return row;
+          if (!details || !participantsWithCurrentScores.has(String(row.installation_id))) return row;
           return {
             ...row,
             alias: details.alias,

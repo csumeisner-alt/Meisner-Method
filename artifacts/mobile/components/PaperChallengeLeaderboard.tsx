@@ -536,7 +536,7 @@ export function PaperChallengeLeaderboard({
   const [aliasDraft, setAliasDraft] = useState('');
   const [sharingBusy, setSharingBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
+  const [selectedDetail, setDetail] = useState<LeaderboardEntry | null>(null);
   const [expandedHoldingsParticipantToken, setExpandedHoldingsParticipantToken] = useState<string | null>(null);
   const [cashTransferOpen, setCashTransferOpen] = useState(false);
   const [cashTransferAmount, setCashTransferAmount] = useState('');
@@ -599,6 +599,9 @@ export function PaperChallengeLeaderboard({
     },
   });
   const entries = leaderboardQuery.data?.entries ?? [];
+  const detail = selectedDetail
+    ? entries.find((entry) => entry.participantToken === selectedDetail.participantToken) ?? selectedDetail
+    : null;
   const registrations: LeaderboardRegistration[] = leaderboardQuery.data?.registrations ?? [];
   const participantCount = entries.length + registrations.length;
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
@@ -660,6 +663,12 @@ export function PaperChallengeLeaderboard({
   const visibleHoldings = detail
     ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
     : [];
+  const detailScoreIsStale = Boolean(
+    isLightningRound
+    && event.phase === 'active'
+    && detail
+    && countdownNow - Date.parse(detail.updatedAt) > 5 * 60_000,
+  );
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);
@@ -1453,6 +1462,15 @@ export function PaperChallengeLeaderboard({
                     {detail.isCurrentUser && (
                       <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR SCORE</Text>
                     )}
+                    {isLightningRound && (
+                      <Text
+                        testID="paper-event-detail-freshness"
+                        accessibilityRole="text"
+                        style={{ color: detailScoreIsStale ? '#FF9B9B' : '#63E6BE', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 }}
+                      >
+                        {detailScoreIsStale ? 'STALE SCORE' : 'LIVE SERVER SCORE'}
+                      </Text>
+                    )}
                   </View>
                   <Text
                     allowFontScaling
@@ -1473,8 +1491,15 @@ export function PaperChallengeLeaderboard({
                     </Text>
                   </View>
                   <Text allowFontScaling style={{ color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 }}>
-                    Self-reported competition performance
+                    {isLightningRound
+                      ? 'Calculated from this round’s server-recorded trades and current quotes'
+                      : 'Self-reported competition performance'}
                   </Text>
+                  {detailScoreIsStale && (
+                    <Text testID="paper-event-detail-stale-warning" style={{ color: '#FFB2B2', fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
+                      A current quote was unavailable for one or more holdings. Rankings may be stale; last complete score: {timeLabel(detail.updatedAt)}.
+                    </Text>
+                  )}
                 </View>
 
                 <View style={{ padding: 16 }}>
@@ -1511,7 +1536,9 @@ export function PaperChallengeLeaderboard({
                       <Text allowFontScaling accessibilityRole="header" style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 15 }}>Current holdings</Text>
                     </View>
                     <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-                      Self-reported allocation is absolute market exposure as a percentage of reported event account equity.
+                      {isLightningRound
+                        ? 'Positions come from this round’s recorded fills and are valued using the latest available server quotes.'
+                        : 'Self-reported allocation is absolute market exposure as a percentage of reported event account equity.'}
                     </Text>
                     {detail.holdings.length === 0 ? (
                       <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }}>No current holdings reported.</Text>
@@ -1524,6 +1551,9 @@ export function PaperChallengeLeaderboard({
                         <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '42%' }}>
                           <Text allowFontScaling style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 12 }}>
                             {formatEventHoldingAllocation(holding.allocationPercent)}
+                          </Text>
+                          <Text allowFontScaling style={{ color: '#D6DEE8', fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 3 }}>
+                            {holding.marketValue == null ? 'Value unavailable' : money(holding.marketValue)}
                           </Text>
                           <Text allowFontScaling style={{ color: holding.side === 'short' ? colors.destructive : colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 4 }}>
                             {formatEventHoldingSide(holding.side).toUpperCase()}
