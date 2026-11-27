@@ -124,6 +124,15 @@ type LeaderboardEntry = {
 type LeaderboardRegistration = {
   alias: string;
   isCurrentUser: boolean;
+  status: 'queued' | 'entered';
+  startEquity: number;
+  equity: number | null;
+  profitLoss: number | null;
+  returnPercent: number | null;
+  cashBalance: number | null;
+  tradeCount: number | null;
+  holdings: HoldingName[];
+  updatedAt: string;
 };
 
 type Props = {
@@ -1851,33 +1860,65 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   {registrations.length > 0 && (
-                    <View testID="paper-event-registered-participants" style={{ marginTop: 8, paddingHorizontal: 13, paddingVertical: 12, borderRadius: 15, backgroundColor: 'rgba(7,13,20,0.9)', borderWidth: 1, borderColor: 'rgba(216,180,90,0.42)' }}>
-                      <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.1, marginBottom: 8 }}>
-                        REGISTERED COMPETITORS
+                    <View testID="paper-event-registered-participants" style={{ marginTop: 8, paddingHorizontal: 11, paddingVertical: 12, borderRadius: 15, backgroundColor: 'rgba(7,13,20,0.9)', borderWidth: 1, borderColor: 'rgba(216,180,90,0.42)' }}>
+                      <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.1, marginBottom: 9 }}>
+                        OPTED-IN · AWAITING RANK
                       </Text>
                       {registrations.map((participant, index) => (
                         <View
-                          key={`${participant.alias}-${index}`}
+                          key={`${participant.alias}-${participant.updatedAt}-${index}`}
+                          testID={`paper-event-unranked-participant-${index + 1}`}
                           accessible
-                          accessibilityLabel={`Registered competitor ${participant.alias}${participant.isCurrentUser ? ', you' : ''}`}
-                          style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: 'rgba(255,255,255,0.1)' }}
+                          accessibilityLabel={`${participant.alias}${participant.isCurrentUser ? ', you' : ''}, ${participant.status === 'queued' ? 'registered, waiting for opening fill' : participant.equity == null ? 'entered, score unavailable' : 'entered, awaiting rank'}, ${participant.tradeCount ?? 'unknown'} trades, current equity ${participant.equity == null ? 'unavailable' : money(participant.equity)}, ${participant.holdings.length} holdings`}
+                          style={{ marginTop: index === 0 ? 0 : 9, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.035)' }}
                         >
-                          <Feather name="user" size={14} color="#D8B45A" />
-                          <Text numberOfLines={1} style={{ flex: 1, color: '#F4F0E7', fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
-                            {participant.alias}
-                          </Text>
-                          {participant.isCurrentUser && (
-                            <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 }}>
-                              YOU
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                            <Feather name="user" size={14} color="#D8B45A" />
+                            <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: '#F4F0E7', fontFamily: 'Inter_700Bold', fontSize: 13 }}>
+                              {participant.alias}
                             </Text>
+                            {participant.isCurrentUser && (
+                              <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>
+                            )}
+                            <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.45 }}>
+                              {participant.status === 'queued'
+                                ? event.phase === 'upcoming' ? 'REGISTERED' : 'WAITING FOR FILL'
+                                : participant.equity == null ? 'SCORE PENDING' : 'AWAITING RANK'}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
+                            {[
+                              ['START', money(participant.startEquity)],
+                              ['EQUITY', participant.equity == null ? 'Unavailable' : money(participant.equity)],
+                              ['P/L', participant.profitLoss == null ? 'Unavailable' : signedMoney(participant.profitLoss)],
+                              ['RETURN', participant.returnPercent == null ? 'Unavailable' : returnLabel(participant.returnPercent)],
+                              ['CASH', participant.cashBalance == null ? 'Unavailable' : money(participant.cashBalance)],
+                              ['TRADES', participant.tradeCount == null ? 'Unavailable' : String(participant.tradeCount)],
+                            ].map(([label, value]) => (
+                              <View key={label} style={{ flexGrow: 1, flexBasis: '30%', minWidth: 82, paddingVertical: 7, paddingHorizontal: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.24)' }}>
+                                <Text style={{ color: '#AEB5BF', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.5 }}>{label}</Text>
+                                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: '#F4F0E7', fontFamily: 'Inter_700Bold', fontSize: 10, marginTop: 3 }}>{value}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          {participant.holdings.length > 0 && (
+                            <View style={{ marginTop: 8, paddingTop: 7, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
+                              <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.7, marginBottom: 4 }}>OPEN HOLDINGS</Text>
+                              {participant.holdings.map((holding) => (
+                                <Text key={holding.symbol} numberOfLines={1} style={{ color: '#F4F0E7', fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 3 }}>
+                                  {holding.symbol} · {holding.companyName} · {holding.marketValue == null ? 'market value unavailable' : money(holding.marketValue)}
+                                  {holding.allocationPercent == null ? '' : ` · ${holding.allocationPercent.toFixed(1)}%`}
+                                </Text>
+                              ))}
+                            </View>
                           )}
-                          <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.5 }}>
-                            {event.phase === 'upcoming' ? 'REGISTERED' : 'SCORE PENDING'}
+                          <Text style={{ color: '#858D98', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 7 }}>
+                            Updated {timeLabel(participant.updatedAt)}
                           </Text>
                         </View>
                       ))}
-                      <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 5 }}>
-                        A ranked score appears after an opening order fills.
+                      <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 8 }}>
+                        These participants remain visible while their ranked score is being prepared.
                       </Text>
                     </View>
                   )}

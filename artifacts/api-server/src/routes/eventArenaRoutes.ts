@@ -1413,7 +1413,7 @@ export function createEventArenaRouter(
           EVENT_ARENA_RETENTION_DAYS,
         ],
       );
-      const registrationRows = configuration.eventType === "lightning-round"
+      const participantRows = configuration.eventType === "lightning-round"
         ? (await db.query(
           `SELECT participant.installation_id,participant.alias,participant.status,participant.updated_at
            FROM event_arena_lightning_participants AS participant
@@ -1423,59 +1423,58 @@ export function createEventArenaRouter(
              AND participant.event_start_at=TO_TIMESTAMP($2 / 1000.0)
              AND participant.event_end_at=TO_TIMESTAMP($3 / 1000.0)
              AND participant.event_end_at > NOW()
-             AND NOT EXISTS (
-               SELECT 1
-               FROM event_arena_leaderboard_entries AS entry
-               WHERE entry.event_id=participant.event_id
-                 AND entry.installation_id=participant.installation_id
-                  AND participant.status='entered'
-                 AND entry.is_active=TRUE
-                 AND entry.event_start_at=participant.event_start_at
-                 AND entry.event_end_at=participant.event_end_at
-             )
            ORDER BY participant.alias ASC,participant.installation_id ASC`,
           [req.params.eventId, expectedWindow.startAtMs, expectedWindow.endAtMs],
         )).rows
         : [];
-      const enteredRegistrationIds = registrationRows
+      const enteredParticipantIds = participantRows
         .filter((participant: any) => participant.status === "entered")
         .map((participant: any) => String(participant.installation_id));
-      const registrationActivityRows = enteredRegistrationIds.length > 0
+      const participantActivityRows = enteredParticipantIds.length > 0
         ? (await db.query(
-          `SELECT user_id,symbol,company_name,action,shares,price,total,fee,date,asset_type
-           FROM paper_transactions
-           WHERE lightning_round_event_id=$1
-             AND user_id=ANY($2::text[])
-             AND date >= TO_TIMESTAMP($3 / 1000.0)
-             AND date <= TO_TIMESTAMP($4 / 1000.0)
-           ORDER BY user_id ASC,date ASC,id ASC`,
+          `SELECT trade.user_id,trade.symbol,trade.company_name,trade.action,trade.shares,trade.price,trade.total,trade.fee,trade.date,trade.asset_type
+           FROM paper_transactions AS trade
+           JOIN event_arena_lightning_participants AS participant
+             ON participant.event_id=trade.lightning_round_event_id
+             AND participant.installation_id=trade.user_id
+             AND participant.account_id=trade.account_id
+           WHERE trade.lightning_round_event_id=$1
+             AND trade.user_id=ANY($2::text[])
+             AND trade.date >= TO_TIMESTAMP($3 / 1000.0)
+             AND trade.date <= TO_TIMESTAMP($4 / 1000.0)
+           ORDER BY trade.user_id ASC,trade.date ASC,trade.id ASC`,
           [
             req.params.eventId,
-            enteredRegistrationIds,
+            enteredParticipantIds,
             expectedWindow.startAtMs,
             expectedWindow.endAtMs,
           ],
         )).rows
         : [];
       const activitiesByInstallation = new Map<string, any[]>();
-      for (const row of registrationActivityRows) {
+      for (const row of participantActivityRows) {
         const installationId = String(row.user_id);
         const activity = activitiesByInstallation.get(installationId) ?? [];
         activity.push(row);
         activitiesByInstallation.set(installationId, activity);
       }
-      const registrationSymbols = [...new Set(registrationActivityRows.map((row: any) =>
+      const participantSymbols = [...new Set(participantActivityRows.map((row: any) =>
         String(row.symbol).trim().toUpperCase(),
       ))];
-      const registrationPriceResults = await Promise.all(registrationSymbols.map(async (symbol) => {
+      const participantPriceResults = await Promise.all(participantSymbols.map(async (symbol) => {
         const quote = await resolveLightningPrice(symbol);
-        return [symbol, quote?.price ?? null] as const;
+        return [symbol, quote] as const;
       }));
-      const registrationPrices: Record<string, number> = {};
-      for (const [symbol, price] of registrationPriceResults) {
-        if (price != null) registrationPrices[symbol] = price;
+      const participantPrices: Record<string, number> = {};
+      const participantPriceObservedAt = new Map<string, number>();
+      for (const [symbol, quote] of participantPriceResults) {
+        if (quote) {
+          participantPrices[symbol] = quote.price;
+          participantPriceObservedAt.set(symbol, quote.observedAtMs);
+        }
       }
-      const registrations = registrationRows.map((participant: any) => {
+      const participantDetails = new Map<string, any>();
+      for (const participant of participantRows) {
         const alias = String(participant.alias);
         const status = participant.status === "entered" ? "entered" : "queued";
         const activity = activitiesByInstallation.get(String(participant.installation_id)) ?? [];
@@ -1491,7 +1490,7 @@ export function createEventArenaRouter(
               fee: row.fee == null ? null : Number(row.fee),
               date: row.date instanceof Date ? row.date.toISOString() : row.date,
             })),
-            registrationPrices,
+            participantPrices,
             configuration.startingBalance,
           )
           : null;
@@ -1538,7 +1537,15 @@ export function createEventArenaRouter(
         const startingBalance = configuration.startingBalance;
         const equity = score?.equity ?? (status === "queued" ? startingBalance : null);
         const cashBalance = score?.cashBalance ?? (status === "queued" ? startingBalance : null);
-        return {
+        const scoreQuoteTimes = score?.finalPositions
+          .map((position) => participantPriceObservedAt.get(position.symbol))
+          .filter((value): value is number => Number.isFinite(value));
+        const updatedAtMs = score
+          ? scoreQuoteTimes?.length ? Math.min(...scoreQuoteTimes) : now()
+          : participant.updated_at instanceof Date
+            ? participant.updated_at.getTime()
+            : Date.parse(participant.updated_at);
+        participantDetails.set(String(participant.installation_id), {
           alias,
           isCurrentUser: participant.installation_id === requestingInstallationId,
           status,
@@ -1549,13 +1556,36 @@ export function createEventArenaRouter(
           cashBalance,
           tradeCount: score?.tradeCount ?? (status === "queued" ? 0 : activity.length),
           holdings: scoreHoldings,
-          updatedAt: participant.updated_at instanceof Date
-            ? participant.updated_at.toISOString()
-            : new Date(participant.updated_at).toISOString(),
-        };
-      });
+          updatedAt: new Date(updatedAtMs).toISOString(),
+          hasCurrentScore: Boolean(score),
+        });
+      }
+      const activeEntryInstallationIds = new Set(rows.map((row: any) => String(row.installation_id)));
+      const scoredRows = configuration.eventType === "lightning-round"
+        ? rows.map((row: any) => {
+          const details = participantDetails.get(String(row.installation_id));
+          if (!details?.hasCurrentScore) return row;
+          return {
+            ...row,
+            alias: details.alias,
+            start_equity: details.startEquity,
+            equity: details.equity,
+            cash_balance: details.cashBalance,
+            return_percent: details.returnPercent,
+            trade_count: details.tradeCount,
+            holdings: details.holdings,
+            updated_at: new Date(details.updatedAt),
+          };
+        })
+        : rows;
+      const registrations = participantRows
+        .filter((participant: any) =>
+          !activeEntryInstallationIds.has(String(participant.installation_id)),
+        )
+        .map((participant: any) => participantDetails.get(String(participant.installation_id)))
+        .filter(Boolean);
       res.json({
-        entries: rankEventArenaEntries(rows, requestingInstallationId, configuration.rankingDirection),
+        entries: rankEventArenaEntries(scoredRows, requestingInstallationId, configuration.rankingDirection),
         registrations,
         updatedAt: new Date(now()).toISOString(),
       });

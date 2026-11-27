@@ -2191,12 +2191,17 @@ test("Lightning leaderboard shows queued opted-in participants without exposing 
   }]]);
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
-    if (sql.includes("SELECT participant.installation_id,participant.alias")) {
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
       assert.match(sql, /leaderboard_opted_in=TRUE/);
       assert.match(sql, /status IN \('queued','entered'\)/);
       assert.match(sql, /AND participant\.status='entered'[\s\S]*entry\.is_active=TRUE/);
       assert.deepEqual(values, [lightningEventId, configuration.startAtMs, configuration.endAtMs]);
-      return { rows: [{ installation_id: installationId, alias: "MarketFox" }] };
+      return { rows: [{
+        installation_id: installationId,
+        alias: "MarketFox",
+        status: "queued",
+        updated_at: new Date("2026-11-25T15:00:00.000Z"),
+      }] };
     }
     if (sql.includes("FROM event_arena_leaderboard_entries")) return { rows: [] };
     return { rows: [] };
@@ -2207,9 +2212,104 @@ test("Lightning leaderboard shows queued opted-in participants without exposing 
     assert.equal(response.status, 200);
     const result = await response.json() as any;
     assert.deepEqual(result.entries, []);
-    assert.deepEqual(result.registrations, [{ alias: "MarketFox", isCurrentUser: true }]);
+    assert.deepEqual(result.registrations, [{
+      alias: "MarketFox",
+      isCurrentUser: true,
+      status: "queued",
+      startEquity: 100_000,
+      equity: 100_000,
+      profitLoss: 0,
+      returnPercent: 0,
+      cashBalance: 100_000,
+      tradeCount: 0,
+      holdings: [],
+      updatedAt: "2026-11-25T15:00:00.000Z",
+    }]);
     assert.equal(JSON.stringify(result).includes(installationId), false);
   }, Date.parse("2026-11-25T16:00:00.000Z"), savedConfigurations);
+});
+
+test("Lightning leaderboard includes event-tagged account details for entered participants without ranked entries", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      assert.deepEqual(values, [lightningEventId, configuration.startAtMs, configuration.endAtMs]);
+      return { rows: [{
+          installation_id: installationId,
+          alias: "MarketFox",
+          status: "entered",
+          updated_at: new Date("2026-11-27T14:33:00.000Z"),
+      }] };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      assert.match(sql, /lightning_round_event_id=\$1/);
+      assert.match(sql, /participant\.account_id=trade\.account_id/);
+      assert.deepEqual(values, [
+        lightningEventId,
+        [installationId],
+        configuration.startAtMs,
+        configuration.endAtMs,
+      ]);
+      return { rows: [{
+        user_id: installationId,
+        symbol: "AAPL",
+        company_name: "Apple Inc.",
+        action: "BUY",
+        shares: 10,
+        price: 100,
+        total: 1_000,
+        fee: 0,
+        date: new Date("2026-11-27T14:31:00.000Z"),
+        asset_type: "stock",
+      }] };
+    }
+    if (sql.includes("FROM event_arena_leaderboard_entries")) return { rows: [] };
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`, {
+      headers: { "x-event-arena-installation-id": installationId },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries, []);
+    assert.deepEqual(result.registrations[0], {
+      alias: "MarketFox",
+      isCurrentUser: true,
+      status: "entered",
+      startEquity: 100_000,
+      equity: 100_100,
+      profitLoss: 100,
+      returnPercent: 0.1,
+      cashBalance: 99_000,
+      tradeCount: 1,
+      holdings: [{
+        symbol: "AAPL",
+        companyName: "Apple Inc.",
+        allocationPercent: 1.098901098901099,
+        side: "long",
+        marketValue: 1_100,
+        assetType: "stock",
+      }],
+      updatedAt: "2026-11-27T14:33:00.000Z",
+    });
+    assert.equal(JSON.stringify(result).includes(installationId), false);
+  }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async (symbol) => {
+    assert.equal(symbol, "AAPL");
+    return 110;
+  });
 });
 
 test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {

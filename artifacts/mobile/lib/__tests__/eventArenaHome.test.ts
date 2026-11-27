@@ -304,6 +304,9 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(leaderboard, /leaderboardQuery\.data\?\.registrations \?\? \[\]/);
   assert.match(leaderboard, /entries\.length \+ registrations\.length/);
   assert.match(leaderboard, /testID="paper-event-registered-participants"/);
+  assert.match(leaderboard, /testID=\{`paper-event-unranked-participant-\$\{index \+ 1\}`\}/);
+  assert.match(leaderboard, /OPEN HOLDINGS/);
+  assert.match(leaderboard, /participant\.returnPercent == null/);
   assert.match(paper, /shouldEnsurePaperChallengeAccount\(enrollment, challengeNow\)/);
   assert.match(paper, /Date\.now\(\) < enrollment\.eventStartAtMs/);
 });
