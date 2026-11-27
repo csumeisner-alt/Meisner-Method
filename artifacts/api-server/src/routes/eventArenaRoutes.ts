@@ -1749,7 +1749,8 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard/history", requireSchema, async (req: any, res: any) => {
-    if (rejectInvalidRegularEventCalendar(res)) return;
+    const lightningWindow = expectedLightningRoundWindow(req.params.eventId);
+    if (!lightningWindow && rejectInvalidRegularEventCalendar(res)) return;
     const expectedWindow = expectedScheduledEventWindow(req.params.eventId);
     const requestingInstallationId = req.get("x-event-arena-installation-id");
     if (!expectedWindow || !validInstallationId(requestingInstallationId)) {
@@ -1758,6 +1759,15 @@ export function createEventArenaRouter(
     }
     try {
       await purgeExpiredEventArenaEntries(db);
+      const lightningOptInFilter = lightningWindow
+        ? `AND EXISTS (
+             SELECT 1 FROM event_arena_lightning_participants AS lightning_participant
+             WHERE lightning_participant.event_id=snapshots.event_id
+               AND lightning_participant.installation_id=participant.installation_id
+               AND lightning_participant.status='entered'
+               AND lightning_participant.leaderboard_opted_in=TRUE
+           )`
+        : "";
       const { rows } = await db.query(
         `WITH participant_history AS (
            SELECT
@@ -1780,6 +1790,7 @@ export function createEventArenaRouter(
              AND snapshots.event_start_at=TO_TIMESTAMP($3 / 1000.0)
              AND snapshots.event_end_at=TO_TIMESTAMP($4 / 1000.0)
              AND snapshots.event_end_at > NOW() - ($5 * INTERVAL '1 day')
+             ${lightningOptInFilter}
          ),
          bucket_history AS (
            SELECT DISTINCT ON (bucket) captured_at, snapshot_id, rank, return_percent
@@ -2071,7 +2082,7 @@ export function createEventArenaRouter(
             rank: entry.rank,
             returnPercent: entry.returnPercent,
           }));
-        if (rankedSnapshots.length > 0 && configuration.eventType !== "lightning-round") {
+        if (rankedSnapshots.length > 0) {
           await client.query(
             `INSERT INTO event_arena_leaderboard_snapshots
               (event_id, participant_token, event_start_at, event_end_at, captured_at, rank, return_percent)

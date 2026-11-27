@@ -326,6 +326,18 @@ test("Lightning Round promotion reuses the account card and opens its existing s
   assert.match(eventAccountDashboard, /testID="paper-event-account-equity"/);
 });
 
+test("Lightning Round opens the private sampled score timeline with clear load states", () => {
+  assert.match(lightningRound, /open-lightning-round-score-history/);
+  assert.match(lightningRound, /event-arena\/\$\{encodeURIComponent\(enrollment\.eventId\)\}\/leaderboard\/history/);
+  assert.match(lightningRound, /X-Event-Arena-Installation-Id/);
+  assert.match(lightningRound, /\.sort\(\(left, right\) => Date\.parse\(left\.capturedAt\) - Date\.parse\(right\.capturedAt\)\)/);
+  assert.match(lightningRound, /lightning-round-score-history-loading/);
+  assert.match(lightningRound, /lightning-round-score-history-empty/);
+  assert.match(lightningRound, /lightning-round-score-history-unavailable/);
+  assert.match(lightningRound, /point\.rank/);
+  assert.match(lightningRound, /point\.returnPercent/);
+});
+
 test("Event Arena header invitation uses the prepared schedule and existing Lightning Round route", () => {
   assert.match(eventArena, /<LightningRoundInvitation[\s\S]*?onOpen=\{\(\) => router\.push\('\/lightning-round'\)\}/);
   assert.match(lightningInvitation, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);

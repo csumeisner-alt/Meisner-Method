@@ -122,6 +122,11 @@ type LightningRoundFinalResult = {
     unrealizedPnL: number;
   }>;
 };
+type LightningScoreHistoryPoint = {
+  capturedAt: string;
+  rank: number;
+  returnPercent: number;
+};
 
 function countdownLabel(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -328,6 +333,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [serverParticipantFailure, setServerParticipantFailure] = useState('');
   const [serverFinalResult, setServerFinalResult] = useState<LightningRoundFinalResult | null>(null);
   const [tab, setTab] = useState<ScreenTab>('overview');
+  const [scoreHistoryOpen, setScoreHistoryOpen] = useState(false);
+  const [scoreHistory, setScoreHistory] = useState<LightningScoreHistoryPoint[]>([]);
+  const [scoreHistoryEventId, setScoreHistoryEventId] = useState<string | null>(null);
+  const [scoreHistoryLoading, setScoreHistoryLoading] = useState(false);
+  const [scoreHistoryError, setScoreHistoryError] = useState('');
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveWaitingMessage, setArchiveWaitingMessage] = useState('');
@@ -601,6 +611,53 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     const timer = setInterval(() => { void refreshAccount(); }, 60_000);
     return () => clearInterval(timer);
   }, [refreshAccount]);
+
+  const refreshScoreHistory = useCallback(async () => {
+    if (!enrollment || enrollment.eventId !== window.id) {
+      setScoreHistory([]);
+      setScoreHistoryEventId(null);
+      setScoreHistoryError('Join this Lightning Round to view your score history.');
+      return;
+    }
+    if (enrollment.leaderboardOptedIn !== true) {
+      setScoreHistory([]);
+      setScoreHistoryEventId(enrollment.eventId);
+      setScoreHistoryError('Score history is unavailable because leaderboard sharing is off for this round.');
+      return;
+    }
+    setScoreHistoryLoading(true);
+    setScoreHistoryError('');
+    try {
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+      const response = await fetch(
+        `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard/history`,
+        { headers: { 'X-Event-Arena-Installation-Id': installationId } },
+      );
+      if (!response.ok) throw new Error('Score history is unavailable.');
+      const payload = await response.json() as { snapshots?: unknown };
+      if (!Array.isArray(payload.snapshots)) throw new Error('Score history response was invalid.');
+      const points = (payload.snapshots as LightningScoreHistoryPoint[])
+        .filter((point) => typeof point?.capturedAt === 'string'
+          && Number.isFinite(Date.parse(point.capturedAt))
+          && Number.isInteger(point.rank)
+          && point.rank > 0
+          && Number.isFinite(point.returnPercent))
+        .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
+      setScoreHistory(points);
+      setScoreHistoryEventId(enrollment.eventId);
+    } catch {
+      setScoreHistoryError('Your saved score history is unavailable right now. Try again.');
+    } finally {
+      setScoreHistoryLoading(false);
+    }
+  }, [enrollment, window.id]);
+
+  useEffect(() => {
+    if (!scoreHistoryOpen || tab !== 'leaderboard') return;
+    void refreshScoreHistory();
+    const timer = setInterval(() => { void refreshScoreHistory(); }, 60_000);
+    return () => clearInterval(timer);
+  }, [refreshScoreHistory, scoreHistoryOpen, tab]);
 
   const syncEventScore = useCallback(async () => {
     if (
@@ -1297,6 +1354,102 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
 
         {storeReady && !storeError && tab === 'leaderboard' && (
           <View style={{ flex: 1 }}>
+            {isEnrolled && (
+              <View testID="lightning-round-score-history" style={{ marginHorizontal: 12, marginTop: 8, marginBottom: 5, padding: 11, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                <TouchableOpacity
+                  testID="open-lightning-round-score-history"
+                  accessibilityRole="button"
+                  accessibilityLabel={scoreHistoryOpen ? 'Close your Lightning Round score history' : 'Open your Lightning Round score history'}
+                  accessibilityState={{ expanded: scoreHistoryOpen }}
+                  onPress={() => setScoreHistoryOpen((open) => !open)}
+                  style={{ minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>Your score history</Text>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 }}>
+                      Saved rank and return during this round
+                    </Text>
+                  </View>
+                  <Feather name={scoreHistoryOpen ? 'chevron-up' : 'chevron-down'} size={17} color={colors.primary} />
+                </TouchableOpacity>
+                {scoreHistoryOpen && (
+                  <View testID="lightning-round-score-history-timeline" style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 5 }}>
+                    {scoreHistoryLoading && (
+                      <View testID="lightning-round-score-history-loading" accessibilityLabel="Loading score history" style={{ minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>Loading saved score points…</Text>
+                      </View>
+                    )}
+                    {scoreHistoryError ? (
+                      <View testID="lightning-round-score-history-unavailable" style={{ paddingVertical: 7 }}>
+                        <Text accessibilityRole="alert" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 }}>
+                          {scoreHistoryError}
+                        </Text>
+                        {enrollment?.leaderboardOptedIn === true && (
+                          <TouchableOpacity
+                            testID="retry-lightning-round-score-history"
+                            accessibilityRole="button"
+                            onPress={() => { void refreshScoreHistory(); }}
+                            style={{ minHeight: 38, alignSelf: 'flex-start', justifyContent: 'center' }}
+                          >
+                            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY HISTORY</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : null}
+                    {!scoreHistoryLoading && !scoreHistoryError
+                      && scoreHistoryEventId === enrollment.eventId
+                      && scoreHistory.length === 0 && (
+                        <View testID="lightning-round-score-history-empty" style={{ paddingVertical: 9 }}>
+                          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 }}>
+                            No saved rank or return points yet. New points appear when standings change.
+                          </Text>
+                        </View>
+                    )}
+                    {!scoreHistoryError && scoreHistoryEventId === enrollment.eventId && scoreHistory.length > 0 && (
+                      <ScrollView
+                        testID="lightning-round-score-history-points"
+                        nestedScrollEnabled
+                        scrollEnabled
+                        style={{ maxHeight: 154 }}
+                        contentContainerStyle={{ paddingBottom: 2 }}
+                      >
+                        {scoreHistory.map((point, index) => (
+                          <View
+                            key={`${point.capturedAt}-${index}`}
+                            testID={`lightning-round-score-history-point-${index}`}
+                            accessible
+                            accessibilityLabel={`${new Date(point.capturedAt).toLocaleString()}, rank ${point.rank}, return ${formatPercent(point.returnPercent)}`}
+                            style={{ minHeight: 45, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                          >
+                            <View style={{ width: 15, alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center' }}>
+                              {index < scoreHistory.length - 1 && (
+                                <View style={{ position: 'absolute', top: '50%', bottom: -23, width: 1, backgroundColor: colors.border }} />
+                              )}
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary }} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0, paddingVertical: 6 }}>
+                              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9 }}>
+                                {new Date(point.capturedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>#{point.rank}</Text>
+                            <Text style={{ minWidth: 64, color: point.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 11, textAlign: 'right' }}>
+                              {formatPercent(point.returnPercent)}
+                            </Text>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+                    {!scoreHistoryLoading && scoreHistory.length > 0 && !scoreHistoryError ? (
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 4 }}>
+                        Chronological · {scoreHistory.length} saved {scoreHistory.length === 1 ? 'point' : 'points'}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+            )}
             <PaperChallengeLeaderboard
               event={scheduledConfiguration}
               enrollment={enrollment}

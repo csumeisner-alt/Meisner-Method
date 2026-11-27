@@ -1508,7 +1508,7 @@ test("accepted score submissions store ranked event snapshots without private id
   assert.equal(JSON.stringify(insertedSnapshotValues).includes("another-private-installation"), false);
 });
 
-test("Lightning Round score submissions are server-verified without writing rank history", async () => {
+test("Lightning Round score submissions save sampled ranks for opted-in participants", async () => {
   const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);
   const submittedAt = lightningEvent.startAtMs + 30 * 60_000;
@@ -1577,7 +1577,12 @@ test("Lightning Round score submissions are server-verified without writing rank
       assert.deepEqual(values, [lightningEvent.eventId, lightningEvent.startAtMs, lightningEvent.endAtMs]);
       return { rows: participantRows };
     }
-    assert.fail(`Unexpected Lightning Round history write: ${sql}`);
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_snapshots")) {
+      assert.match(sql, /previous\.rank IS DISTINCT FROM snapshot\.rank/);
+      snapshotValues.push(values ?? []);
+      return { rows: [] };
+    }
+    assert.fail(`Unexpected Lightning Round score query: ${sql}`);
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard`, {
       method: "POST",
@@ -1602,7 +1607,13 @@ test("Lightning Round score submissions are server-verified without writing rank
     });
   }, submittedAt, new Map(), async () => 110);
 
-  assert.equal(snapshotValues.length, 0);
+  assert.equal(snapshotValues.length, 1);
+  assert.deepEqual(snapshotValues[0]?.[1], [
+    "participant-token-lr-current",
+    "participant-token-lr-runner-up",
+  ]);
+  assert.deepEqual(snapshotValues[0]?.[2], [1, 2]);
+  assert.deepEqual(snapshotValues[0]?.[3], [0.02, 0.01]);
 });
 
 test("Lightning Round leaderboard rejects participants without a successful opening fill", async () => {
@@ -2145,6 +2156,39 @@ test("public history is scoped to the requested event and excludes installation 
     assert.equal(JSON.stringify(body).includes("private-installation"), false);
     assert.equal(JSON.stringify(body).includes("private-account"), false);
   });
+});
+
+test("Lightning Round history returns only the opted-in participant's sampled points", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  const capturedAt = new Date(lightningEvent.startAtMs + 15 * 60_000);
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    assert.match(sql, /lightning_participant\.leaderboard_opted_in=TRUE/);
+    assert.match(sql, /lightning_participant\.status='entered'/);
+    assert.match(sql, /participant\.installation_id=\$2/);
+    assert.deepEqual(values, [
+      lightningEvent.eventId,
+      installationId,
+      lightningEvent.startAtMs,
+      lightningEvent.endAtMs,
+      30,
+    ]);
+    return { rows: [{ captured_at: capturedAt, rank: 3, return_percent: 1.75 }] };
+  }, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard/history`,
+      { headers: { "x-event-arena-installation-id": installationId } },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      snapshots: [{
+        capturedAt: capturedAt.toISOString(),
+        rank: 3,
+        returnPercent: 1.75,
+      }],
+    });
+  }, lightningEvent.startAtMs + 60 * 60_000);
 });
 
 test("history rejects invalid event or anonymous identity before querying private snapshots", async () => {
