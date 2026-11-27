@@ -167,11 +167,12 @@ class MemoryDatabase implements LightningExecutionDatabase {
     }
     if (sql.includes("SELECT event_id,installation_id,account_id,alias,status,leaderboard_opted_in")
       && !sql.includes("final_result")) {
+      const filtersOptedOut = sql.includes("leaderboard_opted_in=TRUE");
       return {
         rows: state.participants.filter((participant) =>
           participant.event_id === values[0]
           && participant.status === "entered"
-          && participant.leaderboard_opted_in !== false,
+          && (!filtersOptedOut || participant.leaderboard_opted_in !== false),
         ),
       };
     }
@@ -319,7 +320,15 @@ class MemoryDatabase implements LightningExecutionDatabase {
     }
     if (sql.includes("SELECT installation_id,participant_token,rank,return_percent")) {
       const rows = state.leaderboardEntries
-        .filter((entry) => entry.event_id === values[0] && entry.is_active)
+        .filter((entry) => {
+          if (entry.event_id !== values[0] || !entry.is_active) return false;
+          const participant = state.participants.find((row) =>
+            row.event_id === entry.event_id && row.installation_id === entry.installation_id,
+          );
+          return participant?.status === "entered"
+            && (!sql.includes("participant.leaderboard_opted_in=TRUE")
+              || participant.leaderboard_opted_in !== false);
+        })
         .sort((a, b) =>
           Number(b.return_percent) - Number(a.return_percent)
           || String(a.installation_id).localeCompare(String(b.installation_id)),
@@ -710,6 +719,70 @@ test("active Lightning history records participants passing after a worker resta
 
   await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 7 * 60_000);
   assert.equal(state.snapshots.length, 4, "unchanged ranks do not create duplicate history points");
+});
+
+test("active Lightning standings exclude opted-out entries after a worker reconnect", async () => {
+  const state = seedEnteredState();
+  const optedOutInstallationId = "installation-opted-out";
+  const optedOutAccountId = "paper-event:opted-out";
+  state.participants.push({
+    ...state.participants[0],
+    installation_id: optedOutInstallationId,
+    account_id: optedOutAccountId,
+    alias: "QuietFox",
+    leaderboard_opted_in: false,
+  });
+  state.accounts.push({
+    ...state.accounts[0],
+    id: optedOutAccountId,
+    user_id: optedOutInstallationId,
+  });
+  state.transactions.push({
+    id: "opted-out-lightning-buy",
+    user_id: optedOutInstallationId,
+    account_id: optedOutAccountId,
+    symbol: "GOOG",
+    company_name: "Alphabet",
+    action: "BUY",
+    shares: 1,
+    price: 100,
+    total: 100,
+    fee: 0,
+    date: new Date(startAt + 1000),
+    lightning_round_event_id: eventId,
+  });
+  state.leaderboardEntries.push({
+    event_id: eventId,
+    installation_id: optedOutInstallationId,
+    participant_token: `token-${optedOutInstallationId}`,
+    alias: "QuietFox",
+    start_equity: 100_000,
+    equity: 150_000,
+    return_percent: 0.5,
+    trade_count: 1,
+    holdings: [],
+    is_active: true,
+  });
+
+  const firstAt = startAt + 5 * 60_000;
+  const fetchPrice = async (symbol: string) => (symbol === "AAPL" ? 110 : 300);
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt);
+
+  assert.equal(state.leaderboardEntries.find(
+    (entry) => entry.installation_id === optedOutInstallationId,
+  )?.return_percent, 0.5, "an opted-out entry is not refreshed");
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [{ participant_token: `token-${installationId}`, rank: 1 }],
+  );
+
+  // A fresh database wrapper models a worker reconnecting without local rank state.
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 6 * 60_000);
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [{ participant_token: `token-${installationId}`, rank: 1 }],
+    "reconnects do not create history for the opted-out participant or let its stale score affect ranks",
+  );
 });
 
 test("active Lightning tie ranks stay stable across worker connections", async () => {
