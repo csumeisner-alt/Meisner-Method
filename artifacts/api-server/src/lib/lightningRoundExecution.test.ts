@@ -651,6 +651,68 @@ test("active Lightning history resumes from persisted snapshots after a worker r
   assert.deepEqual(state.participants[0]?.final_result, frozenResult);
 });
 
+test("active Lightning history records participants passing after a worker restart", async () => {
+  const state = seedEnteredState();
+  const secondInstallationId = "installation-second";
+  const secondAccountId = "paper-event:second";
+  state.participants.push({
+    ...state.participants[0],
+    installation_id: secondInstallationId,
+    account_id: secondAccountId,
+    alias: "SteadyOwl",
+  });
+  state.accounts.push({
+    ...state.accounts[0],
+    id: secondAccountId,
+    user_id: secondInstallationId,
+  });
+  state.transactions.push({
+    id: "second-lightning-buy",
+    user_id: secondInstallationId,
+    account_id: secondAccountId,
+    symbol: "GOOG",
+    company_name: "Alphabet",
+    action: "BUY",
+    shares: 2,
+    price: 100,
+    total: 200,
+    fee: 0,
+    date: new Date(startAt + 1000),
+    lightning_round_event_id: eventId,
+  });
+
+  const firstAt = startAt + 5 * 60_000;
+  const prices = { AAPL: 110, GOOG: 100 };
+  const fetchPrice = async (symbol: string) => prices[symbol as keyof typeof prices] ?? null;
+  const firstCycle = await process(new MemoryDatabase(state), fetchPrice, () => firstAt);
+
+  assert.equal(firstCycle.events, 1);
+  assert.equal(state.leaderboardEntries.length, 2);
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [
+      { participant_token: `token-${installationId}`, rank: 1 },
+      { participant_token: `token-${secondInstallationId}`, rank: 2 },
+    ],
+  );
+
+  // The second connection must compare with the persisted ranks, not worker-local state.
+  prices.AAPL = 90;
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 6 * 60_000);
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [
+      { participant_token: `token-${installationId}`, rank: 1 },
+      { participant_token: `token-${secondInstallationId}`, rank: 2 },
+      { participant_token: `token-${secondInstallationId}`, rank: 1 },
+      { participant_token: `token-${installationId}`, rank: 2 },
+    ],
+  );
+
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 7 * 60_000);
+  assert.equal(state.snapshots.length, 4, "unchanged ranks do not create duplicate history points");
+});
+
 test("successful fills update the shared account and retain event identity, then retry idempotently", async () => {
   const state = seedState([{}]);
   const db = new MemoryDatabase(state);
