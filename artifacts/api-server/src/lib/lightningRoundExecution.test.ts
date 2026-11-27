@@ -322,7 +322,6 @@ class MemoryDatabase implements LightningExecutionDatabase {
         .filter((entry) => entry.event_id === values[0] && entry.is_active)
         .sort((a, b) =>
           Number(b.return_percent) - Number(a.return_percent)
-          || String(a.alias).localeCompare(String(b.alias))
           || String(a.installation_id).localeCompare(String(b.installation_id)),
         );
       return {
@@ -711,6 +710,64 @@ test("active Lightning history records participants passing after a worker resta
 
   await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 7 * 60_000);
   assert.equal(state.snapshots.length, 4, "unchanged ranks do not create duplicate history points");
+});
+
+test("active Lightning tie ranks stay stable across worker connections", async () => {
+  const state = seedEnteredState();
+  const secondInstallationId = "installation-second";
+  const secondAccountId = "paper-event:second";
+  state.participants[0]!.alias = "Alpha";
+  state.participants.push({
+    ...state.participants[0],
+    installation_id: secondInstallationId,
+    account_id: secondAccountId,
+    alias: "Zulu",
+  });
+  state.accounts.push({
+    ...state.accounts[0],
+    id: secondAccountId,
+    user_id: secondInstallationId,
+  });
+  state.transactions.push({
+    id: "second-lightning-buy",
+    user_id: secondInstallationId,
+    account_id: secondAccountId,
+    symbol: "GOOG",
+    company_name: "Alphabet",
+    action: "BUY",
+    shares: 2,
+    price: 100,
+    total: 200,
+    fee: 0,
+    date: new Date(startAt + 1000),
+    lightning_round_event_id: eventId,
+  });
+
+  const firstAt = startAt + 5 * 60_000;
+  const prices = { AAPL: 110, GOOG: 110 };
+  const fetchPrice = async (symbol: string) => prices[symbol as keyof typeof prices] ?? null;
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt);
+
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [
+      { participant_token: `token-${secondInstallationId}`, rank: 1 },
+      { participant_token: `token-${installationId}`, rank: 2 },
+    ],
+  );
+
+  // Aliases can change, but the persisted tie-breaker is the stable participant ID.
+  state.participants[0]!.alias = "Zulu";
+  state.participants[1]!.alias = "Alpha";
+  await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 6 * 60_000);
+  assert.equal(state.snapshots.length, 2, "unchanged tied scores must not add history snapshots");
+  assert.deepEqual(
+    state.snapshots.map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [
+      { participant_token: `token-${secondInstallationId}`, rank: 1 },
+      { participant_token: `token-${installationId}`, rank: 2 },
+    ],
+  );
 });
 
 test("successful fills update the shared account and retain event identity, then retry idempotently", async () => {
@@ -1692,6 +1749,118 @@ test(
         rank: row.rank,
         returnPercent: row.return_percent,
       })), frozenResults, "later quotes must not alter frozen results or ranks");
+
+      const activeTieEventId = `lr-active-tie-${randomUUID()}`;
+      const activeTieParticipants = [
+        { installationId: `active-tie-a-${randomUUID()}`, symbol: "AAPL", alias: "Zulu" },
+        { installationId: `active-tie-b-${randomUUID()}`, symbol: "MSFT", alias: "Alpha" },
+      ].sort((a, b) => a.installationId.localeCompare(b.installationId));
+      activeTieParticipants[0]!.alias = "Zulu";
+      activeTieParticipants[1]!.alias = "Alpha";
+      await firstPool.query(
+        `INSERT INTO event_arena_events
+          (event_id,event_type,artwork_id,starting_balance,ranking_direction,event_start_at,event_end_at)
+         VALUES ($1,'lightning-round','stadium',100000,'highest-return',$2,$3)`,
+        [activeTieEventId, new Date(startAt), new Date(endAt)],
+      );
+      for (const participant of activeTieParticipants) {
+        const participantAccountId = `active-tie-account-${randomUUID()}`;
+        await firstPool.query(
+          `INSERT INTO event_arena_lightning_participants
+            (event_id,installation_id,account_id,alias,status,leaderboard_opted_in,event_start_at,event_end_at)
+           VALUES ($1,$2,$3,$4,'entered',TRUE,$5,$6)`,
+          [
+            activeTieEventId,
+            participant.installationId,
+            participantAccountId,
+            participant.alias,
+            new Date(startAt),
+            new Date(endAt),
+          ],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_transactions
+            (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,lightning_round_event_id)
+           VALUES ($1,$2,$3,$4,$4,'BUY',2,100,200,$5,$6)`,
+          [
+            `active-tie-transaction-${randomUUID()}`,
+            participant.installationId,
+            participantAccountId,
+            participant.symbol,
+            new Date(startAt + 1000),
+            activeTieEventId,
+          ],
+        );
+      }
+      const processActiveTie = (
+        pool: InstanceType<typeof Pool>,
+        capturedAt: number,
+      ) => processDueLightningRoundOrders(executionDatabase(pool), {
+        now: () => capturedAt,
+        makeId: randomUUID,
+        fetchPrice: async () => 110,
+      });
+      await processActiveTie(firstPool, now);
+      const firstActiveTieSnapshots = await firstPool.query(
+        `SELECT participant.installation_id,snapshot.rank
+         FROM event_arena_leaderboard_snapshots AS snapshot
+         JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=snapshot.event_id AND entry.participant_token=snapshot.participant_token
+         JOIN event_arena_lightning_participants AS participant
+           ON participant.event_id=entry.event_id AND participant.installation_id=entry.installation_id
+         WHERE snapshot.event_id=$1 AND snapshot.is_final=FALSE
+         ORDER BY participant.installation_id`,
+        [activeTieEventId],
+      );
+      assert.deepEqual(
+        firstActiveTieSnapshots.rows.map((row) => ({
+          installationId: row.installation_id,
+          rank: Number(row.rank),
+        })),
+        activeTieParticipants.map((participant, index) => ({
+          installationId: participant.installationId,
+          rank: index + 1,
+        })),
+      );
+
+      await firstPool.query(
+        `UPDATE event_arena_lightning_participants SET alias=$3
+         WHERE event_id=$1 AND installation_id=$2`,
+        [activeTieEventId, activeTieParticipants[0]!.installationId, "Alpha"],
+      );
+      await firstPool.query(
+        `UPDATE event_arena_lightning_participants SET alias=$3
+         WHERE event_id=$1 AND installation_id=$2`,
+        [activeTieEventId, activeTieParticipants[1]!.installationId, "Zulu"],
+      );
+      await processActiveTie(secondPool, now + 6 * 60_000);
+      const repeatedActiveTieSnapshots = await firstPool.query(
+        `SELECT participant.installation_id,snapshot.rank
+         FROM event_arena_leaderboard_snapshots AS snapshot
+         JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=snapshot.event_id AND entry.participant_token=snapshot.participant_token
+         JOIN event_arena_lightning_participants AS participant
+           ON participant.event_id=entry.event_id AND participant.installation_id=entry.installation_id
+         WHERE snapshot.event_id=$1 AND snapshot.is_final=FALSE
+         ORDER BY participant.installation_id`,
+        [activeTieEventId],
+      );
+      assert.deepEqual(
+        repeatedActiveTieSnapshots.rows.map((row) => ({
+          installationId: row.installation_id,
+          rank: Number(row.rank),
+        })),
+        firstActiveTieSnapshots.rows.map((row) => ({
+          installationId: row.installation_id,
+          rank: Number(row.rank),
+        })),
+        "tied ranks should remain tied to the same participants on another worker connection",
+      );
+      assert.equal(
+        repeatedActiveTieSnapshots.rows.length,
+        2,
+        "an unchanged tie must not create duplicate history snapshots",
+      );
 
       const apiParticipant = standingsIds.participants.find((participant) => participant.optedIn)!;
       const readFrozenResult = () => firstPool.query(

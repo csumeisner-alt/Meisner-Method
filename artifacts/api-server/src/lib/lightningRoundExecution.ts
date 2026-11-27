@@ -375,7 +375,7 @@ async function refreshActiveEventStandings(
      FROM (
        SELECT entry.installation_id,entry.participant_token,entry.return_percent,
          ROW_NUMBER() OVER (
-           ORDER BY entry.return_percent DESC,entry.alias ASC,entry.installation_id ASC
+           ORDER BY entry.return_percent DESC,entry.installation_id ASC
          )::int AS rank
        FROM event_arena_leaderboard_entries AS entry
        JOIN event_arena_lightning_participants AS participant
@@ -488,7 +488,7 @@ async function finalizeEventStandings(
      FROM (
        SELECT entry.installation_id,entry.participant_token,entry.return_percent,
          ROW_NUMBER() OVER (
-           ORDER BY entry.return_percent DESC,entry.alias ASC,entry.installation_id ASC
+           ORDER BY entry.return_percent DESC,entry.installation_id ASC
          )::int AS rank
        FROM event_arena_leaderboard_entries AS entry
        JOIN event_arena_lightning_participants AS participant

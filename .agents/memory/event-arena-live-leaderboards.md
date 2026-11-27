@@ -8,3 +8,9 @@ description: Product expectations and privacy boundaries for refreshing opted-in
 **Why:** The user explicitly stated this is the point of the leaderboards and described the two-minute and manual refresh expectations.
 
 **How to apply:** When changing leaderboard refresh, refresh every participant from available event-scoped data, bypass the automatic interval on a manual refresh, mark stale scores clearly—including Lightning entries without a server score—and keep private valuation data out of public responses.
+
+**Rule:** When Lightning Round returns tie, rank by the stable participant identifier after the return value; do not use aliases or refresh timestamps as tie-breakers for saved ranks.
+
+**Why:** Aliases can change between worker refreshes, which must not make tied participants appear to pass each other in saved history.
+
+**How to apply:** Keep the active-history and final-result ranking queries aligned, and never expose the private identifier as part of public leaderboard data.
