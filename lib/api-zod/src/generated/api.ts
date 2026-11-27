@@ -246,7 +246,15 @@ export const ExecuteEventArenaLightningRoundOrderBody = zod.object({
 })
 })
 
-export const ExecuteEventArenaLightningRoundOrderResponse = zod.record(zod.string(), zod.unknown())
+
+
+
+export const ExecuteEventArenaLightningRoundOrderResponse = zod.record(zod.string(), zod.unknown()).and(zod.object({
+  "quoteFallback": zod.object({
+  "observedAt": zod.coerce.date(),
+  "maxAgeSeconds": zod.number().min(1)
+}).optional().describe('Present when a recent server-cached quote was used after the provider request failed.')
+}))
 
 
 /**

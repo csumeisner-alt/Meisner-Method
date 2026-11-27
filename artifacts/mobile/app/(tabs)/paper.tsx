@@ -1874,6 +1874,7 @@ export default function PaperScreen() {
       lots: PaperLot[];
       transaction: PaperTransaction;
       order: PaperOrder;
+      quoteFallback?: { observedAt: string; maxAgeSeconds: number };
     }>(`/api/event-arena/lightning-round/${encodeURIComponent(eventId)}/orders`, {
       method: 'POST',
       headers: { 'X-Event-Arena-Installation-Id': installationId },
@@ -3118,6 +3119,7 @@ export default function PaperScreen() {
             ? { ...syntheticOrder, status: 'filled' as const, filledPrice: fillPrice, filledAt: nowISO }
             : order)
           : currentOrders;
+        let lightningQuoteFallback: { observedAt: string; maxAgeSeconds: number } | undefined;
         if (lightningEnrollment) {
           const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
           const submitServerFill = () => apiFetch<{
@@ -3126,6 +3128,7 @@ export default function PaperScreen() {
             lots: PaperLot[];
             transaction: PaperTransaction;
             order: PaperOrder;
+            quoteFallback?: { observedAt: string; maxAgeSeconds: number };
           }>(`/api/event-arena/lightning-round/${encodeURIComponent(lightningEnrollment.eventId)}/orders`, {
             method: 'POST',
             headers: { 'X-Event-Arena-Installation-Id': installationId },
@@ -3152,6 +3155,7 @@ export default function PaperScreen() {
           ];
           newTransaction = serverFill.transaction;
           finalFillPrice = serverFill.order.filledPrice ?? fillPrice;
+          lightningQuoteFallback = serverFill.quoteFallback;
           updatedOrders = [
             ...currentOrders.filter((order) => order.id !== serverFill.order.id),
             serverFill.order,
@@ -3193,9 +3197,18 @@ export default function PaperScreen() {
         const actionLabel = args.side === 'short' ? 'Short sold'
           : args.side === 'cover' ? 'Covered'
             : args.side === 'buy' ? 'Bought' : 'Sold';
+        const fallbackObservedAt = lightningQuoteFallback
+          ? new Date(lightningQuoteFallback.observedAt).toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit',
+          })
+          : null;
+        const fallbackDetail = fallbackObservedAt
+          ? ` Market data was unavailable; the fill used the server quote observed at ${fallbackObservedAt}, within the ${Math.max(1, Math.ceil(lightningQuoteFallback!.maxAgeSeconds / 60))}-minute limit.`
+          : '';
         return {
           status: 'filled',
-          message: `${actionLabel} ${args.shares} ${sym} in ${currentAccount.name}.`,
+          message: `${actionLabel} ${args.shares} ${sym} in ${currentAccount.name}.${fallbackDetail}`,
           fillPrice: finalFillPrice,
         };
       }

@@ -59,6 +59,10 @@ import {
 } from "../lib/marketPulseService.ts";
 import type { MarketPulseRefreshObservation } from "../lib/marketPulseService.ts";
 import { createMarketPulseStore } from "../lib/marketPulseStore.js";
+import {
+  rememberServerMarketPrice,
+  rememberServerMarketPriceBatch,
+} from "../lib/marketPrice.ts";
 import { createMarketPulseRouter } from "./marketPulse.js";
 
 const { Pool } = pg;
@@ -1257,6 +1261,9 @@ router.get("/stocks/quote/:symbol", async (req, res) => {
       res.status(422).json({ error: "QUOTE_FAILED", message: raw["error"] });
       return;
     }
+    if (typeof raw["currentPrice"] === "number") {
+      rememberServerMarketPrice(symbol, raw["currentPrice"]);
+    }
     res.json(raw);
   } catch (err: any) {
     res.status(422).json({ error: "QUOTE_FAILED", message: err.message });
@@ -1295,6 +1302,7 @@ router.post("/stocks/quotes", async (req, res) => {
     ) {
       throw new Error("Market data provider returned an invalid quote batch");
     }
+    rememberServerMarketPriceBatch((raw as { quotes: unknown[] }).quotes);
     res.set("Cache-Control", "private, max-age=0").json(raw);
   } catch (err: any) {
     req.log.error({ err }, "Portfolio quote batch failed");

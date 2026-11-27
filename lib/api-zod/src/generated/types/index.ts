@@ -154,6 +154,7 @@ export * from './eventArenaScoreSubmissionHoldingsItemAssetType';
 export * from './eventArenaScoreSubmissionHoldingsItemSide';
 export * from './eventArenaScoreSubmissionRankingDirection';
 export * from './executeEventArenaLightningRoundOrder200';
+export * from './executeEventArenaLightningRoundOrder200QuoteFallback';
 export * from './executeEventArenaLightningRoundOrderBody';
 export * from './executeEventArenaLightningRoundOrderBodyOrder';
 export * from './executeEventArenaLightningRoundOrderBodyOrderAssetType';

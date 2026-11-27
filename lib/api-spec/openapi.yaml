@@ -286,7 +286,19 @@ paths:
           description: The server-verified fill and updated account data
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                allOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: object
+                    properties:
+                      quoteFallback:
+                        type: object
+                        description: Present when a recent server-cached quote was used after the provider request failed.
+                        required: [observedAt, maxAgeSeconds]
+                        properties:
+                          observedAt: { type: string, format: date-time }
+                          maxAgeSeconds: { type: integer, minimum: 1 }
         "400": { description: "The event, installation ID, or order is invalid" }
         "404": { description: Lightning Round participation was not found }
         "409": { description: The event is not accepting trades or the price is unavailable }

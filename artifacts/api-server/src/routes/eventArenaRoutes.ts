@@ -11,7 +11,11 @@ import {
   getRegularEventWindowForStartDate,
   hasRegularEventWindowOverlap,
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
-import { fetchYahooChartPrice } from "../lib/marketPrice.ts";
+import {
+  createServerPriceResolver,
+  fetchYahooChartPrice,
+  RECENT_SERVER_MARKET_PRICE_MAX_AGE_MS,
+} from "../lib/marketPrice.ts";
 import { calculateLightningRoundScore } from "../lib/lightningRoundScore.ts";
 import { executeLightningRoundOrder } from "../lib/lightningRoundExecution.ts";
 import {
@@ -745,6 +749,7 @@ export function createEventArenaRouter(
   fetchLightningPrice: (symbol: string) => Promise<number | null> = fetchYahooChartPrice,
 ) {
   const router = Router();
+  const resolveLightningPrice = createServerPriceResolver(fetchLightningPrice, undefined, now);
 
   router.post("/event-arena/lightning-round/prepare", requireSchema, async (_req: any, res: any) => {
     if (rejectInvalidRegularEventCalendar(res)) return;
@@ -1125,6 +1130,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
+      const cachedQuoteUsed: { quote: { observedAtMs: number } | null } = { quote: null };
       const result = await executeLightningRoundOrder(db, {
         eventId,
         installationId,
@@ -1160,13 +1166,27 @@ export function createEventArenaRouter(
           ...(typeof rawOrder.sector === "string" ? { sector: rawOrder.sector.slice(0, 80) } : {}),
         },
         now,
-        fetchPrice: fetchLightningPrice,
+        fetchPrice: async (symbol) => {
+          const quote = await resolveLightningPrice(symbol);
+          if (quote?.source === "server-cache") cachedQuoteUsed.quote = quote;
+          return quote?.price ?? null;
+        },
       });
       if (!result.ok) {
         res.status(result.status).json({ error: result.error });
         return;
       }
-      res.json(result);
+      res.json({
+        ...result,
+        ...(cachedQuoteUsed.quote && !result.replayed
+          ? {
+              quoteFallback: {
+                observedAt: new Date(cachedQuoteUsed.quote.observedAtMs).toISOString(),
+                maxAgeSeconds: Math.floor(RECENT_SERVER_MARKET_PRICE_MAX_AGE_MS / 1000),
+              },
+            }
+          : {}),
+      });
     } catch (error) {
       req.log?.error(
         { error: error instanceof Error ? error.message : String(error) },

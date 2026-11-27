@@ -1659,8 +1659,8 @@ test("active Lightning Round orders fill against the server account and get even
         order: {
           id: "active-order-12345",
           accountId,
-          symbol: "AAPL",
-          companyName: "Apple",
+          symbol: "CACHEQ",
+          companyName: "Cached Quote",
           orderType: "market",
           side: "buy",
           shares: 2,
@@ -1682,8 +1682,8 @@ test("active Lightning Round orders fill against the server account and get even
         order: {
           id: "active-limit-12345",
           accountId,
-          symbol: "AAPL",
-          companyName: "Apple",
+          symbol: "CACHEQ",
+          companyName: "Cached Quote",
           orderType: "limit",
           side: "buy",
           shares: 1,
@@ -1696,6 +1696,10 @@ test("active Lightning Round orders fill against the server account and get even
     assert.equal(limitResult.order.orderType, "limit");
     assert.equal(limitResult.order.limitPrice, 101);
     assert.equal(limitResult.transaction.lightningRoundEventId, lightningEvent.eventId);
+    assert.deepEqual(limitResult.quoteFallback, {
+      observedAt: new Date(lightningEvent.startAtMs + 1).toISOString(),
+      maxAgeSeconds: 300,
+    });
 
     const wrongAccount = await fetch(route, {
       method: "POST",
@@ -1715,7 +1719,8 @@ test("active Lightning Round orders fill against the server account and get even
     assert.equal(wrongAccount.status, 422);
   }, lightningEvent.startAtMs + 1, new Map(), async () => {
     priceCalls += 1;
-    return 100;
+    if (priceCalls === 1) return 100;
+    throw new Error("provider temporarily unavailable");
   });
   assert.equal(priceCalls, 2, "a mismatched account must be rejected before a price is fetched");
   const transactionWrite = statements.find((entry) => entry.sql.startsWith("INSERT INTO paper_transactions"));

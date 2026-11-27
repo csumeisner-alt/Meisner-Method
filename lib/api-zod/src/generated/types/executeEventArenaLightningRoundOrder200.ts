@@ -5,5 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ExecuteEventArenaLightningRoundOrder200QuoteFallback } from './executeEventArenaLightningRoundOrder200QuoteFallback';
 
-export type ExecuteEventArenaLightningRoundOrder200 = { [key: string]: unknown };
+export type ExecuteEventArenaLightningRoundOrder200 = { [key: string]: unknown } & {
+  /** Present when a recent server-cached quote was used after the provider request failed. */
+  quoteFallback?: ExecuteEventArenaLightningRoundOrder200QuoteFallback;
+};

@@ -2165,7 +2165,19 @@ export type ExecuteEventArenaLightningRoundOrderBody = {
   order: ExecuteEventArenaLightningRoundOrderBodyOrder;
 };
 
-export type ExecuteEventArenaLightningRoundOrder200 = { [key: string]: unknown };
+/**
+ * Present when a recent server-cached quote was used after the provider request failed.
+ */
+export type ExecuteEventArenaLightningRoundOrder200QuoteFallback = {
+  observedAt: string;
+  /** @minimum 1 */
+  maxAgeSeconds: number;
+};
+
+export type ExecuteEventArenaLightningRoundOrder200 = { [key: string]: unknown } & {
+  /** Present when a recent server-cached quote was used after the provider request failed. */
+  quoteFallback?: ExecuteEventArenaLightningRoundOrder200QuoteFallback;
+};
 
 export type SubmitEventArenaScore200 = {
   ok: boolean;
