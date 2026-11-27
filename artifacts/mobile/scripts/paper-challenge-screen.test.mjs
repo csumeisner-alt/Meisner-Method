@@ -904,6 +904,9 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   assert.match(refreshFlow, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
   assert.match(refreshFlow, /setRefreshing\(false\)[\s\S]*?refreshingRef\.current = false/);
   assert.match(leaderboard, /entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\) \?\? selectedDetail/);
+  assert.match(leaderboard, /const detail = selectedDetail\s*\?\s*entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\) \?\? selectedDetail/);
+  assert.match(leaderboard, /const detailStaleWarning = isLightningRound && detail\?\.scoreSource !== 'server'/);
+  assert.match(leaderboard, /detail\.scoreSource === 'server' \? 'SERVER-VALUED' : 'DEVICE UPDATE'/);
   assert.match(leaderboard, /testID="paper-event-detail-equity"[\s\S]*?money\(detail\.equity\)/);
   assert.match(leaderboard, /Current holdings[\s\S]*?holding\.marketValue == null \? 'Value unavailable' : money\(holding\.marketValue\)/);
   assert.match(leaderboard, /isEventArenaScoreStale\(\{[\s\S]*?scoreSource: detail\.scoreSource,[\s\S]*?isLightningRound/);

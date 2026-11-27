@@ -2386,7 +2386,14 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
           equity: 99_578,
           cash_balance: 90_000,
           trade_count: 1,
-          holdings: [],
+          holdings: [{
+            symbol: "SPXL",
+            companyName: "Direxion Daily S&P 500 Bull 3X Shares",
+            allocationPercent: 4.6,
+            marketValue: 4_578,
+            assetType: "etf",
+            side: "long",
+          }],
           updated_at: new Date("2026-11-27T14:20:00.000Z"),
         },
       ] };
@@ -2479,6 +2486,26 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     assert.equal(missingScore.equity, 99_578);
     assert.equal(missingScore.scoreSource, "participant");
     assert.equal(missingScore.updatedAt, "2026-11-27T14:20:00.000Z");
+    assert.deepEqual(missingQuoteRefresh.entries.map((entry: any) => [entry.rank, entry.alias]), [
+      [1, "Ryan"],
+      [2, "Amazon Prime"],
+    ]);
+    assert.equal(missingScore.holdings[0].marketValue, 4_578);
+
+    currentPrices = { SPXL: 120, AAPL: 130 };
+    currentTime = Date.parse("2026-11-27T14:44:00.000Z");
+    const recoveredRefresh = await readLeaderboard();
+    assert.deepEqual(recoveredRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
+      [1, "Amazon Prime", 1],
+      [2, "Ryan", 0.3],
+    ]);
+    const recoveredScore = recoveredRefresh.entries[0];
+    assert.equal(recoveredScore.scoreSource, "server");
+    assert.equal(recoveredScore.equity, 101_000);
+    assert.equal(recoveredScore.cashBalance, 95_000);
+    assert.equal(recoveredScore.tradeCount, 1);
+    assert.equal(recoveredScore.holdings[0].marketValue, 6_000);
+    assert.equal(recoveredScore.holdings[0].assetType, "etf");
   }, () => currentTime, savedConfigurations, async (symbol) =>
     currentPrices[symbol] ?? null,
   );
