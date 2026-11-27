@@ -1765,7 +1765,9 @@ export function createEventArenaRouter(
              snapshots.snapshot_id,
              snapshots.rank,
              snapshots.return_percent,
-             NTILE(120) OVER (ORDER BY snapshots.captured_at, snapshots.snapshot_id) AS bucket
+             NTILE(119) OVER (ORDER BY snapshots.captured_at, snapshots.snapshot_id) AS bucket,
+             ROW_NUMBER() OVER (ORDER BY snapshots.captured_at, snapshots.snapshot_id) AS position_from_start,
+             ROW_NUMBER() OVER (ORDER BY snapshots.captured_at DESC, snapshots.snapshot_id DESC) AS position_from_end
            FROM event_arena_leaderboard_snapshots AS snapshots
            JOIN event_arena_leaderboard_entries AS participant
              ON participant.event_id=snapshots.event_id
@@ -1778,10 +1780,23 @@ export function createEventArenaRouter(
              AND snapshots.event_start_at=TO_TIMESTAMP($3 / 1000.0)
              AND snapshots.event_end_at=TO_TIMESTAMP($4 / 1000.0)
              AND snapshots.event_end_at > NOW() - ($5 * INTERVAL '1 day')
+         ),
+         bucket_history AS (
+           SELECT DISTINCT ON (bucket) captured_at, snapshot_id, rank, return_percent
+           FROM participant_history
+           ORDER BY bucket, captured_at DESC, snapshot_id DESC
+         ),
+         selected_history AS (
+           SELECT captured_at, snapshot_id, rank, return_percent
+           FROM participant_history
+           WHERE position_from_start=1 OR position_from_end=1
+           UNION
+           SELECT captured_at, snapshot_id, rank, return_percent
+           FROM bucket_history
          )
-         SELECT DISTINCT ON (bucket) captured_at, rank, return_percent
-         FROM participant_history
-         ORDER BY bucket, captured_at DESC, snapshot_id DESC`,
+         SELECT captured_at, rank, return_percent
+         FROM selected_history
+         ORDER BY captured_at, snapshot_id`,
         [
           req.params.eventId,
           requestingInstallationId,

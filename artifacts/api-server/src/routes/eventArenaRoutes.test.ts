@@ -2044,6 +2044,38 @@ test(
         assert.equal(history.snapshots[0].returnPercent, 1.25);
         assert.equal(JSON.stringify(history).includes(historyInstallationId), false);
 
+        const { rows: participantRows } = await pool.query(
+          "SELECT participant_token FROM event_arena_leaderboard_entries WHERE event_id=$1 AND installation_id=$2",
+          [historyEventId, historyInstallationId],
+        );
+        assert.equal(participantRows.length, 1);
+        await pool.query("DELETE FROM event_arena_leaderboard_snapshots WHERE event_id=$1", [historyEventId]);
+        await pool.query(
+          `INSERT INTO event_arena_leaderboard_snapshots
+             (event_id, participant_token, event_start_at, event_end_at, captured_at, rank, return_percent)
+           SELECT $1, $2, $3, $4,
+             TO_TIMESTAMP($5 / 1000.0) + (sample.minute_offset * INTERVAL '1 minute'),
+             sample.minute_offset + 1, sample.minute_offset
+           FROM generate_series(0, 139) AS sample(minute_offset)`,
+          [
+            historyEventId,
+            participantRows[0].participant_token,
+            new Date(historyStartAtMs),
+            new Date(historyEndAtMs),
+            historyStartAtMs,
+          ],
+        );
+        const longHistoryResponse = await fetch(historyUrl, { headers });
+        assert.equal(longHistoryResponse.status, 200);
+        const longHistory = await longHistoryResponse.json() as any;
+        assert.equal(longHistory.snapshots.length, 120);
+        assert.equal(longHistory.snapshots[0].capturedAt, new Date(historyStartAtMs).toISOString());
+        assert.equal(longHistory.snapshots[0].rank, 1);
+        assert.equal(longHistory.snapshots.at(-1).capturedAt, new Date(historyStartAtMs + 139 * 60_000).toISOString());
+        assert.equal(longHistory.snapshots.at(-1).rank, 140);
+        assert.deepEqual(Object.keys(longHistory.snapshots[0]).sort(), ["capturedAt", "rank", "returnPercent"]);
+        assert.equal(JSON.stringify(longHistory).includes(historyInstallationId), false);
+
         const optOut = await fetch(
           `${baseUrl}/event-arena/${historyEventId}/leaderboard?installationId=${encodeURIComponent(historyInstallationId)}`,
           { method: "DELETE" },
@@ -2075,7 +2107,12 @@ test("public history is scoped to the requested event and excludes installation 
     assert.match(sql, /participant\.installation_id=\$2/);
     assert.match(sql, /participant\.is_active=TRUE/);
     assert.match(sql, /snapshots\.event_id=\$1/);
-    assert.match(sql, /NTILE\(120\)/);
+    assert.match(sql, /NTILE\(119\)/);
+    assert.match(sql, /ROW_NUMBER\(\) OVER \(ORDER BY snapshots\.captured_at, snapshots\.snapshot_id\) AS position_from_start/);
+    assert.match(sql, /ROW_NUMBER\(\) OVER \(ORDER BY snapshots\.captured_at DESC, snapshots\.snapshot_id DESC\) AS position_from_end/);
+    assert.match(sql, /WHERE position_from_start=1 OR position_from_end=1/);
+    assert.match(sql, /UNION/);
+    assert.match(sql, /ORDER BY captured_at, snapshot_id/);
     assert.deepEqual(values, [eventId, installationId, startAtMs, endAtMs, 30]);
     return { rows: [
       {
