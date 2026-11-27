@@ -8,6 +8,10 @@ import {
   shouldShowLightningRoundInvitationAction,
 } from "../lib/lightningRoundInvitation.ts";
 import { getPaperTabNavigationAction } from "../lib/paperTabNavigation.ts";
+import {
+  canRefreshEventArenaLeaderboard,
+  resolveSelectedLeaderboardEntry,
+} from "../lib/eventArenaLeaderboardRefresh.ts";
 
 const screen = readFileSync(new URL("../app/(tabs)/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
@@ -892,19 +896,22 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   const refreshStart = leaderboard.indexOf("const refresh = useCallback(async (forceSubmission = false)");
   const refreshEnd = leaderboard.indexOf("\n  }, [appIsActive,", refreshStart);
   const refreshFlow = leaderboard.slice(refreshStart, refreshEnd);
-  const refreshEffectStart = leaderboard.indexOf("useEffect(() => {\n    if (!visible || !appIsActive || !installationIdReady) return;", refreshEnd);
+  const refreshEffectStart = leaderboard.indexOf("useEffect(() => {\n    if (!canRefreshEventArenaLeaderboard({ visible, appIsActive, installationIdReady })) return;", refreshEnd);
   const refreshEffectEnd = leaderboard.indexOf("\n  const optIn =", refreshEffectStart);
   const refreshEffect = leaderboard.slice(refreshEffectStart, refreshEffectEnd);
 
   assert.ok(refreshStart >= 0 && refreshEnd > refreshStart);
   assert.ok(refreshEffectStart >= 0 && refreshEffectEnd > refreshEffectStart);
-  assert.match(refreshEffect, /if \(!visible \|\| !appIsActive \|\| !installationIdReady\) return/);
+  assert.match(leaderboard, /AppState\.addEventListener\('change', \(state\) => setAppIsActive\(state === 'active'\)\)/);
+  assert.match(refreshEffect, /if \(!canRefreshEventArenaLeaderboard\(\{ visible, appIsActive, installationIdReady \}\)\) return/);
   assert.match(refreshEffect, /void refresh\(\)/);
   assert.match(refreshEffect, /setInterval\(\(\) => \{ void refresh\(\); \}, REFRESH_INTERVAL_MS\)/);
+  assert.match(refreshEffect, /return \(\) => clearInterval\(timer\)/);
+  assert.match(refreshEffect, /\[appIsActive, installationIdReady, refresh, visible\]/);
+  assert.match(refreshFlow, /canRefreshEventArenaLeaderboard\(\{ visible, appIsActive, installationIdReady \}\)/);
   assert.match(refreshFlow, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
   assert.match(refreshFlow, /setRefreshing\(false\)[\s\S]*?refreshingRef\.current = false/);
-  assert.match(leaderboard, /entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\) \?\? selectedDetail/);
-  assert.match(leaderboard, /const detail = selectedDetail\s*\?\s*entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\) \?\? selectedDetail/);
+  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetail\)/);
   assert.match(leaderboard, /const detailStaleWarning = isLightningRound && detail\?\.scoreSource !== 'server'/);
   assert.match(leaderboard, /detail\.scoreSource === 'server' \? 'SERVER-VALUED' : 'DEVICE UPDATE'/);
   assert.match(leaderboard, /testID="paper-event-detail-equity"[\s\S]*?money\(detail\.equity\)/);
@@ -912,6 +919,42 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   assert.match(leaderboard, /isEventArenaScoreStale\(\{[\s\S]*?scoreSource: detail\.scoreSource,[\s\S]*?isLightningRound/);
   assert.match(leaderboard, /testID="paper-event-detail-freshness"[\s\S]*?STALE SCORE/);
   assert.match(leaderboard, /The current server score is unavailable; showing the last saved score/);
+});
+
+test("Android leaderboard pauses while inactive and resumes with the selected server entry", () => {
+  const selected = {
+    participantToken: "participant-a",
+    equity: 100_000,
+    scoreSource: "participant",
+    holdings: [{ symbol: "OLD", marketValue: 1_000 }],
+  };
+  const refreshed = {
+    participantToken: "participant-a",
+    equity: 108_500,
+    scoreSource: "server",
+    holdings: [{ symbol: "NEW", marketValue: 8_500 }],
+  };
+
+  assert.equal(canRefreshEventArenaLeaderboard({
+    visible: true,
+    appIsActive: false,
+    installationIdReady: true,
+  }), false);
+  assert.equal(canRefreshEventArenaLeaderboard({
+    visible: true,
+    appIsActive: true,
+    installationIdReady: true,
+  }), true);
+  assert.equal(canRefreshEventArenaLeaderboard({
+    visible: false,
+    appIsActive: true,
+    installationIdReady: true,
+  }), false);
+  assert.deepEqual(resolveSelectedLeaderboardEntry([refreshed], selected), refreshed);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.equity, 108_500);
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.symbol, "NEW");
+  assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.marketValue, 8_500);
+  assert.equal(resolveSelectedLeaderboardEntry([], selected), selected);
 });
 
 test("One-Stock empty-state contrast and larger controls do not alter other event styling", () => {
@@ -1029,7 +1072,7 @@ test("participant score detail follows refreshed entries and explains Lightning 
   const detailEnd = leaderboard.indexOf("</ScrollView>\n          ) : (", detailStart);
   const detail = leaderboard.slice(detailStart, detailEnd);
 
-  assert.match(leaderboard, /const detail = selectedDetail[\s\S]*entries\.find\(\(entry\) => entry\.participantToken === selectedDetail\.participantToken\)/);
+  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetail\)/);
   assert.ok(detailStart >= 0 && detailEnd > detailStart);
   assert.match(detail, /\{detail\.rank\}/);
   assert.match(detail, /\{detail\.alias\}/);

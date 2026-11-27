@@ -83,6 +83,10 @@ import {
   getEventArenaNextRankReturnGap,
   getEventArenaWindowProgress,
 } from '@/lib/eventArenaCompetitiveProgress';
+import {
+  canRefreshEventArenaLeaderboard,
+  resolveSelectedLeaderboardEntry,
+} from '@/lib/eventArenaLeaderboardRefresh';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const REFRESH_INTERVAL_MS = 120_000;
@@ -617,9 +621,7 @@ export function PaperChallengeLeaderboard({
     },
   });
   const entries = leaderboardQuery.data?.entries ?? [];
-  const detail = selectedDetail
-    ? entries.find((entry) => entry.participantToken === selectedDetail.participantToken) ?? selectedDetail
-    : null;
+  const detail = resolveSelectedLeaderboardEntry(entries, selectedDetail);
   const registrations: LeaderboardRegistration[] = leaderboardQuery.data?.registrations ?? [];
   const participantCount = entries.length + registrations.length;
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
@@ -864,7 +866,10 @@ export function PaperChallengeLeaderboard({
   }, [event.id, event.startAtMs, event.endAtMs]);
 
   const refresh = useCallback(async (forceSubmission = false) => {
-    if (refreshingRef.current || !visible || !appIsActive || !installationIdReady) return;
+    if (
+      refreshingRef.current
+      || !canRefreshEventArenaLeaderboard({ visible, appIsActive, installationIdReady })
+    ) return;
     const targetEventId = event.id;
     refreshingRef.current = true;
     setRefreshing(true);
@@ -905,7 +910,7 @@ export function PaperChallengeLeaderboard({
   }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, sharingBusy, submitEntry, visible]);
 
   useEffect(() => {
-    if (!visible || !appIsActive || !installationIdReady) return;
+    if (!canRefreshEventArenaLeaderboard({ visible, appIsActive, installationIdReady })) return;
     void refresh();
     const timer = setInterval(() => { void refresh(); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
