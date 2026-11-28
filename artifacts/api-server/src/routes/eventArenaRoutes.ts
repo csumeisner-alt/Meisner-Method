@@ -821,6 +821,38 @@ export function rankEventArenaEntries(
     ));
 }
 
+function rankLightningRoundEntries(
+  rows: any[],
+  requestingInstallationId: string | null = null,
+) {
+  return rows
+    .map((row) => ({
+      row,
+      startEquity: Number(row.start_equity),
+      equity: Number(row.equity),
+    }))
+    .filter(({ row, startEquity, equity }) =>
+      typeof row.alias === "string"
+      && Number.isFinite(startEquity)
+      && startEquity > 0
+      && Number.isFinite(equity)
+      && equity >= 0,
+    )
+    .map((entry) => ({
+      ...entry,
+      returnPercent: ((entry.equity - entry.startEquity) / entry.startEquity) * 100,
+    }))
+    .sort((a, b) =>
+      b.returnPercent - a.returnPercent
+      || compareText(a.row.installation_id, b.row.installation_id),
+    )
+    .map(({ row }, index) => publicEntry(
+      row,
+      index + 1,
+      Boolean(requestingInstallationId && row.installation_id === requestingInstallationId),
+    ));
+}
+
 export function createEventArenaRouter(
   db: EventArenaDatabase,
   requireSchema: Middleware,
@@ -1739,7 +1771,9 @@ export function createEventArenaRouter(
         .map((participant: any) => participantDetails.get(String(participant.installation_id)))
         .filter(Boolean);
       res.json({
-        entries: rankEventArenaEntries(scoredRows, requestingInstallationId, configuration.rankingDirection),
+        entries: configuration.eventType === "lightning-round"
+          ? rankLightningRoundEntries(scoredRows, requestingInstallationId)
+          : rankEventArenaEntries(scoredRows, requestingInstallationId, configuration.rankingDirection),
         registrations,
         updatedAt: new Date(now()).toISOString(),
       });

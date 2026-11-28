@@ -2831,6 +2831,89 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
   );
 });
 
+test("Lightning live tie ranks follow saved participant order when aliases change", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const participantIds = ["a-lightning-installation-12345", "z-lightning-installation-12345"];
+  const aliases = new Map([
+    [participantIds[0]!, "Zulu"],
+    [participantIds[1]!, "Alpha"],
+  ]);
+  await withApi(async (sql) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("FROM event_arena_leaderboard_entries")) {
+      return { rows: participantIds.map((installation_id, index) => ({
+        installation_id,
+        participant_token: `public-token-${index}-123456`,
+        alias: aliases.get(installation_id),
+        start_equity: 100_000,
+        equity: 100_000,
+        cash_balance: 99_000,
+        trade_count: 1,
+        holdings: [],
+        updated_at: new Date(`2026-11-27T14:${20 + index}:00.000Z`),
+      })) };
+    }
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      return { rows: participantIds.map((installation_id, index) => ({
+        installation_id,
+        alias: aliases.get(installation_id),
+        status: "entered",
+        updated_at: new Date(`2026-11-27T14:${30 + index}:00.000Z`),
+      })) };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      return { rows: participantIds.map((user_id, index) => ({
+        user_id,
+        symbol: "AAPL",
+        company_name: "Apple Inc.",
+        action: "BUY",
+        shares: 10,
+        price: 100,
+        total: 1_000,
+        fee: 0,
+        date: new Date(`2026-11-27T14:${31 + index}:00.000Z`),
+        asset_type: "stock",
+      })) };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const readLeaderboard = async () => {
+      const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`);
+      assert.equal(response.status, 200);
+      return await response.json() as any;
+    };
+
+    // Alias order conflicts with the stable participant-ID order.
+    const beforeAliasChange = await readLeaderboard();
+    assert.deepEqual(
+      beforeAliasChange.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]),
+      [[1, "Zulu", 0.1], [2, "Alpha", 0.1]],
+    );
+
+    aliases.set(participantIds[0]!, "Alpha");
+    aliases.set(participantIds[1]!, "Zulu");
+    const afterAliasChange = await readLeaderboard();
+    assert.deepEqual(
+      afterAliasChange.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]),
+      [[1, "Alpha", 0.1], [2, "Zulu", 0.1]],
+    );
+    assert.equal(JSON.stringify(afterAliasChange).includes(participantIds[0]!), false);
+    assert.equal(JSON.stringify(afterAliasChange).includes(participantIds[1]!), false);
+  }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async () => 110);
+});
+
 test("regular leaderboards revalue every participant from private event snapshots on each refresh", async () => {
   const rows = [
     {
