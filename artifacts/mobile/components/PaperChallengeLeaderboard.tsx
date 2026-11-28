@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   AppState,
   Image,
@@ -1960,8 +1961,23 @@ export function PaperChallengeLeaderboard({
               ) : loadError && entries.length === 0 && registrations.length === 0 ? (
                 <View testID="paper-event-leaderboard-error" style={{ padding: 14, borderRadius: 10, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.94)' : colors.card, borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,190,190,0.72)' : colors.destructive }}>
                   <Text style={{ color: isOneStockChallenge ? '#FFF1EF' : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: isOneStockChallenge ? 18 : undefined }}>{loadError}</Text>
-                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(true); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}>
-                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
+                  <TouchableOpacity
+                    testID="retry-paper-event-leaderboard"
+                    accessibilityRole="button"
+                    accessibilityLabel={refreshing ? 'Refreshing event leaderboard' : 'Retry event leaderboard'}
+                    accessibilityState={{ disabled: refreshing, busy: refreshing }}
+                    disabled={refreshing}
+                    onPress={() => { void refresh(true); }}
+                    style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}
+                  >
+                    {refreshing ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRYING…</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -2150,8 +2166,23 @@ export function PaperChallengeLeaderboard({
                       Last successful update: {timeLabel(lastUpdated)}
                     </Text>
                   )}
-                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(true); }} style={{ alignSelf: 'flex-start', paddingVertical: 7 }}>
-                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY</Text>
+                  <TouchableOpacity
+                    testID="retry-paper-event-leaderboard"
+                    accessibilityRole="button"
+                    accessibilityLabel={refreshing ? 'Refreshing event leaderboard' : 'Retry event leaderboard'}
+                    accessibilityState={{ disabled: refreshing, busy: refreshing }}
+                    disabled={refreshing}
+                    onPress={() => { void refresh(true); }}
+                    style={{ alignSelf: 'flex-start', paddingVertical: 7 }}
+                  >
+                    {refreshing ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRYING…</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               )}

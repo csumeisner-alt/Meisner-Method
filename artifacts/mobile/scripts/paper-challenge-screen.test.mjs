@@ -1054,10 +1054,35 @@ test("a failed resume refresh keeps the last standings and retry updates selecte
     );
     assert.ok(queryClient.getQueryState(queryKey)?.error);
 
-    const recoveredResponse = await queryClient.fetchQuery({
+    let finishRecovery;
+    const recoveryPromise = queryClient.fetchQuery({
       queryKey,
-      queryFn: async () => ({ entries: [refreshed] }),
+      queryFn: () => new Promise((resolve) => {
+        finishRecovery = resolve;
+      }),
     });
+    const pendingState = queryClient.getQueryState(queryKey);
+    assert.equal(pendingState?.fetchStatus, "fetching");
+    assert.deepEqual(queryClient.getQueryData(queryKey), lastSuccessfulResponse);
+    assert.ok(pendingState?.error);
+
+    const retryControls = leaderboard.match(/testID="retry-paper-event-leaderboard"[\s\S]*?<\/TouchableOpacity>/g) ?? [];
+    assert.equal(retryControls.length, 2);
+    for (const retryControl of retryControls) {
+      assert.match(retryControl, /disabled=\{refreshing\}/);
+      assert.match(retryControl, /accessibilityState=\{\{ disabled: refreshing, busy: refreshing \}\}/);
+      assert.match(retryControl, /refreshing \? \([\s\S]*?RETRYING…/);
+    }
+    const refreshStart = leaderboard.indexOf("const refresh = useCallback(async (forceSubmission = false)");
+    const refreshEnd = leaderboard.indexOf("\n  }, [appIsActive,", refreshStart);
+    const refreshFlow = leaderboard.slice(refreshStart, refreshEnd);
+    assert.match(refreshFlow, /refreshingRef\.current\s*\|\|[\s\S]*?return;[\s\S]*?refreshingRef\.current = true/);
+
+    finishRecovery({ entries: [refreshed] });
+    const recoveredResponse = await recoveryPromise;
+    const completedState = queryClient.getQueryState(queryKey);
+    assert.equal(completedState?.fetchStatus, "idle");
+    assert.equal(completedState?.error, null);
     assert.equal(
       resolveSelectedLeaderboardEntry(recoveredResponse.entries, selected)?.scoreSource,
       "server",
