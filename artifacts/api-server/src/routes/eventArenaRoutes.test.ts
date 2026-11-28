@@ -2627,10 +2627,10 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
           symbol: "SPXL",
           company_name: "Direxion Daily S&P 500 Bull 3X Shares",
           action: "SELL",
-          shares: 50,
+          shares: 30,
           price: 110,
-          total: 5_500,
-          fee: 0,
+          total: 3_300,
+          fee: 25,
           date: new Date("2026-11-27T14:32:00.000Z"),
           asset_type: "etf",
         },
@@ -2659,17 +2659,20 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     };
     const firstRefresh = await readLeaderboard();
     assert.deepEqual(firstRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
-      [1, "Amazon Prime", 0.8999999999999999],
+      [1, "Amazon Prime", 1.075],
       [2, "Ryan", 0.1],
     ]);
-    assert.equal(firstRefresh.entries[0].equity, 100_900);
-    assert.equal(firstRefresh.entries[0].cashBalance, 98_500);
+    assert.equal(firstRefresh.entries[0].equity, 101_075);
+    assert.equal(firstRefresh.entries[0].cashBalance, 96_275);
     assert.equal(firstRefresh.entries[0].tradeCount, 3);
     assert.deepEqual(firstRefresh.entries[0].holdings.map((holding: any) => [
       holding.symbol,
       holding.marketValue,
       holding.assetType,
-    ]), [["NVDA", 2_400, "stock"]]);
+    ]), [
+      ["SPXL", 2_400, "etf"],
+      ["NVDA", 2_400, "stock"],
+    ]);
     assert.equal(firstRefresh.entries[0].updatedAt, "2026-11-27T14:35:00.000Z");
     assert.equal(firstRefresh.entries[1].isCurrentUser, true);
     assert.deepEqual(firstRefresh.registrations, []);
@@ -2680,13 +2683,16 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     const secondRefresh = await readLeaderboard();
     assert.deepEqual(secondRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
       [1, "Ryan", 0.3],
-      [2, "Amazon Prime", -0.5],
+      [2, "Amazon Prime", -1.125],
     ]);
     assert.equal(secondRefresh.entries[0].holdings[0].marketValue, 1_300);
     assert.deepEqual(secondRefresh.entries[1].holdings.map((holding: any) => [
       holding.symbol,
       holding.marketValue,
-    ]), [["NVDA", 1_000]]);
+    ]), [
+      ["SPXL", 1_600],
+      ["NVDA", 1_000],
+    ]);
     assert.equal(secondRefresh.entries[1].scoreSource, "server");
 
     currentPrices = { AAPL: 130 };
@@ -2704,24 +2710,26 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     assert.equal(missingScore.holdings[0].symbol, "SPXL");
     assert.equal(missingScore.holdings[0].marketValue, 4_578);
 
-    currentPrices = { SPXL: 120, AAPL: 130, NVDA: 120 };
+    currentPrices = { SPXL: 120, AAPL: 208.5, NVDA: 120 };
     currentTime = Date.parse("2026-11-27T14:44:00.000Z");
     const recoveredRefresh = await readLeaderboard();
     assert.deepEqual(recoveredRefresh.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
-      [1, "Amazon Prime", 0.8999999999999999],
-      [2, "Ryan", 0.3],
+      [1, "Ryan", 1.085],
+      [2, "Amazon Prime", 1.075],
     ]);
-    const recoveredScore = recoveredRefresh.entries[0];
+    const recoveredScore = recoveredRefresh.entries[1];
     assert.equal(recoveredScore.scoreSource, "server");
-    assert.equal(recoveredScore.equity, 100_900);
-    assert.equal(recoveredScore.cashBalance, 98_500);
+    assert.equal(recoveredScore.equity, 101_075);
+    assert.equal(recoveredScore.cashBalance, 96_275);
     assert.equal(recoveredScore.tradeCount, 3);
     assert.deepEqual(recoveredScore.holdings.map((holding: any) => [
       holding.symbol,
       holding.marketValue,
       holding.assetType,
-    ]), [["NVDA", 2_400, "stock"]]);
-    assert.equal(recoveredScore.holdings.some((holding: any) => holding.symbol === "SPXL"), false);
+    ]), [
+      ["SPXL", 2_400, "etf"],
+      ["NVDA", 2_400, "stock"],
+    ]);
   }, () => currentTime, savedConfigurations, async (symbol) =>
     currentPrices[symbol] ?? null,
   );
