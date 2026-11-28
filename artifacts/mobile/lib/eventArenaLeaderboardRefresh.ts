@@ -10,6 +10,13 @@ export function canRefreshEventArenaLeaderboard({
   return visible && appIsActive && installationIdReady;
 }
 
+export function getSelectedLeaderboardEntryForEvent<T>(
+  eventId: string,
+  selection: { eventId: string; entry: T } | null,
+): T | null {
+  return selection?.eventId === eventId ? selection.entry : null;
+}
+
 export function resolveSelectedLeaderboardEntry<T extends { participantToken: string }>(
   entries: readonly T[],
   selectedEntry: T | null,

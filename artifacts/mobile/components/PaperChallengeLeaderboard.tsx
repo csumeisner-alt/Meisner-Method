@@ -85,6 +85,7 @@ import {
 } from '@/lib/eventArenaCompetitiveProgress';
 import {
   canRefreshEventArenaLeaderboard,
+  getSelectedLeaderboardEntryForEvent,
   isSelectedLeaderboardEntryMissing,
   resolveSelectedLeaderboardEntry,
 } from '@/lib/eventArenaLeaderboardRefresh';
@@ -559,7 +560,10 @@ export function PaperChallengeLeaderboard({
   const [aliasDraft, setAliasDraft] = useState('');
   const [sharingBusy, setSharingBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDetail, setDetail] = useState<LeaderboardEntry | null>(null);
+  const [selectedDetail, setDetail] = useState<{
+    eventId: string;
+    entry: LeaderboardEntry;
+  } | null>(null);
   const [expandedHoldingsParticipantToken, setExpandedHoldingsParticipantToken] = useState<string | null>(null);
   const [cashTransferOpen, setCashTransferOpen] = useState(false);
   const [cashTransferAmount, setCashTransferAmount] = useState('');
@@ -622,11 +626,12 @@ export function PaperChallengeLeaderboard({
     },
   });
   const entries = leaderboardQuery.data?.entries ?? [];
-  const detail = resolveSelectedLeaderboardEntry(entries, selectedDetail);
+  const selectedDetailForEvent = getSelectedLeaderboardEntryForEvent(event.id, selectedDetail);
+  const detail = resolveSelectedLeaderboardEntry(entries, selectedDetailForEvent);
   const leaderboardRefreshFailed = Boolean(leaderboardQuery.error && leaderboardQuery.data);
   const detailMissingFromLatestStandings = isSelectedLeaderboardEntryMissing(
     entries,
-    selectedDetail,
+    selectedDetailForEvent,
     leaderboardQuery.data != null && leaderboardQuery.dataUpdatedAt > 0,
   );
   const registrations: LeaderboardRegistration[] = leaderboardQuery.data?.registrations ?? [];
@@ -1071,7 +1076,7 @@ export function PaperChallengeLeaderboard({
         testID={`event-leaderboard-entry-${entry.rank}`}
         accessibilityRole="button"
         accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return${isOneStockChallenge ? `, current holding ${entry.holdings[0]?.symbol ?? 'cash'}, position market value ${entry.holdings[0]?.marketValue == null ? 'unavailable' : money(entry.holdings[0].marketValue)}, cash remaining ${money(entry.cashBalance)}` : ''}, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''} View public score summary.`}
-        onPress={() => setDetail(entry)}
+        onPress={() => setDetail({ eventId: event.id, entry })}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
@@ -1171,7 +1176,9 @@ export function PaperChallengeLeaderboard({
             ? `Rank ${entry.rank} of ${entries.length}${isBearMarketMayhem && entry.rank === 1 ? ', anti-champion' : ''}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}${isOneStockChallenge ? `, current holding ${oneStockHolding?.symbol ?? 'cash'}, position market value ${oneStockHolding?.marketValue == null ? oneStockHolding ? 'unavailable' : money(0) : money(oneStockHolding.marketValue)}, cash remaining ${money(entry.cashBalance)}` : ''}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
             : `Rank ${slot.rank}, waiting for competitor`}
           disabled={!entry}
-          onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
+          onPress={() => {
+            if (entry) setDetail({ eventId: event.id, entry: entry as LeaderboardEntry });
+          }}
           style={{
               minHeight: entry ? (isChampion ? compactPodium ? 264 : 280 : compactPodium ? 218 : 228) : 90,
             justifyContent: 'center',

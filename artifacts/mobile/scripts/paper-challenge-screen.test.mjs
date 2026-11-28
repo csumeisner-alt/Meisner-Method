@@ -11,6 +11,7 @@ import {
 import { getPaperTabNavigationAction } from "../lib/paperTabNavigation.ts";
 import {
   canRefreshEventArenaLeaderboard,
+  getSelectedLeaderboardEntryForEvent,
   isSelectedLeaderboardEntryMissing,
   resolveSelectedLeaderboardEntry,
 } from "../lib/eventArenaLeaderboardRefresh.ts";
@@ -925,7 +926,9 @@ test("Android Lightning leaderboard refreshes both server scores and selected pa
   assert.match(refreshFlow, /canRefreshEventArenaLeaderboard\(\{ visible, appIsActive, installationIdReady \}\)/);
   assert.match(refreshFlow, /await leaderboardQuery\.refetch\(\{ throwOnError: true \}\)/);
   assert.match(refreshFlow, /setRefreshing\(false\)[\s\S]*?refreshingRef\.current = false/);
-  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetail\)/);
+  assert.match(leaderboard, /const selectedDetailForEvent = getSelectedLeaderboardEntryForEvent\(event\.id, selectedDetail\)/);
+  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetailForEvent\)/);
+  assert.match(leaderboard, /isSelectedLeaderboardEntryMissing\(\s*entries,\s*selectedDetailForEvent,/);
   assert.match(leaderboard, /const detailMissingFromLatestStandings = isSelectedLeaderboardEntryMissing\(/);
   assert.match(leaderboard, /testID="paper-event-detail-unavailable"[\s\S]*?not current server data/);
   assert.match(leaderboard, /detailMissingFromLatestStandings\s*\?\s*'SAVED ACCOUNT VALUE'/);
@@ -990,6 +993,25 @@ test("Android leaderboard pauses while inactive and resumes with the selected se
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings.some((holding) => holding.symbol === "SPXL"), false);
   assert.equal(resolveSelectedLeaderboardEntry([refreshed], selected)?.holdings[0]?.marketValue, 2_400);
   assert.equal(resolveSelectedLeaderboardEntry([], selected), selected);
+});
+
+test("changing events hides a selected participant and avoids a false unavailable message", () => {
+  const selected = {
+    participantToken: "participant-a",
+    alias: "North Star",
+    scoreSource: "participant",
+  };
+  const selection = { eventId: "event-a", entry: selected };
+  const selectedForOriginalEvent = getSelectedLeaderboardEntryForEvent("event-a", selection);
+  const selectedForNewEvent = getSelectedLeaderboardEntryForEvent("event-b", selection);
+
+  assert.equal(selectedForOriginalEvent, selected);
+  assert.equal(selectedForNewEvent, null);
+  assert.equal(resolveSelectedLeaderboardEntry([], selectedForNewEvent), null);
+  assert.equal(isSelectedLeaderboardEntryMissing([], selectedForOriginalEvent, true), true);
+  assert.equal(isSelectedLeaderboardEntryMissing([], selectedForNewEvent, true), false);
+  assert.match(leaderboard, /onPress=\{\(\) => setDetail\(\{ eventId: event\.id, entry \}\)\}/);
+  assert.match(leaderboard, /setDetail\(\{ eventId: event\.id, entry: entry as LeaderboardEntry \}\)/);
 });
 
 test("a failed resume refresh keeps the last standings and retry updates selected details", async () => {
@@ -1142,7 +1164,7 @@ test("leaderboard names and large values remain readable and announced on compac
   assert.match(leaderboard, /LOWEST PERCENTAGE RETURN RANKS FIRST/);
   assert.match(leaderboard, /BEAR MARKET MAYHEM/);
   assert.match(leaderboard, /ANTI-CHAMPION/);
-  assert.match(renderPodium, /onPress=\{\(\) => \{ if \(entry\) setDetail\(entry as LeaderboardEntry\); \}\}/);
+  assert.match(renderPodium, /if \(entry\) setDetail\(\{ eventId: event\.id, entry: entry as LeaderboardEntry \}\)/);
   assert.match(renderEntry, /color: profitLossColor\(entry\.profitLoss\)/);
   assert.match(leaderboard, /<View accessible[\s\S]*?testID="paper-event-leaderboard-current-user"[\s\S]*?accessibilityLabel=\{`Your leaderboard position is rank \$\{ownEntry\.rank\}, \$\{ownEntry\.alias\}\.`\}/);
   assert.match(positionPanel, /allowFontScaling adjustsFontSizeToFit minimumFontScale=\{0\.7\} numberOfLines=\{1\}[\s\S]*?\{ownEntry\.alias\}/);
@@ -1176,7 +1198,7 @@ test("participant score detail follows refreshed entries and explains Lightning 
   const detailEnd = leaderboard.indexOf("</ScrollView>\n          ) : (", detailStart);
   const detail = leaderboard.slice(detailStart, detailEnd);
 
-  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetail\)/);
+  assert.match(leaderboard, /const detail = resolveSelectedLeaderboardEntry\(entries, selectedDetailForEvent\)/);
   assert.ok(detailStart >= 0 && detailEnd > detailStart);
   assert.match(detail, /\{detail\.rank\}/);
   assert.match(detail, /\{detail\.alias\}/);
