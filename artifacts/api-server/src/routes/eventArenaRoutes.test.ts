@@ -2427,6 +2427,108 @@ test("Lightning leaderboard includes event-tagged account details for entered pa
   });
 });
 
+test("Lightning leaderboard ranks full sales from cash when quotes are unavailable", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const participants = [
+    { installationId: "sold-first-installation-12345", alias: "Cash Seller", buyPrice: 100, sellPrice: 110 },
+    { installationId: "sold-second-installation-12345", alias: "Higher Cash Seller", buyPrice: 100, sellPrice: 120 },
+  ];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("FROM event_arena_leaderboard_entries")) {
+      return { rows: participants.map((participant) => ({
+        installation_id: participant.installationId,
+        participant_token: `${participant.alias.toLowerCase().replaceAll(" ", "-")}-token-123456`,
+        alias: participant.alias,
+        start_equity: 100_000,
+        equity: 100_000,
+        cash_balance: 90_000,
+        trade_count: 1,
+        holdings: [{
+          symbol: "AAPL",
+          companyName: "Apple Inc.",
+          allocationPercent: 10,
+          marketValue: 10_000,
+          assetType: "stock",
+          side: "long",
+        }],
+        updated_at: new Date("2026-11-27T14:20:00.000Z"),
+      })) };
+    }
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      return { rows: participants.map((participant) => ({
+        installation_id: participant.installationId,
+        alias: participant.alias,
+        status: "entered",
+        updated_at: new Date("2026-11-27T14:44:00.000Z"),
+      })) };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      assert.match(sql, /participant\.account_id=trade\.account_id/);
+      assert.deepEqual(values, [
+        lightningEventId,
+        participants.map((participant) => participant.installationId),
+        configuration.startAtMs,
+        configuration.endAtMs,
+      ]);
+      return { rows: participants.flatMap((participant) => [
+        {
+          user_id: participant.installationId,
+          symbol: "AAPL",
+          company_name: "Apple Inc.",
+          action: "BUY",
+          shares: 10,
+          price: participant.buyPrice,
+          total: participant.buyPrice * 10,
+          fee: 0,
+          date: new Date("2026-11-27T14:31:00.000Z"),
+          asset_type: "stock",
+        },
+        {
+          user_id: participant.installationId,
+          symbol: "AAPL",
+          company_name: "Apple Inc.",
+          action: "SELL",
+          shares: 10,
+          price: participant.sellPrice,
+          total: participant.sellPrice * 10,
+          fee: 0,
+          date: new Date("2026-11-27T14:32:00.000Z"),
+          asset_type: "stock",
+        },
+      ]) };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`);
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries.map((entry: any) => [
+      entry.rank,
+      entry.alias,
+      entry.equity,
+      entry.cashBalance,
+      entry.scoreSource,
+      entry.holdings,
+    ]), [
+      [1, "Higher Cash Seller", 100_200, 100_200, "server", []],
+      [2, "Cash Seller", 100_100, 100_100, "server", []],
+    ]);
+  }, Date.parse("2026-11-27T14:45:00.000Z"), savedConfigurations, async () => null);
+});
+
 test("Lightning leaderboard refreshes ranked participants from server fills and current prices", async () => {
   const lightningEventId = "lightning-2026-11-27";
   const configuration = expectedEventArenaConfiguration(lightningEventId);

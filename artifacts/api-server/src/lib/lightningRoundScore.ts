@@ -71,10 +71,11 @@ export function calculateLightningRoundScore(
     } else if (trade.action === "SELL" && current) {
       if (shares > current.shares + 0.0001) return null;
       cashBalance += total - Number(trade.fee ?? 0);
-      const remaining = Math.max(0, current.shares - shares);
-      if (remaining <= 0.0001) {
+      // A full liquidation leaves no position that depends on a current quote.
+      if (shares >= current.shares - 0.0001) {
         positions.delete(trade.symbol);
       } else {
+        const remaining = current.shares - shares;
         positions.set(trade.symbol, {
           ...current,
           shares: remaining,
