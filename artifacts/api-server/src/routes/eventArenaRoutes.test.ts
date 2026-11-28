@@ -2652,6 +2652,122 @@ test("Lightning leaderboard ranks full sales from cash when quotes are unavailab
   }, Date.parse("2026-11-27T14:45:00.000Z"), savedConfigurations, async () => null);
 });
 
+test("Lightning leaderboard rebuilds a fully sold ticker from only the later buy", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const installationId = "rebought-ticker-installation-12345";
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("FROM event_arena_leaderboard_entries")) {
+      return { rows: [{
+        installation_id: installationId,
+        participant_token: "rebought-ticker-public-token-123456",
+        alias: "MarketFox",
+        start_equity: 100_000,
+        equity: 100_500,
+        cash_balance: 95_000,
+        trade_count: 1,
+        holdings: [{
+          symbol: "AAPL",
+          companyName: "Old Apple Name",
+          allocationPercent: 5,
+          marketValue: 5_000,
+          assetType: "stock",
+          side: "long",
+        }],
+        updated_at: new Date("2026-11-27T14:20:00.000Z"),
+      }] };
+    }
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      return { rows: [{
+        installation_id: installationId,
+        alias: "MarketFox",
+        status: "entered",
+        updated_at: new Date("2026-11-27T14:44:00.000Z"),
+      }] };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      assert.match(sql, /participant\.account_id=trade\.account_id/);
+      assert.deepEqual(values, [
+        lightningEventId,
+        [installationId],
+        configuration.startAtMs,
+        configuration.endAtMs,
+      ]);
+      return { rows: [
+        {
+          user_id: installationId,
+          symbol: "AAPL",
+          company_name: "Old Apple Name",
+          action: "BUY",
+          shares: 10,
+          price: 100,
+          total: 1_000,
+          fee: 0,
+          date: new Date("2026-11-27T14:31:00.000Z"),
+          asset_type: "stock",
+        },
+        {
+          user_id: installationId,
+          symbol: "AAPL",
+          company_name: "Old Apple Name",
+          action: "SELL",
+          shares: 10,
+          price: 110,
+          total: 1_100,
+          fee: 0,
+          date: new Date("2026-11-27T14:32:00.000Z"),
+          asset_type: "stock",
+        },
+        {
+          user_id: installationId,
+          symbol: "AAPL",
+          company_name: "New Apple Name",
+          action: "BUY",
+          shares: 3,
+          price: 150,
+          total: 450,
+          fee: 0,
+          date: new Date("2026-11-27T14:33:00.000Z"),
+          asset_type: "stock",
+        },
+      ] };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`);
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.equal(result.entries.length, 1);
+    assert.equal(result.entries[0].scoreSource, "server");
+    assert.equal(result.entries[0].tradeCount, 3);
+    assert.equal(result.entries[0].cashBalance, 99_650);
+    assert.equal(result.entries[0].equity, 100_130);
+    assert.deepEqual(result.entries[0].holdings, [{
+      symbol: "AAPL",
+      companyName: "New Apple Name",
+      allocationPercent: 480 / 100_130 * 100,
+      marketValue: 480,
+      assetType: "stock",
+      side: "long",
+    }]);
+  }, Date.parse("2026-11-27T14:45:00.000Z"), savedConfigurations, async (symbol) => {
+    assert.equal(symbol, "AAPL");
+    return 160;
+  });
+});
+
 test("Lightning leaderboard keeps the saved score stale when sell history is invalid", async () => {
   const lightningEventId = "lightning-2026-11-27";
   const configuration = expectedEventArenaConfiguration(lightningEventId);

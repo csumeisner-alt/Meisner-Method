@@ -39,6 +39,7 @@ test("same-time sell then buy keeps persisted fill order and rebuilds the remain
   const fills = [
     {
       symbol: "AAPL",
+      company_name: "Old Apple Name",
       action: "BUY",
       shares: 10,
       price: 50,
@@ -47,6 +48,7 @@ test("same-time sell then buy keeps persisted fill order and rebuilds the remain
     },
     {
       symbol: "AAPL",
+      company_name: "Old Apple Name",
       action: "SELL",
       shares: 10,
       price: 60,
@@ -55,6 +57,7 @@ test("same-time sell then buy keeps persisted fill order and rebuilds the remain
     },
     {
       symbol: "AAPL",
+      company_name: "New Apple Name",
       action: "BUY",
       shares: 5,
       price: 70,
@@ -72,7 +75,7 @@ test("same-time sell then buy keeps persisted fill order and rebuilds the remain
   assert.equal(firstRead.equity, 10_150);
   assert.deepEqual(firstRead.finalPositions, [{
     symbol: "AAPL",
-    companyName: "AAPL",
+    companyName: "New Apple Name",
     shares: 5,
     avgCost: 70,
     marketPrice: 80,
