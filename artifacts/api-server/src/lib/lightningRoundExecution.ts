@@ -335,11 +335,12 @@ async function refreshActiveEventStandings(
       Number(event.starting_balance),
       fetchPrice,
     );
-    // Do not publish a partial ranking when even one participant cannot be
-    // valued from the server's current quote set.
-    if (!scoredActivity) return;
+    // Keep this participant's previous result untouched, but do not let one
+    // malformed or currently unscorable history block other participants.
+    if (!scoredActivity) continue;
     scoredParticipants.push({ participant, score: scoredActivity.score! });
   }
+  if (scoredParticipants.length === 0) return;
 
   for (const { participant, score } of scoredParticipants) {
     await db.query(
@@ -381,11 +382,12 @@ async function refreshActiveEventStandings(
        JOIN event_arena_lightning_participants AS participant
          ON participant.event_id=entry.event_id
          AND participant.installation_id=entry.installation_id
-       WHERE entry.event_id=$1 AND entry.is_active=TRUE AND participant.status='entered'
+       WHERE entry.event_id=$1 AND entry.installation_id=ANY($2::text[])
+         AND entry.is_active=TRUE AND participant.status='entered'
          AND participant.leaderboard_opted_in=TRUE
      ) AS ranked
      ORDER BY rank`,
-    [event.event_id],
+    [event.event_id, scoredParticipants.map(({ participant }) => participant.installation_id)],
   );
   if (rankedRows.length === 0) return;
 

@@ -320,9 +320,16 @@ class MemoryDatabase implements LightningExecutionDatabase {
       return { rows: [] };
     }
     if (sql.includes("SELECT installation_id,participant_token,rank,return_percent")) {
+      const includedInstallations = Array.isArray(values[1])
+        ? new Set(values[1].map(String))
+        : null;
       const rows = state.leaderboardEntries
         .filter((entry) => {
-          if (entry.event_id !== values[0] || !entry.is_active) return false;
+          if (entry.event_id !== values[0]
+            || !entry.is_active
+            || (includedInstallations && !includedInstallations.has(String(entry.installation_id)))) {
+            return false;
+          }
           const participant = state.participants.find((row) =>
             row.event_id === entry.event_id && row.installation_id === entry.installation_id,
           );
@@ -720,6 +727,116 @@ test("active Lightning history records participants passing after a worker resta
 
   await process(new MemoryDatabase(state), fetchPrice, () => firstAt + 7 * 60_000);
   assert.equal(state.snapshots.length, 4, "unchanged ranks do not create duplicate history points");
+});
+
+test("malformed Lightning history stays stale while valid participants refresh and rank", async () => {
+  const state = seedEnteredState();
+  const secondInstallationId = "installation-second";
+  const secondAccountId = "paper-event:second";
+  const malformedInstallationId = "installation-malformed";
+  const malformedAccountId = "paper-event:malformed";
+
+  state.participants.push(
+    {
+      ...state.participants[0],
+      installation_id: secondInstallationId,
+      account_id: secondAccountId,
+      alias: "SteadyOwl",
+    },
+    {
+      ...state.participants[0],
+      installation_id: malformedInstallationId,
+      account_id: malformedAccountId,
+      alias: "OldScore",
+    },
+  );
+  state.accounts.push(
+    { ...state.accounts[0], id: secondAccountId, user_id: secondInstallationId },
+    { ...state.accounts[0], id: malformedAccountId, user_id: malformedInstallationId },
+  );
+  state.transactions.push(
+    {
+      id: "second-lightning-buy",
+      user_id: secondInstallationId,
+      account_id: secondAccountId,
+      symbol: "GOOG",
+      company_name: "Alphabet",
+      action: "BUY",
+      shares: 2,
+      price: 100,
+      total: 200,
+      fee: 0,
+      date: new Date(startAt + 1000),
+      lightning_round_event_id: eventId,
+    },
+    {
+      id: "malformed-lightning-trade",
+      user_id: malformedInstallationId,
+      account_id: malformedAccountId,
+      symbol: "MSFT",
+      company_name: "Microsoft",
+      action: "TRANSFER",
+      shares: 1,
+      price: 100,
+      total: 100,
+      fee: 0,
+      date: new Date(startAt + 1000),
+      lightning_round_event_id: eventId,
+    },
+  );
+  const staleEntry = {
+    event_id: eventId,
+    installation_id: malformedInstallationId,
+    participant_token: `token-${malformedInstallationId}`,
+    alias: "OldScore",
+    start_equity: 100_000,
+    equity: 175_000,
+    return_percent: 75,
+    trade_count: 4,
+    holdings: [],
+    updated_at: new Date(startAt + 2_000),
+    is_active: true,
+  };
+  state.leaderboardEntries.push(staleEntry);
+  state.snapshots.push({
+    event_id: eventId,
+    participant_token: staleEntry.participant_token,
+    rank: 1,
+    return_percent: staleEntry.return_percent,
+    event_start_at: new Date(startAt),
+    event_end_at: new Date(endAt),
+    captured_at: new Date(startAt + 2_000),
+    is_final: false,
+  });
+
+  const firstAt = startAt + 5 * 60_000;
+  await process(
+    new MemoryDatabase(state),
+    async (symbol) => (symbol === "AAPL" ? 110 : symbol === "GOOG" ? 100 : 150),
+    () => firstAt,
+  );
+
+  assert.equal(state.leaderboardEntries.find(
+    (entry) => entry.installation_id === installationId,
+  )?.return_percent, 0.02);
+  assert.equal(state.leaderboardEntries.find(
+    (entry) => entry.installation_id === secondInstallationId,
+  )?.return_percent, 0);
+  assert.equal(state.leaderboardEntries.find(
+    (entry) => entry.installation_id === malformedInstallationId,
+  ), staleEntry, "malformed history must not receive a new saved score");
+  assert.equal(staleEntry.return_percent, 75);
+  assert.equal(staleEntry.updated_at.getTime(), startAt + 2_000);
+
+  assert.deepEqual(
+    state.snapshots.filter((snapshot) => snapshot.captured_at.getTime() === firstAt)
+      .map(({ participant_token, rank }) => ({ participant_token, rank })),
+    [
+      { participant_token: `token-${installationId}`, rank: 1 },
+      { participant_token: `token-${secondInstallationId}`, rank: 2 },
+    ],
+    "the stale entry must not distort ranks in snapshots for refreshed participants",
+  );
 });
 
 test("active Lightning standings exclude opted-out entries after a worker reconnect", async () => {
