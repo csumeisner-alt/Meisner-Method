@@ -2529,6 +2529,83 @@ test("Lightning leaderboard ranks full sales from cash when quotes are unavailab
   }, Date.parse("2026-11-27T14:45:00.000Z"), savedConfigurations, async () => null);
 });
 
+test("Lightning leaderboard keeps the saved score stale when sell history is invalid", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const installationId = "invalid-sell-installation-12345";
+  const invalidHistories = [
+    [{
+      action: "SELL",
+      shares: 1,
+      price: 110,
+      total: 110,
+    }],
+    [
+      { action: "BUY", shares: 2, price: 100, total: 200 },
+      { action: "SELL", shares: 2.0001, price: 110, total: 220.011 },
+    ],
+  ];
+
+  for (const history of invalidHistories) {
+    await withApi(async (sql) => {
+      if (sql.startsWith("DELETE")) return { rows: [] };
+      if (sql.includes("FROM event_arena_leaderboard_entries")) {
+        return { rows: [{
+          installation_id: installationId,
+          participant_token: "invalid-sell-public-token-123456",
+          alias: "MarketFox",
+          start_equity: 100_000,
+          equity: 100_050,
+          cash_balance: 95_000,
+          trade_count: 2,
+          holdings: [],
+          updated_at: new Date("2026-11-27T14:20:00.000Z"),
+        }] };
+      }
+      if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+        return { rows: [{
+          installation_id: installationId,
+          alias: "MarketFox",
+          status: "entered",
+          updated_at: new Date("2026-11-27T14:44:00.000Z"),
+        }] };
+      }
+      if (sql.includes("FROM paper_transactions")) {
+        return { rows: history.map((trade, index) => ({
+          user_id: installationId,
+          symbol: "AAPL",
+          company_name: "Apple Inc.",
+          ...trade,
+          fee: 0,
+          date: new Date(`2026-11-27T14:${31 + index}:00.000Z`),
+          asset_type: "stock",
+        })) };
+      }
+      return { rows: [] };
+    }, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`);
+      assert.equal(response.status, 200);
+      const result = await response.json() as any;
+      assert.equal(result.entries.length, 1);
+      assert.equal(result.entries[0].equity, 100_050);
+      assert.equal(result.entries[0].cashBalance, 95_000);
+      assert.equal(result.entries[0].scoreSource, "participant");
+      assert.equal(result.entries[0].updatedAt, "2026-11-27T14:20:00.000Z");
+    }, Date.parse("2026-11-27T14:45:00.000Z"), savedConfigurations, async () => 110);
+  }
+});
+
 test("Lightning leaderboard refreshes ranked participants from server fills and current prices", async () => {
   const lightningEventId = "lightning-2026-11-27";
   const configuration = expectedEventArenaConfiguration(lightningEventId);

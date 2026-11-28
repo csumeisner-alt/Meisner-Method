@@ -1012,6 +1012,25 @@ test("Lightning Round scoring is derived only from event-tagged transactions", a
     ),
     null,
   );
+  assert.equal(
+    calculateLightningRoundScore(
+      [{ symbol: "AAPL", action: "SELL", shares: 1, price: 110, total: 110 }],
+      {},
+      1_000,
+    ),
+    null,
+  );
+  assert.equal(
+    calculateLightningRoundScore(
+      [
+        { symbol: "AAPL", action: "BUY", shares: 2, price: 100, total: 200 },
+        { symbol: "AAPL", action: "SELL", shares: 2.0001, price: 110, total: 220.011 },
+      ],
+      {},
+      1_000,
+    ),
+    null,
+  );
 });
 
 test("event-end standings freeze tagged trades, final prices, and ranks once across retries", async () => {
@@ -1067,6 +1086,24 @@ test("event-end standings freeze tagged trades, final prices, and ranks once acr
 test("Lightning Round fingerprint uses only this participant's tagged fills inside the round", async () => {
   const state = seedEnteredState();
   state.transactions.push(
+    ...[
+      { id: "event-buy-1", symbol: "AAA", hour: 0, shares: 0.5 },
+      { id: "event-buy-2", symbol: "BBB", hour: 0, shares: 0.5 },
+      { id: "event-buy-3", symbol: "CCC", hour: 0, shares: 1 },
+    ].map((item) => ({
+      id: item.id,
+      user_id: installationId,
+      account_id: accountId,
+      symbol: item.symbol,
+      company_name: "Apple",
+      action: "BUY",
+      shares: item.shares,
+      price: 100,
+      total: item.shares * 100,
+      fee: 0,
+      date: new Date(startAt + item.hour * 60 * 60 * 1000),
+      lightning_round_event_id: eventId,
+    })),
     ...[
       { id: "event-sell-1", symbol: "AAA", hour: 1, shares: 0.5, price: 110, realized_pnl: 5 },
       { id: "event-sell-2", symbol: "BBB", hour: 2, shares: 0.5, price: 120, realized_pnl: 10 },
@@ -1147,7 +1184,7 @@ test("Lightning Round fingerprint uses only this participant's tagged fills insi
   await process(new MemoryDatabase(state), async () => 110, () => endAt + 1000);
 
   const saved = state.participants[0]?.final_result;
-  assert.equal(saved?.tradeCount, 4);
+  assert.equal(saved?.tradeCount, 7);
   assert.equal(saved?.tradingFingerprintObservation?.observationId, "positive-trade-consistency");
   assert.equal(saved?.tradingFingerprintObservation?.evidence.positiveTradeCount, 3);
   assert.equal(saved?.tradingFingerprintObservation?.evidence.realizedTradeCount, 3);

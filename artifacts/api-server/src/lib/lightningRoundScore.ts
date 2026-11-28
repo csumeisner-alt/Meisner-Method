@@ -68,11 +68,11 @@ export function calculateLightningRoundScore(
         shares: (current?.shares ?? 0) + shares,
         cost: (current?.cost ?? 0) + shares * Number(trade.price),
       });
-    } else if (trade.action === "SELL" && current) {
-      if (shares > current.shares + 0.0001) return null;
+    } else if (trade.action === "SELL") {
+      if (!current || shares > current.shares) return null;
       cashBalance += total - Number(trade.fee ?? 0);
       // A full liquidation leaves no position that depends on a current quote.
-      if (shares >= current.shares - 0.0001) {
+      if (shares === current.shares) {
         positions.delete(trade.symbol);
       } else {
         const remaining = current.shares - shares;
