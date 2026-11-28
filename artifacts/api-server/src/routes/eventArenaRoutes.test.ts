@@ -2673,6 +2673,7 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
         configuration.startAtMs,
         configuration.endAtMs,
       ]);
+      assert.match(sql, /ORDER BY trade\.user_id ASC,trade\.date ASC,trade\.id ASC/);
       assert.match(sql, /participant\.account_id=trade\.account_id/);
       return { rows: [
         {
@@ -2708,7 +2709,7 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
           price: 110,
           total: 3_300,
           fee: 25,
-          date: new Date("2026-11-27T14:32:00.000Z"),
+          date: new Date("2026-11-27T14:31:00.000Z"),
           asset_type: "etf",
         },
         {
@@ -2755,6 +2756,24 @@ test("Lightning leaderboard refreshes ranked participants from server fills and 
     assert.deepEqual(firstRefresh.registrations, []);
     assert.equal(JSON.stringify(firstRefresh).includes(participantIds[0]), false);
     assert.equal(JSON.stringify(firstRefresh).includes(participantIds[1]), false);
+
+    const repeatedFirstRefresh = await readLeaderboard();
+    assert.deepEqual(
+      repeatedFirstRefresh.entries.map((entry: any) => [
+        entry.rank,
+        entry.alias,
+        entry.equity,
+        entry.cashBalance,
+        entry.holdings,
+      ]),
+      firstRefresh.entries.map((entry: any) => [
+        entry.rank,
+        entry.alias,
+        entry.equity,
+        entry.cashBalance,
+        entry.holdings,
+      ]),
+    );
 
     currentPrices = { SPXL: 80, AAPL: 130, NVDA: 50 };
     const secondRefresh = await readLeaderboard();

@@ -6,6 +6,7 @@ export type LightningRoundActivity = {
   price: number;
   total: number;
   fee?: number | null;
+  date?: string | Date | null;
 };
 
 export type LightningRoundScore = {
@@ -39,9 +40,15 @@ export function calculateLightningRoundScore(
   startingBalance: number,
 ): LightningRoundScore | null {
   if (!Number.isFinite(startingBalance) || startingBalance <= 0) return null;
-  const sorted = [...activity].sort((left, right) =>
-    String((left as any).date ?? "").localeCompare(String((right as any).date ?? "")),
-  );
+  // The database supplies fills in date/id order. Keep that persisted order
+  // explicitly when timestamps tie, rather than relying on sort stability.
+  const sorted = activity
+    .map((trade, index) => ({ trade, index }))
+    .sort((left, right) =>
+      String(left.trade.date ?? "").localeCompare(String(right.trade.date ?? ""))
+      || left.index - right.index,
+    )
+    .map(({ trade }) => trade);
   const positions = new Map<string, { symbol: string; companyName: string; shares: number; cost: number }>();
   let cashBalance = startingBalance;
   for (const trade of sorted) {
