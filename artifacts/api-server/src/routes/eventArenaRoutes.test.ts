@@ -3515,3 +3515,134 @@ test("withdrawing from an upcoming Lightning Round removes its queued participan
   });
   assert.equal(removed, true);
 });
+
+test("Lightning leaderboard recovers the same cash, holdings, and rank from reverse-chronological fills", async () => {
+  const lightningEventId = "lightning-2026-11-27";
+  const configuration = expectedEventArenaConfiguration(lightningEventId);
+  assert.ok(configuration);
+  const savedConfigurations = new Map([[lightningEventId, {
+    event_id: lightningEventId,
+    event_type: configuration.eventType,
+    artwork_id: configuration.artworkId,
+    starting_balance: configuration.startingBalance,
+    ranking_direction: configuration.rankingDirection,
+    purchase_limit: configuration.purchaseLimit ?? null,
+    event_start_at: new Date(configuration.startAtMs),
+    event_end_at: new Date(configuration.endAtMs),
+  }]]);
+  const participantIds = ["reverse-fill-installation-12345", "benchmark-installation-12345"];
+  const prices = { AAPL: 130, MSFT: 140 };
+  const reverseChronologicalRows = [
+    {
+      user_id: participantIds[0],
+      symbol: "AAPL",
+      company_name: "Apple Inc.",
+      action: "SELL",
+      shares: 2,
+      price: 120,
+      total: 240,
+      fee: 0,
+      date: new Date("2026-11-27T14:34:00.000Z"),
+      asset_type: "stock",
+    },
+    {
+      user_id: participantIds[1],
+      symbol: "MSFT",
+      company_name: "Microsoft Corporation",
+      action: "BUY",
+      shares: 10,
+      price: 100,
+      total: 1_000,
+      fee: 0,
+      date: new Date("2026-11-27T14:31:00.000Z"),
+      asset_type: "stock",
+    },
+    {
+      user_id: participantIds[0],
+      symbol: "AAPL",
+      company_name: "Apple Inc.",
+      action: "BUY",
+      shares: 2,
+      price: 105,
+      total: 210,
+      fee: 0,
+      date: new Date("2026-11-27T14:33:00.000Z"),
+      asset_type: "stock",
+    },
+    {
+      user_id: participantIds[0],
+      symbol: "AAPL",
+      company_name: "Apple Inc.",
+      action: "SELL",
+      shares: 4,
+      price: 110,
+      total: 440,
+      fee: 1,
+      date: new Date("2026-11-27T14:32:00.000Z"),
+      asset_type: "stock",
+    },
+    {
+      user_id: participantIds[0],
+      symbol: "AAPL",
+      company_name: "Apple Inc.",
+      action: "BUY",
+      shares: 10,
+      price: 100,
+      total: 1_000,
+      fee: 0,
+      date: new Date("2026-11-27T14:31:00.000Z"),
+      asset_type: "stock",
+    },
+  ];
+
+  await withApi(async (sql) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql.includes("FROM event_arena_leaderboard_entries")) {
+      return { rows: participantIds.map((installation_id, index) => ({
+        installation_id,
+        participant_token: `reverse-fill-public-token-${index}-123456`,
+        alias: index === 0 ? "Reverse Fill" : "Benchmark",
+        start_equity: 100_000,
+        equity: 100_000,
+        cash_balance: 100_000,
+        trade_count: 0,
+        holdings: [],
+        updated_at: new Date("2026-11-27T14:20:00.000Z"),
+      })) };
+    }
+    if (sql.includes("SELECT participant.installation_id,participant.alias,participant.status")) {
+      return { rows: participantIds.map((installation_id, index) => ({
+        installation_id,
+        alias: index === 0 ? "Reverse Fill" : "Benchmark",
+        status: "entered",
+        updated_at: new Date("2026-11-27T14:35:00.000Z"),
+      })) };
+    }
+    if (sql.includes("FROM paper_transactions")) {
+      assert.match(sql, /ORDER BY trade\.user_id ASC,trade\.date ASC,trade\.id ASC/);
+      // Simulate a recovery/database result that disregards chronological ordering.
+      return { rows: reverseChronologicalRows };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEventId}/leaderboard`);
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries.map((entry: any) => [entry.rank, entry.alias, entry.equity]), [
+      [1, "Benchmark", 100_400],
+      [2, "Reverse Fill", 100_249],
+    ]);
+
+    const recovered = result.entries[1];
+    assert.equal(recovered.cashBalance, 99_469);
+    assert.equal(recovered.returnPercent, 0.249);
+    assert.equal(recovered.tradeCount, 4);
+    assert.deepEqual(recovered.holdings.map((holding: any) => [
+      holding.symbol,
+      holding.marketValue,
+      holding.assetType,
+    ]), [["AAPL", 780, "stock"]]);
+  }, Date.parse("2026-11-27T14:35:00.000Z"), savedConfigurations, async (symbol) =>
+    prices[symbol as keyof typeof prices] ?? null,
+  );
+});

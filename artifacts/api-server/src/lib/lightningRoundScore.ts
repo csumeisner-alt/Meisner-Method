@@ -40,12 +40,22 @@ export function calculateLightningRoundScore(
   startingBalance: number,
 ): LightningRoundScore | null {
   if (!Number.isFinite(startingBalance) || startingBalance <= 0) return null;
-  // The database supplies fills in date/id order. Keep that persisted order
-  // explicitly when timestamps tie, rather than relying on sort stability.
+  // Sort by the actual timestamp because database results may be returned in
+  // another order. Preserve persisted input order when timestamps tie.
   const sorted = activity
-    .map((trade, index) => ({ trade, index }))
+    .map((trade, index) => ({
+      trade,
+      index,
+      timestamp: trade.date instanceof Date
+        ? trade.date.getTime()
+        : typeof trade.date === "string"
+          ? Date.parse(trade.date)
+          : Number.NaN,
+    }))
     .sort((left, right) =>
-      String(left.trade.date ?? "").localeCompare(String(right.trade.date ?? ""))
+      (Number.isFinite(left.timestamp) && Number.isFinite(right.timestamp)
+        ? left.timestamp - right.timestamp
+        : 0)
       || left.index - right.index,
     )
     .map(({ trade }) => trade);
