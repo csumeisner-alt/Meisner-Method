@@ -339,6 +339,22 @@ test("Lightning Round opens the private sampled score timeline with clear load s
   assert.match(lightningRound, /point\.returnPercent/);
 });
 
+test("Lightning score history refreshes once on foreground return and keeps saved points on failure", () => {
+  const historyEffectStart = lightningRound.indexOf("useEffect(() => {\n    if (!scoreHistoryOpen || tab !== 'leaderboard') return;");
+  const historyEffectEnd = lightningRound.indexOf("\n  const syncEventScore =", historyEffectStart);
+  const historyEffect = lightningRound.slice(historyEffectStart, historyEffectEnd);
+  assert.ok(historyEffectStart >= 0 && historyEffectEnd > historyEffectStart);
+  assert.match(lightningRound, /import \{[\s\S]*?\bAppState\b[\s\S]*?\} from 'react-native'/);
+  assert.match(lightningRound, /const scoreHistoryRequestRef = useRef<Promise<void> \| null>\(null\)/);
+  assert.match(lightningRound, /if \(scoreHistoryRequestRef\.current\) return scoreHistoryRequestRef\.current/);
+  assert.match(historyEffect, /previousAppState !== 'active' && nextAppState === 'active'/);
+  assert.match(historyEffect, /if \(AppState\.currentState === 'active'\) void refreshScoreHistory\(\)/);
+  assert.match(historyEffect, /subscription\.remove\(\)/);
+  assert.match(historyEffect, /if \(returnedToForeground\) void refreshScoreHistory\(\)/);
+  assert.match(lightningRound, /setScoreHistoryError\('Your saved score history is unavailable right now\. Try again\.'\)/);
+  assert.match(lightningRound, /\{scoreHistoryEventId === enrollment\.eventId && scoreHistory\.length > 0 && \(/);
+});
+
 test("Event Arena header invitation uses the prepared schedule and existing Lightning Round route", () => {
   assert.match(eventArena, /<LightningRoundInvitation[\s\S]*?onOpen=\{\(\) => router\.push\('\/lightning-round'\)\}/);
   assert.match(lightningInvitation, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);

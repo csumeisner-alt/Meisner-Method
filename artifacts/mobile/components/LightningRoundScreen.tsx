@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Image,
   ImageBackground,
   Modal,
@@ -338,6 +339,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [scoreHistoryEventId, setScoreHistoryEventId] = useState<string | null>(null);
   const [scoreHistoryLoading, setScoreHistoryLoading] = useState(false);
   const [scoreHistoryError, setScoreHistoryError] = useState('');
+  const scoreHistoryRequestRef = useRef<Promise<void> | null>(null);
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveWaitingMessage, setArchiveWaitingMessage] = useState('');
@@ -613,50 +615,70 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   }, [refreshAccount]);
 
   const refreshScoreHistory = useCallback(async () => {
-    if (!enrollment || enrollment.eventId !== window.id) {
-      setScoreHistory([]);
-      setScoreHistoryEventId(null);
-      setScoreHistoryError('Join this Lightning Round to view your score history.');
-      return;
-    }
-    if (enrollment.leaderboardOptedIn !== true) {
-      setScoreHistory([]);
-      setScoreHistoryEventId(enrollment.eventId);
-      setScoreHistoryError('Score history is unavailable because leaderboard sharing is off for this round.');
-      return;
-    }
-    setScoreHistoryLoading(true);
-    setScoreHistoryError('');
+    if (scoreHistoryRequestRef.current) return scoreHistoryRequestRef.current;
+    const request = (async () => {
+      if (!enrollment || enrollment.eventId !== window.id) {
+        setScoreHistory([]);
+        setScoreHistoryEventId(null);
+        setScoreHistoryError('Join this Lightning Round to view your score history.');
+        return;
+      }
+      if (enrollment.leaderboardOptedIn !== true) {
+        setScoreHistory([]);
+        setScoreHistoryEventId(enrollment.eventId);
+        setScoreHistoryError('Score history is unavailable because leaderboard sharing is off for this round.');
+        return;
+      }
+      setScoreHistoryLoading(true);
+      setScoreHistoryError('');
+      try {
+        const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
+        const response = await fetch(
+          `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard/history`,
+          { headers: { 'X-Event-Arena-Installation-Id': installationId } },
+        );
+        if (!response.ok) throw new Error('Score history is unavailable.');
+        const payload = await response.json() as { snapshots?: unknown };
+        if (!Array.isArray(payload.snapshots)) throw new Error('Score history response was invalid.');
+        const points = (payload.snapshots as LightningScoreHistoryPoint[])
+          .filter((point) => typeof point?.capturedAt === 'string'
+            && Number.isFinite(Date.parse(point.capturedAt))
+            && Number.isInteger(point.rank)
+            && point.rank > 0
+            && Number.isFinite(point.returnPercent))
+          .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
+        setScoreHistory(points);
+        setScoreHistoryEventId(enrollment.eventId);
+      } catch {
+        setScoreHistoryError('Your saved score history is unavailable right now. Try again.');
+      } finally {
+        setScoreHistoryLoading(false);
+      }
+    })();
+    scoreHistoryRequestRef.current = request;
     try {
-      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
-      const response = await fetch(
-        `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard/history`,
-        { headers: { 'X-Event-Arena-Installation-Id': installationId } },
-      );
-      if (!response.ok) throw new Error('Score history is unavailable.');
-      const payload = await response.json() as { snapshots?: unknown };
-      if (!Array.isArray(payload.snapshots)) throw new Error('Score history response was invalid.');
-      const points = (payload.snapshots as LightningScoreHistoryPoint[])
-        .filter((point) => typeof point?.capturedAt === 'string'
-          && Number.isFinite(Date.parse(point.capturedAt))
-          && Number.isInteger(point.rank)
-          && point.rank > 0
-          && Number.isFinite(point.returnPercent))
-        .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
-      setScoreHistory(points);
-      setScoreHistoryEventId(enrollment.eventId);
-    } catch {
-      setScoreHistoryError('Your saved score history is unavailable right now. Try again.');
+      await request;
     } finally {
-      setScoreHistoryLoading(false);
+      if (scoreHistoryRequestRef.current === request) scoreHistoryRequestRef.current = null;
     }
   }, [enrollment, window.id]);
 
   useEffect(() => {
     if (!scoreHistoryOpen || tab !== 'leaderboard') return;
-    void refreshScoreHistory();
-    const timer = setInterval(() => { void refreshScoreHistory(); }, 60_000);
-    return () => clearInterval(timer);
+    let previousAppState = AppState.currentState;
+    if (previousAppState === 'active') void refreshScoreHistory();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refreshScoreHistory();
+    }, 60_000);
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const returnedToForeground = previousAppState !== 'active' && nextAppState === 'active';
+      previousAppState = nextAppState;
+      if (returnedToForeground) void refreshScoreHistory();
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, [refreshScoreHistory, scoreHistoryOpen, tab]);
 
   const syncEventScore = useCallback(async () => {
@@ -1406,7 +1428,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                           </Text>
                         </View>
                     )}
-                    {!scoreHistoryError && scoreHistoryEventId === enrollment.eventId && scoreHistory.length > 0 && (
+                    {scoreHistoryEventId === enrollment.eventId && scoreHistory.length > 0 && (
                       <ScrollView
                         testID="lightning-round-score-history-points"
                         nestedScrollEnabled
