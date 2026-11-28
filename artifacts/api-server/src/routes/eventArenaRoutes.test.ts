@@ -3228,28 +3228,35 @@ test("locked aliases return conflict; fast duplicate submissions are rate limite
 });
 
 test("opt-out clears public score data while retaining only the event-scoped alias lock", async () => {
+  const optedOutEventId = "lightning-2026-11-27";
+  const operations: string[] = [];
   await withApi(async (sql, values) => {
+    if (sql === "BEGIN") operations.push("begin");
     if (sql.includes("pg_advisory_xact_lock")) {
-      assert.deepEqual(values, [eventId]);
+      assert.deepEqual(values, [optedOutEventId]);
+      operations.push("event-lock");
       return { rows: [] };
     }
     if (
       sql.startsWith("DELETE FROM event_arena_leaderboard_snapshots")
       && sql.includes("WHERE event_id=$1 AND participant_token=$2")
     ) {
-      assert.deepEqual(values, [eventId, "participant-token-marketfox"]);
+      assert.deepEqual(values, [optedOutEventId, "participant-token-marketfox"]);
+      operations.push("delete-snapshots");
       return { rows: [] };
     }
     if (sql.startsWith("DELETE")) return { rows: [] };
+    if (sql === "COMMIT") operations.push("commit");
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
     if (sql.startsWith("SELECT participant_token")) {
       assert.match(sql, /FOR UPDATE/);
-      assert.deepEqual(values, [eventId, installationId]);
+      assert.deepEqual(values, [optedOutEventId, installationId]);
       return { rows: [{ participant_token: "participant-token-marketfox" }] };
     }
     if (sql.startsWith("UPDATE event_arena_lightning_participants")) {
       assert.match(sql, /SET leaderboard_opted_in=FALSE/);
-      assert.deepEqual(values, [eventId, installationId]);
+      assert.deepEqual(values, [optedOutEventId, installationId]);
+      operations.push("opt-out");
       return { rows: [] };
     }
     assert.match(sql, /^UPDATE event_arena_leaderboard_entries/);
@@ -3258,13 +3265,22 @@ test("opt-out clears public score data while retaining only the event-scoped ali
     assert.match(sql, /trade_count=NULL/);
     assert.ok(sql.includes("holdings='[]'::jsonb"));
     assert.match(sql, /WHERE event_id=\$1 AND installation_id=\$2 AND is_active=TRUE$/);
-    assert.deepEqual(values, [eventId, installationId]);
+    assert.deepEqual(values, [optedOutEventId, installationId]);
+    operations.push("deactivate-entry");
     return { rows: [] };
   }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard?installationId=${installationId}`, { method: "DELETE" });
+    const response = await fetch(`${baseUrl}/event-arena/${optedOutEventId}/leaderboard?installationId=${installationId}`, { method: "DELETE" });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true });
   });
+  assert.deepEqual(operations, [
+    "begin",
+    "event-lock",
+    "delete-snapshots",
+    "deactivate-entry",
+    "opt-out",
+    "commit",
+  ]);
 });
 
 test("Lightning Round opt-out is saved even before a leaderboard score exists", async () => {

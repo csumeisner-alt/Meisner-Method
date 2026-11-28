@@ -1270,7 +1270,7 @@ test(
           price DOUBLE PRECISION NOT NULL, total DOUBLE PRECISION NOT NULL,
           date TIMESTAMPTZ NOT NULL, fee DOUBLE PRECISION DEFAULT 0, realized_pnl DOUBLE PRECISION,
           cash_delta DOUBLE PRECISION, short_collateral_delta DOUBLE PRECISION,
-          lightning_round_event_id TEXT, PRIMARY KEY (id,user_id)
+          lightning_round_event_id TEXT, asset_type TEXT, PRIMARY KEY (id,user_id)
         );
         CREATE TABLE paper_orders (
           id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
@@ -1287,6 +1287,7 @@ test(
         CREATE TABLE event_arena_events (
           event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, artwork_id TEXT NOT NULL,
           starting_balance DOUBLE PRECISION NOT NULL, ranking_direction TEXT NOT NULL,
+          purchase_limit DOUBLE PRECISION,
           event_start_at TIMESTAMPTZ NOT NULL, event_end_at TIMESTAMPTZ NOT NULL,
           finalized_at TIMESTAMPTZ
         );
@@ -1304,6 +1305,7 @@ test(
           return_percent DOUBLE PRECISION NOT NULL, trade_count INTEGER, holdings JSONB NOT NULL,
           event_start_at TIMESTAMPTZ NOT NULL, event_end_at TIMESTAMPTZ NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL, cash_balance DOUBLE PRECISION NOT NULL,
+          valuation_snapshot JSONB, valuation_snapshot_updated_at TIMESTAMPTZ,
           is_active BOOLEAN NOT NULL DEFAULT TRUE, PRIMARY KEY (event_id,installation_id)
         );
         CREATE TABLE event_arena_leaderboard_snapshots (
@@ -1312,6 +1314,9 @@ test(
           event_end_at TIMESTAMPTZ NOT NULL, captured_at TIMESTAMPTZ NOT NULL,
           rank INTEGER NOT NULL, return_percent DOUBLE PRECISION NOT NULL,
           is_final BOOLEAN NOT NULL DEFAULT FALSE
+        );
+        CREATE TABLE event_arena_cash_transfers (
+          event_end_at TIMESTAMPTZ NOT NULL
         );
         CREATE UNIQUE INDEX event_arena_final_snapshot_idx
           ON event_arena_leaderboard_snapshots (event_id,participant_token)
@@ -1971,6 +1976,200 @@ test(
         2,
         "an unchanged tie must not create duplicate history snapshots",
       );
+
+      const optOutEventId = getLightningRoundScheduleIds(Date.now())
+        .find((scheduledId) => scheduledId !== scheduledEventId);
+      assert.ok(optOutEventId);
+      const optOutConfiguration = expectedEventArenaConfiguration(optOutEventId);
+      assert.ok(optOutConfiguration);
+      const optOutStartAt = optOutConfiguration.startAtMs;
+      const optOutEndAt = optOutConfiguration.endAtMs;
+      const optOutNow = optOutStartAt + 5 * 60_000;
+      const optOutParticipants = [
+        { installationId: `opt-out-racer-${randomUUID()}`, alias: "QuietFox", symbol: "AAPL" },
+        { installationId: `opt-out-survivor-${randomUUID()}`, alias: "SteadyOwl", symbol: "MSFT" },
+      ].sort((a, b) => a.installationId.localeCompare(b.installationId));
+      const optedOutParticipant = optOutParticipants[0]!;
+      const optedInParticipant = optOutParticipants[1]!;
+      await firstPool.query(
+        `INSERT INTO event_arena_events
+          (event_id,event_type,artwork_id,starting_balance,ranking_direction,purchase_limit,event_start_at,event_end_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          optOutEventId,
+          optOutConfiguration.eventType,
+          optOutConfiguration.artworkId,
+          optOutConfiguration.startingBalance,
+          optOutConfiguration.rankingDirection,
+          optOutConfiguration.purchaseLimit ?? null,
+          new Date(optOutStartAt),
+          new Date(optOutEndAt),
+        ],
+      );
+      for (const participant of optOutParticipants) {
+        const participantAccountId = `opt-out-account-${randomUUID()}`;
+        await firstPool.query(
+          `INSERT INTO event_arena_lightning_participants
+            (event_id,installation_id,account_id,alias,status,leaderboard_opted_in,event_start_at,event_end_at)
+           VALUES ($1,$2,$3,$4,'entered',TRUE,$5,$6)`,
+          [
+            optOutEventId,
+            participant.installationId,
+            participantAccountId,
+            participant.alias,
+            new Date(optOutStartAt),
+            new Date(optOutEndAt),
+          ],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_transactions
+            (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,lightning_round_event_id)
+           VALUES ($1,$2,$3,$4,$4,'BUY',2,100,200,$5,$6)`,
+          [
+            `opt-out-transaction-${randomUUID()}`,
+            participant.installationId,
+            participantAccountId,
+            participant.symbol,
+            new Date(optOutStartAt + 1000),
+            optOutEventId,
+          ],
+        );
+      }
+
+      const optOutApp = express();
+      optOutApp.use(express.json());
+      optOutApp.use(createEventArenaRouter(
+        secondPool,
+        (_req, _res, next) => next(),
+        () => optOutNow,
+        async (symbol) => symbol === "AAPL" ? 200 : 110,
+      ));
+      const optOutServer = optOutApp.listen(0);
+      await once(optOutServer, "listening");
+      const optOutAddress = optOutServer.address();
+      assert.ok(optOutAddress && typeof optOutAddress === "object");
+      try {
+        const optOutBackendPid = Number(
+          (await secondPool.query("SELECT pg_backend_pid() AS pid")).rows[0].pid,
+        );
+        let notifyOptOutQuoteStarted!: () => void;
+        const optOutQuoteStarted = new Promise<void>((resolve) => {
+          notifyOptOutQuoteStarted = resolve;
+        });
+        let resumeOptOutQuote!: () => void;
+        const optOutQuoteGate = new Promise<void>((resolve) => {
+          resumeOptOutQuote = resolve;
+        });
+        let quoteCallCount = 0;
+        const concurrentWorker = processDueLightningRoundOrders(
+          executionDatabase(firstPool),
+          {
+            now: () => optOutNow,
+            makeId: randomUUID,
+            fetchPrice: async (symbol) => {
+              quoteCallCount += 1;
+              if (quoteCallCount === 1) {
+                notifyOptOutQuoteStarted();
+                await optOutQuoteGate;
+              }
+              return symbol === "AAPL" ? 200 : 110;
+            },
+          },
+        );
+        await optOutQuoteStarted;
+        const optOutResponse = fetch(
+          `http://127.0.0.1:${optOutAddress.port}/event-arena/${optOutEventId}/leaderboard?installationId=${optedOutParticipant.installationId}`,
+          { method: "DELETE" },
+        );
+
+        let optOutLockWaitObserved = false;
+        let concurrentResults: PromiseSettledResult<any>[];
+        try {
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const { rows } = await adminPool.query(
+              "SELECT wait_event_type,wait_event FROM pg_stat_activity WHERE pid=$1",
+              [optOutBackendPid],
+            );
+            if (rows[0]?.wait_event_type === "Lock" && rows[0]?.wait_event === "advisory") {
+              optOutLockWaitObserved = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        } finally {
+          resumeOptOutQuote();
+          concurrentResults = await Promise.allSettled([concurrentWorker, optOutResponse]);
+        }
+        assert.ok(
+          optOutLockWaitObserved,
+          "the opt-out request should wait for the in-flight standings refresh lock",
+        );
+        for (const result of concurrentResults) {
+          if (result.status === "rejected") throw result.reason;
+        }
+        assert.equal(concurrentResults[0]?.status, "fulfilled");
+        if (concurrentResults[0]?.status === "fulfilled") {
+          assert.equal(concurrentResults[0].value.events, 1);
+        }
+        const response = concurrentResults[1]!;
+        assert.equal(response.status, "fulfilled");
+        if (response.status === "fulfilled") {
+          assert.equal(response.value.status, 200);
+          assert.deepEqual(await response.value.json(), { ok: true });
+        }
+
+        const optedOutState = await firstPool.query(
+          `SELECT participant.leaderboard_opted_in,entry.is_active,entry.return_percent,
+                  COUNT(snapshot.snapshot_id)::int AS snapshot_count
+           FROM event_arena_lightning_participants AS participant
+           LEFT JOIN event_arena_leaderboard_entries AS entry
+             ON entry.event_id=participant.event_id AND entry.installation_id=participant.installation_id
+           LEFT JOIN event_arena_leaderboard_snapshots AS snapshot
+             ON snapshot.event_id=entry.event_id AND snapshot.participant_token=entry.participant_token
+           WHERE participant.event_id=$1 AND participant.installation_id=$2
+           GROUP BY participant.leaderboard_opted_in,entry.is_active,entry.return_percent`,
+          [optOutEventId, optedOutParticipant.installationId],
+        );
+        assert.equal(optedOutState.rows.length, 1);
+        assert.equal(optedOutState.rows[0].leaderboard_opted_in, false);
+        assert.equal(optedOutState.rows[0].is_active, false);
+        assert.equal(Number(optedOutState.rows[0].return_percent), 0);
+        assert.equal(Number(optedOutState.rows[0].snapshot_count), 0);
+
+        const currentStandings = await fetch(
+          `http://127.0.0.1:${optOutAddress.port}/event-arena/${optOutEventId}/leaderboard`,
+        );
+        assert.equal(currentStandings.status, 200);
+        const currentPayload = await currentStandings.json() as any;
+        assert.deepEqual(
+          currentPayload.entries.map((entry: any) => ({ alias: entry.alias, rank: entry.rank })),
+          [{ alias: optedInParticipant.alias, rank: 1 }],
+          "the remaining opted-in participant should hold first place after the opt-out",
+        );
+
+        await processDueLightningRoundOrders(executionDatabase(secondPool), {
+          now: () => optOutNow + 6 * 60_000,
+          makeId: randomUUID,
+          fetchPrice: async (symbol) => symbol === "AAPL" ? 200 : 110,
+        });
+        const survivorSnapshots = await firstPool.query(
+          `SELECT snapshot.rank
+           FROM event_arena_leaderboard_snapshots AS snapshot
+           JOIN event_arena_leaderboard_entries AS entry
+             ON entry.event_id=snapshot.event_id AND entry.participant_token=snapshot.participant_token
+           WHERE snapshot.event_id=$1 AND entry.installation_id=$2 AND snapshot.is_final=FALSE
+           ORDER BY snapshot.captured_at,snapshot.snapshot_id`,
+          [optOutEventId, optedInParticipant.installationId],
+        );
+        assert.deepEqual(
+          survivorSnapshots.rows.map((row) => Number(row.rank)),
+          [2, 1],
+          "the next refresh should record the survivor's corrected rank without publishing the opted-out participant",
+        );
+      } finally {
+        optOutServer.close();
+        await once(optOutServer, "close");
+      }
 
       const apiParticipant = standingsIds.participants.find((participant) => participant.optedIn)!;
       const readFrozenResult = () => firstPool.query(
