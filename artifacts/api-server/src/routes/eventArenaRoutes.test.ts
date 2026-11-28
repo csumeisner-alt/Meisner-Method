@@ -228,6 +228,26 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
       is_final BOOLEAN NOT NULL DEFAULT FALSE
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_lightning_participants (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','entered','rejected')),
+      leaderboard_opted_in BOOLEAN NOT NULL DEFAULT TRUE,
+      failure_reason TEXT,
+      final_result JSONB,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(
+    "ALTER TABLE event_arena_lightning_participants ADD COLUMN IF NOT EXISTS leaderboard_opted_in BOOLEAN NOT NULL DEFAULT TRUE",
+  );
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_snapshots ADD COLUMN IF NOT EXISTS is_final BOOLEAN NOT NULL DEFAULT FALSE",
   );
@@ -2190,6 +2210,109 @@ test("Lightning Round history returns only the opted-in participant's sampled po
     });
   }, lightningEvent.startAtMs + 60 * 60_000);
 });
+
+test(
+  "Lightning Round history keeps chronological endpoints when sampling a long timeline",
+  { skip: !databaseUrl && "DATABASE_URL is not configured" },
+  async () => {
+    assert.ok(databaseUrl);
+    const pool = new Pool({ connectionString: databaseUrl });
+    const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+    assert.ok(lightningEvent);
+    const historyInstallationId = `lightning-history-${randomUUID()}`;
+    const historyAccountId = `lightning-account-${randomUUID()}`;
+    let participantToken: string | undefined;
+    try {
+      await ensureEventArenaTables(pool);
+      await pool.query(
+        `INSERT INTO event_arena_lightning_participants
+           (event_id, installation_id, account_id, alias, status, leaderboard_opted_in, event_start_at, event_end_at)
+         VALUES ($1, $2, $3, $4, 'entered', TRUE, $5, $6)`,
+        [
+          lightningEvent.eventId,
+          historyInstallationId,
+          historyAccountId,
+          "History Tester",
+          new Date(lightningEvent.startAtMs),
+          new Date(lightningEvent.endAtMs),
+        ],
+      );
+      const { rows: participantRows } = await pool.query(
+        `INSERT INTO event_arena_leaderboard_entries
+           (event_id, installation_id, alias, start_equity, equity, return_percent, holdings, event_start_at, event_end_at)
+         VALUES ($1, $2, $3, 100000, 100000, 0, '[]'::jsonb, $4, $5)
+         RETURNING participant_token`,
+        [
+          lightningEvent.eventId,
+          historyInstallationId,
+          "History Tester",
+          new Date(lightningEvent.startAtMs),
+          new Date(lightningEvent.endAtMs),
+        ],
+      );
+      participantToken = participantRows[0]?.participant_token;
+      assert.ok(participantToken);
+      await pool.query(
+        `INSERT INTO event_arena_leaderboard_snapshots
+           (event_id, participant_token, event_start_at, event_end_at, captured_at, rank, return_percent)
+         SELECT $1, $2, $3, $4,
+           TO_TIMESTAMP($5 / 1000.0) + (sample.minute_offset * INTERVAL '1 minute'),
+           sample.minute_offset + 1, sample.minute_offset
+         FROM generate_series(0, 139) AS sample(minute_offset)`,
+        [
+          lightningEvent.eventId,
+          participantToken,
+          new Date(lightningEvent.startAtMs),
+          new Date(lightningEvent.endAtMs),
+          lightningEvent.startAtMs,
+        ],
+      );
+
+      await withApi(pool, async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard/history`,
+          { headers: { "x-event-arena-installation-id": historyInstallationId } },
+        );
+        assert.equal(response.status, 200);
+        const history = await response.json() as { snapshots: Array<{
+          capturedAt: string;
+          rank: number;
+          returnPercent: number;
+        }> };
+        assert.equal(history.snapshots.length, 120);
+        assert.equal(history.snapshots[0].capturedAt, new Date(lightningEvent.startAtMs).toISOString());
+        assert.equal(history.snapshots[0].rank, 1);
+        assert.equal(
+          history.snapshots.at(-1)?.capturedAt,
+          new Date(lightningEvent.startAtMs + 139 * 60_000).toISOString(),
+        );
+        assert.equal(history.snapshots.at(-1)?.rank, 140);
+        assert.deepEqual(
+          history.snapshots.map((snapshot) => Date.parse(snapshot.capturedAt)),
+          history.snapshots
+            .map((snapshot) => Date.parse(snapshot.capturedAt))
+            .toSorted((left, right) => left - right),
+        );
+      }, lightningEvent.startAtMs + 3 * 60 * 60_000);
+    } finally {
+      if (participantToken) {
+        await pool.query(
+          "DELETE FROM event_arena_leaderboard_snapshots WHERE event_id=$1 AND participant_token=$2",
+          [lightningEvent.eventId, participantToken],
+        );
+      }
+      await pool.query(
+        "DELETE FROM event_arena_leaderboard_entries WHERE event_id=$1 AND installation_id=$2",
+        [lightningEvent.eventId, historyInstallationId],
+      );
+      await pool.query(
+        "DELETE FROM event_arena_lightning_participants WHERE event_id=$1 AND installation_id=$2",
+        [lightningEvent.eventId, historyInstallationId],
+      );
+      await pool.end();
+    }
+  },
+);
 
 test("history rejects invalid event or anonymous identity before querying private snapshots", async () => {
   let queries = 0;
