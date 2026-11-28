@@ -15,6 +15,7 @@ import {
   processDueLightningRoundOrders,
   type LightningExecutionDatabase,
 } from "./lightningRoundExecution.ts";
+import { calculateLightningRoundScore } from "./lightningRoundScore.ts";
 
 const { Pool } = pg;
 const databaseUrl = env["TEST_DATABASE_URL"] ?? env["DATABASE_URL"];
@@ -990,7 +991,6 @@ test("active Lightning market fills are server-recorded and safe to retry", asyn
 });
 
 test("Lightning Round scoring is derived only from event-tagged transactions", async () => {
-  const { calculateLightningRoundScore } = await import("./lightningRoundScore.ts");
   const score = calculateLightningRoundScore(
     [
       { symbol: "AAPL", action: "BUY", shares: 2, price: 100, total: 200 },
@@ -1031,6 +1031,61 @@ test("Lightning Round scoring is derived only from event-tagged transactions", a
     ),
     null,
   );
+});
+
+test("Lightning Round cash and equity include fees on both buys and sells", async () => {
+  const state = seedEnteredState();
+  state.orders = [];
+  state.positions = [];
+  state.lots = [];
+  state.transactions = [
+    {
+      id: "lightning-buy-with-fee",
+      user_id: installationId,
+      account_id: accountId,
+      symbol: "AAPL",
+      company_name: "Apple",
+      action: "BUY",
+      shares: 10,
+      price: 100,
+      total: 1_000,
+      fee: 2,
+      date: new Date(startAt + 1_000),
+      lightning_round_event_id: eventId,
+    },
+    {
+      id: "lightning-sell-with-fee",
+      user_id: installationId,
+      account_id: accountId,
+      symbol: "AAPL",
+      company_name: "Apple",
+      action: "SELL",
+      shares: 4,
+      price: 110,
+      total: 440,
+      fee: 1,
+      date: new Date(startAt + 2_000),
+      lightning_round_event_id: eventId,
+    },
+  ];
+  // The shared Event Arena account has already applied each transaction fee.
+  state.accounts[0]!.cash = 100_000 - 1_000 - 2 + 440 - 1;
+
+  const result = await process(
+    new MemoryDatabase(state),
+    async (symbol) => symbol === "AAPL" ? 120 : null,
+    () => startAt + 5 * 60_000,
+  );
+
+  assert.equal(result.events, 1);
+  const leaderboardEntry = state.leaderboardEntries[0];
+  assert.ok(leaderboardEntry);
+  assert.equal(leaderboardEntry.cash_balance, state.accounts[0]!.cash);
+  assert.equal(leaderboardEntry.cash_balance, 99_437);
+  assert.equal(leaderboardEntry.equity, 100_157);
+  assert.equal(leaderboardEntry.return_percent, 0.157);
+  assert.equal(leaderboardEntry.trade_count, 2);
+  assert.deepEqual(leaderboardEntry.holdings.map((holding: any) => holding.symbol), ["AAPL"]);
 });
 
 test("event-end standings freeze tagged trades, final prices, and ranks once across retries", async () => {

@@ -68,7 +68,7 @@ export function calculateLightningRoundScore(
     const total = Number(trade.total);
     const current = positions.get(trade.symbol);
     if (trade.action === "BUY") {
-      cashBalance -= total;
+      cashBalance -= total + Number(trade.fee ?? 0);
       positions.set(trade.symbol, {
         symbol: trade.symbol,
         companyName: trade.company_name?.trim() || trade.symbol,
